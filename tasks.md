@@ -36,12 +36,12 @@
 **Acceptance:** fixtures are explicitly marked as synthetic test data and never presented as official corpus results.
 
 ## Phase 3 — Ingestion prototype and micro-slice (Stage B)
-- [ ] Choose 3–5 official SEBI circulars with verified amendment/rescission relationships.
-- [ ] Store source URLs, retrieval date, checksums, and metadata in a manifest.
-- [ ] Parse PDF text and page boundaries.
+- [x] Choose 3–5 official SEBI circulars with verified amendment/rescission relationships.
+- [x] Store source URLs, retrieval date, checksums, and metadata in a manifest.
+- [x] Parse PDF text and page boundaries.
 - [ ] Extract tables separately where useful.
-- [ ] Mark OCR-derived text and report extraction quality.
-- [ ] Add a manual review workflow for low-quality or ambiguous documents.
+- [x] Mark OCR-derived text and report extraction quality.
+- [x] Add a manual review workflow for low-quality or ambiguous documents.
 **Acceptance:** every ingested document has provenance; extraction output can be traced to source page.
 
 ## Phase 4 — Chunking and retrieval
