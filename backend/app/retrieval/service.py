@@ -8,23 +8,33 @@ from typing import List, Dict, Tuple, Optional
 from app.schemas.document import ChunkRecord, DocumentRecord
 from app.schemas.retrieval import RetrievalResponse
 from app.retrieval.bm25 import BM25Index
+from app.retrieval.dense import DenseIndex
+from app.retrieval.dense_embedder import DenseEmbedder
 
 
 class RetrievalService:
     """
-    Service orchestrating corpus loading, BM25 indexing, and provenance-preserving search.
+    Service orchestrating corpus loading, lexical BM25 indexing, and dense vector search.
     """
 
-    def __init__(self, processed_dir: str | Path = "data/processed"):
+    def __init__(
+        self,
+        processed_dir: str | Path = "data/processed",
+        indexes_dir: str | Path = "data/indexes",
+        dense_embedder: Optional[DenseEmbedder] = None,
+    ):
         self.processed_dir = Path(processed_dir)
+        self.indexes_dir = Path(indexes_dir)
         self.bm25_index = BM25Index()
+        self.dense_index = DenseIndex(embedder=dense_embedder, index_dir=indexes_dir)
         self.documents: Dict[str, DocumentRecord] = {}
         self.chunks: List[ChunkRecord] = []
         self._is_indexed: bool = False
+        self._is_dense_indexed: bool = False
 
     def load_and_index_corpus(self) -> Tuple[int, int]:
         """
-        Load all processed document records and chunks under data/processed/ and build the index.
+        Load all processed document records and chunks under data/processed/ and build the BM25 index.
 
         Returns:
         - Tuple of (document_count, chunk_count)
@@ -88,10 +98,42 @@ class RetrievalService:
         self._is_indexed = True
         return len(self.documents), len(self.chunks)
 
+    def load_and_index_dense(self, auto_rebuild: bool = True) -> bool:
+        """
+        Load persisted dense vector index or build it if missing/stale.
+        """
+        if not self._is_indexed:
+            self.load_and_index_corpus()
+
+        if not self.chunks:
+            self._is_dense_indexed = True
+            return True
+
+        loaded = self.dense_index.load(self.chunks, self.documents)
+        if loaded:
+            self._is_dense_indexed = True
+            return True
+
+        if auto_rebuild:
+            self.dense_index.build_from_chunks(self.chunks, self.documents)
+            self.dense_index.save()
+            self._is_dense_indexed = True
+            return True
+
+        return False
+
     def search(self, query: str, top_k: int = 5) -> RetrievalResponse:
         """
-        Execute lexical search over the loaded corpus index.
+        Execute lexical BM25 search over the loaded corpus index.
         """
         if not self._is_indexed:
             self.load_and_index_corpus()
         return self.bm25_index.search(query=query, top_k=top_k)
+
+    def search_dense(self, query: str, top_k: int = 5) -> RetrievalResponse:
+        """
+        Execute dense vector cosine search over the loaded corpus index.
+        """
+        if not self._is_dense_indexed:
+            self.load_and_index_dense()
+        return self.dense_index.search(query=query, top_k=top_k)
