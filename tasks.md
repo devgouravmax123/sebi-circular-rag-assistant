@@ -10,29 +10,29 @@
 - [ ] Ask before major dependency, architecture, hosting, or data-source changes.
 
 ## Phase 0 — Environment and repository
-- [ ] Inspect the current folder and report existing files before modifying anything.
-- [ ] Check Python, Node.js, npm, Git versions.
-- [ ] Confirm the project directory and create the planned folder structure.
-- [ ] Create `.gitignore` and `.env.example`.
-- [ ] Create Python virtual environment; document activation commands for Windows PowerShell.
-- [ ] Record exact versions actually installed.
+- [x] Inspect the current folder and report existing files before modifying anything.
+- [x] Check Python, Node.js, npm, Git versions.
+- [x] Confirm the project directory and create the planned folder structure.
+- [x] Create `.gitignore` and `.env.example`.
+- [x] Create Python virtual environment; document activation commands for Windows PowerShell.
+- [x] Record exact versions actually installed.
 **Acceptance:** clean Git repository, no secrets, environment report recorded, no app code generated prematurely.
 
 ## Phase 1 — Minimal vertical slice
-- [ ] Create minimal FastAPI app with `/health`.
-- [ ] Add a test for `/health`.
-- [ ] Create React + TypeScript + Vite frontend.
-- [ ] Add a minimal question form and answer panel with loading/error states.
-- [ ] Connect frontend to backend using environment-based API URL.
-- [ ] Document local startup commands.
+- [x] Create minimal FastAPI app with `/health`.
+- [x] Add a test for `/health`.
+- [x] Create React + TypeScript + Vite frontend.
+- [x] Add a minimal question form and answer panel with loading/error states.
+- [x] Connect frontend to backend using environment-based API URL.
+- [x] Document local startup commands.
 **Acceptance:** UI can call `/health`; backend tests pass; no LLM key required.
 
 ## Phase 2 — Data model and tiny fixture corpus (Stage A)
-- [ ] Define schemas for circular metadata, chunks, graph edges (directed `Newer -> RELATIONSHIP -> Older`), citations, and answer responses.
-- [ ] Add provision-level scoping (`affected_provisions`) to edge schemas.
-- [ ] Add a few clearly labelled synthetic fixture records for unit testing only.
-- [ ] Preserve source URL, document ID, date, page number, and extraction/OCR metadata.
-- [ ] Add data validation tests.
+- [x] Define schemas for circular metadata, chunks, graph edges (directed `Newer -> RELATIONSHIP -> Older`), citations, and answer responses.
+- [x] Add provision-level scoping (`affected_provisions`) to edge schemas.
+- [x] Add a few clearly labelled synthetic fixture records for unit testing only.
+- [x] Preserve source URL, document ID, date, page number, and extraction/OCR metadata.
+- [x] Add data validation tests.
 **Acceptance:** fixtures are explicitly marked as synthetic test data and never presented as official corpus results.
 
 ## Phase 3 — Ingestion prototype and micro-slice (Stage B)
