@@ -1,4 +1,4 @@
-"""Document, chunk, and graph schemas."""
+"""Document, chunk, graph, and retrieval schemas."""
 from app.schemas.document import DocumentRecord, PageContent, ChunkRecord
 from app.schemas.graph import (
     GraphEdge,
@@ -8,6 +8,7 @@ from app.schemas.graph import (
     ReviewStatus,
 )
 from app.schemas.graph_collection import GraphEdgeCollection
+from app.schemas.retrieval import RetrievalResult, RetrievalResponse
 
 __all__ = [
     "DocumentRecord",
@@ -19,4 +20,6 @@ __all__ = [
     "ScopeType",
     "ConfidenceLevel",
     "ReviewStatus",
+    "RetrievalResult",
+    "RetrievalResponse",
 ]
