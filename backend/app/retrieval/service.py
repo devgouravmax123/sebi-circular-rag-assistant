@@ -12,9 +12,12 @@ from app.retrieval.dense import DenseIndex
 from app.retrieval.dense_embedder import DenseEmbedder
 
 
+from app.retrieval.rrf import reciprocal_rank_fusion
+
+
 class RetrievalService:
     """
-    Service orchestrating corpus loading, lexical BM25 indexing, and dense vector search.
+    Service orchestrating corpus loading, lexical BM25 indexing, dense vector search, and hybrid fusion.
     """
 
     def __init__(
@@ -137,3 +140,37 @@ class RetrievalService:
         if not self._is_dense_indexed:
             self.load_and_index_dense()
         return self.dense_index.search(query=query, top_k=top_k)
+
+    def search_hybrid(
+        self,
+        query: str,
+        top_k: int = 5,
+        candidate_k: int = 20,
+        rrf_k: int = 60,
+    ) -> RetrievalResponse:
+        """
+        Execute hybrid retrieval combining BM25 lexical and dense vector search via Reciprocal Rank Fusion (RRF).
+
+        Args:
+            query: Natural language or regulatory search query.
+            top_k: Number of fused results to return.
+            candidate_k: Number of raw candidate chunks retrieved from each component retriever before fusion.
+            rrf_k: Smoothing constant k for RRF (default: 60).
+
+        Returns:
+            RetrievalResponse with fused scores and component rank/score diagnostics.
+        """
+        if not query or not query.strip():
+            return RetrievalResponse(query=query, total_results=0, results=[])
+
+        # Retrieve candidate lists from component retrievers
+        bm25_resp = self.search(query=query, top_k=candidate_k)
+        dense_resp = self.search_dense(query=query, top_k=candidate_k)
+
+        # Fuse candidate lists using RRF
+        return reciprocal_rank_fusion(
+            ranked_lists=[bm25_resp.results, dense_resp.results],
+            k=rrf_k,
+            top_k=top_k,
+            query=query,
+        )
