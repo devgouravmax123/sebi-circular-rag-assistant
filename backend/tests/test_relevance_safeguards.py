@@ -184,6 +184,48 @@ def test_archetype_4_iso_27001_requirement(client):
     assert any("iso" in exc["excerpt_text"].lower() for exc in data["verified_excerpts"])
 
 
+def test_iso_27001_qualified_re_clarification_ordering_and_content(client):
+    """
+    Step 2 Regression Tests:
+    1. Query for Qualified RE ISO 27001 requirements retrieves CIR/2025/119 Clause 6.11 clarification and CIR/2024/113 baseline.
+    2. The clarification text that Qualified REs are 'encouraged and recommended (not mandatory)' is preserved.
+    3. The older mandatory wording is accompanied by its verified PARTIALLY_AMENDED regulatory status.
+    4. Incidental mentions (such as standards listed in CCI capability p85_71) are excluded when direct operative passages exist.
+    5. Clarification for Qualified REs does not alter MII mandatory scope.
+    6. Currency remains qualified under conservative pilot status (UNRESOLVED for CIR/2025/119).
+    """
+    response = client.post(
+        "/api/v1/query",
+        json={"query": "What are the ISO 27001 requirements for Qualified REs?", "top_k": 5}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["disposition"] == AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS
+    excerpts = data["verified_excerpts"]
+    assert len(excerpts) >= 2
+
+    # Check top excerpt is the CIR/2025/119 Clause 6.11 clarification
+    top_ex = excerpts[0]
+    assert top_ex["document_id"] == "sebi_cscrf_2025_119"
+    assert "encouraged and recommended (not mandatory)" in top_ex["excerpt_text"].lower()
+    assert top_ex["regulatory_status"] == RegulatoryStatus.UNRESOLVED
+
+    # Check that baseline CIR/2024/113 is present and marked as PARTIALLY_AMENDED
+    baseline_excerpts = [e for e in excerpts if e["document_id"] == "sebi_cscrf_2024_113"]
+    assert len(baseline_excerpts) > 0
+    for be in baseline_excerpts:
+        assert be["regulatory_status"] == RegulatoryStatus.PARTIALLY_AMENDED
+        assert "edge_cscrf_2025_119_amends_2024_113_technical_clarifications" in be["applicable_edge_ids"]
+
+    # Verify incidental standards passage (p85_71 / CCI) is NOT included in the top verified excerpts
+    chunk_ids = [e["source_chunk_id"] for e in excerpts]
+    assert "sebi_cscrf_2024_113_p85_71" not in chunk_ids
+
+    # Verify MII text distinction: MIIs are mandatory in baseline
+    assert any("miis and qualified res shall obtain iso 27001" in e["excerpt_text"].lower() for e in baseline_excerpts)
+
+
+
 def test_archetype_5_ciso_reporting(client):
     response = client.post("/api/v1/query", json={"query": "To whom does the CISO report directly?"})
     assert response.status_code == 200

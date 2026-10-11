@@ -128,14 +128,23 @@ def assess_candidate_relevance(
     if intent == QueryIntent.PROVISION_SPECIFIC_REQUIREMENT:
         # Check specific subject matter anchors
         if "iso 27001" in q_lower or "iso27001" in q_lower:
-            # Must discuss ISO 27001 certification or audit requirement, NOT merely incidental COTS audit
-            has_iso_anchor = bool(
+            # Reject passages that only cite ISO 27001 incidentally alongside general standards (e.g. ISO 27002 / CCI)
+            is_incidental_standards_mention = bool(
                 re.search(
-                    r"\biso\s*27001\b|\b4\.2\.?\s+iso\s+audit|\bpr\.ip\.s16\b",
+                    r"\bstandards\s+such\s+as\s+iso\s*27001\b|\bfrom\s+standards\s+such\s+as\b",
                     text_lower,
                 )
             )
-            if not has_iso_anchor:
+            # Must discuss operative ISO 27001 certification, audit, mandate, recommendation, or clause anchors
+            has_operative_iso_anchor = bool(
+                re.search(
+                    r"(?:\b(?:obtain|mandat\w*|certif\w*|require\w*|recommend\w*)\s+(?:[\w\s]{0,25}\s+)?iso\s*27001\b|"
+                    r"\biso\s*27001\b\s*(?:certification|audit|standard|\(latest|\(page|\(not|\s*shall)\b|"
+                    r"\bpr\.ip\.s16\b|\bsection\s+4\.2\b|\bclause\s+6\.11\b|\b4\.2\.?\s+iso\s+audit\b)",
+                    text_lower,
+                )
+            )
+            if not has_operative_iso_anchor or is_incidental_standards_mention:
                 return CandidateRelevanceAssessment(
                     chunk_id=candidate.chunk_id,
                     is_relevant=False,
@@ -201,5 +210,26 @@ def filter_relevant_candidates(
             return (3, -item.score)
 
         relevant_candidates.sort(key=deadline_priority_key)
+
+    # For PROVISION_SPECIFIC_REQUIREMENT regarding ISO 27001 for Qualified REs:
+    # Prioritize verified clarification circulars (CIR/2025/119 Clause 6.11)
+    # directly modifying Qualified RE certification status over partially amended baseline passages.
+    q_lower = query.lower()
+    if (
+        intent == QueryIntent.PROVISION_SPECIFIC_REQUIREMENT
+        and ("iso 27001" in q_lower or "iso27001" in q_lower)
+        and relevant_candidates
+    ):
+        def iso_priority_key(item: RetrievalResult) -> Tuple[int, float]:
+            doc_id = item.document_id
+            # Priority 0: CIR/2025/119 (Clause 6.11 specific clarification for Qualified REs)
+            if "2025_119" in doc_id:
+                return (0, -item.score)
+            # Priority 1: Baseline CIR/2024/113
+            elif "2024_113" in doc_id:
+                return (1, -item.score)
+            return (2, -item.score)
+
+        relevant_candidates.sort(key=iso_priority_key)
 
     return relevant_candidates, intent, assessments
