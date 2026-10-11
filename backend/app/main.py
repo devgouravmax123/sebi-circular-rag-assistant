@@ -19,6 +19,11 @@ app.add_middleware(
 )
 
 
+from app.api.v1.query import router as query_router
+
+app.include_router(query_router)
+
+
 @app.get("/health")
 def get_health() -> dict:
     """Basic health check endpoint."""
