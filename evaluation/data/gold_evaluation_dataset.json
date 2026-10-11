@@ -1,0 +1,1304 @@
+{
+  "dataset_version": "1.0.0",
+  "corpus_scope": "SEBI Cybersecurity and Cyber Resilience Framework (CSCRF) 5-document pilot corpus",
+  "queries": [
+    {
+      "query_id": "q01_ciso_reporting_line",
+      "query_text": "To whom does the Chief Information Security Officer (CISO) directly report under SEBI CSCRF?",
+      "query_category": "clause_fact",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "Master Circular Annexure-J (GV.GO.S1) sets CISO direct reporting line to MD/CEO or equivalent KMP."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2024_113_p80_67"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p80_67",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 80,
+            "printed_page": "80 of 205",
+            "provision_ref": "Annexure-J / GV.GO.S1 Clause 1",
+            "verbatim_excerpt": "The reporting of the CISO of the MII and Qualified REs shall be directly to the MD & CEO of the"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2024_113",
+        "affected_circular_id": null,
+        "relationship_type": null,
+        "exceptions_and_scope": "Applicable to all REs except small-size, self-certification REs"
+      }
+    },
+    {
+      "query_id": "q02_air_gapped_backup",
+      "query_text": "What are the requirements for maintaining isolated offline backups for critical systems against ransomware?",
+      "query_category": "clause_fact",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "Annexure-J RC.RP.S2 mandates isolated backups against ransomware attacks."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2024_113_p128_106"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p128_106",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 128,
+            "printed_page": "128 of 205",
+            "provision_ref": "Annexure-J / RC.RP.S2 Clause 7",
+            "verbatim_excerpt": "ransomware attacks that specifically target backups, conventional data backups may not be effective."
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2024_113",
+        "affected_circular_id": null,
+        "relationship_type": null,
+        "exceptions_and_scope": "Mandatory for all REs with critical operations"
+      }
+    },
+    {
+      "query_id": "q03_vapt_cert_in_requirement",
+      "query_text": "What are the auditing organization requirements for conducting VAPT under CSCRF?",
+      "query_category": "clause_fact",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "CSCRF Section 4 specifies VAPT must be conducted by CERT-In empanelled IS auditing organizations."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2024_113_p48_38"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p48_38",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 48,
+            "printed_page": "49 of 205",
+            "provision_ref": "Part I Section 4 / Table on VAPT",
+            "verbatim_excerpt": "conducted by CERT-In empanelled IS auditing organization. CSCRF Page 49 of 205 V"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2024_113",
+        "affected_circular_id": null,
+        "relationship_type": null,
+        "exceptions_and_scope": "All REs conducting VAPT"
+      }
+    },
+    {
+      "query_id": "q04_cyber_audit_open_observations",
+      "query_text": "What is the procedure for open cyber audit observations remaining after 3 months?",
+      "query_category": "clause_fact",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "Part I Clause 4.4.4 requires open observations after 3 months to be placed before the Board / Partners / Proprietor."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2024_113_p52_41"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p52_41",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 52,
+            "printed_page": "52 of 205",
+            "provision_ref": "Part I Clause 4.4.4",
+            "verbatim_excerpt": "Additionally, all open observation after 3 months of completion of cyber audit shall be approved by IT Committ"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2024_113",
+        "affected_circular_id": null,
+        "relationship_type": null,
+        "exceptions_and_scope": "All REs subject to cyber audit"
+      }
+    },
+    {
+      "query_id": "q05_password_lockout_policy",
+      "query_text": "What password protection and length requirements are specified for internet-facing applications in CSCRF?",
+      "query_category": "clause_fact",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "Annexure-E Section on Application Security sets password protection standards."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2024_113_p159_123"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p159_123",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 159,
+            "printed_page": "159 of 205",
+            "provision_ref": "Annexure-E / Password Guidelines",
+            "verbatim_excerpt": "over the Internet should be password protected. A reasonable minimum length (and no arbitrary maximu"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2024_113",
+        "affected_circular_id": null,
+        "relationship_type": null,
+        "exceptions_and_scope": "All REs implementing authentication controls"
+      }
+    },
+    {
+      "query_id": "q06_legacy_systems_virtual_patching",
+      "query_text": "What is the timeframe and requirement for virtual patching or compensatory controls for legacy systems?",
+      "query_category": "technical_spec",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "Annexure-J PR.PT.S3 specifies compensatory controls/virtual patching within 6 months for legacy systems."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2024_113_p116_97"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p116_97",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 116,
+            "printed_page": "116 of 205",
+            "provision_ref": "Annexure-J / PR.PT.S3 Guideline 6",
+            "verbatim_excerpt": "Compensatory controls like virtual patching shall be implemented for legacy systems for a maximum period of 6 months. Further"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2024_113",
+        "affected_circular_id": null,
+        "relationship_type": null,
+        "exceptions_and_scope": "REs with legacy systems unable to patch immediately"
+      }
+    },
+    {
+      "query_id": "q07_cloud_hsm_mandate",
+      "query_text": "Framework adoption cloud services hardware security module HSM mandatory MIIs",
+      "query_category": "technical_spec",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_060",
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "CIR/2025/060 and Master Annexure-J specify HSM mandate for MIIs."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_060_p5_3",
+          "sebi_cscrf_2024_113_p66_56"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_060_p5_3",
+            "document_id": "sebi_cscrf_2025_060",
+            "pdf_page": 5,
+            "printed_page": "5 of 7",
+            "provision_ref": "Clause 5",
+            "verbatim_excerpt": "implementation of a dedicated Hardware Security Module (HSM) shall be made mandatory for MIIs and Qu"
+          },
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p66_56",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 66,
+            "printed_page": "66 of 205",
+            "provision_ref": "CSCRF Section 4.5.3 Clause 15",
+            "verbatim_excerpt": "All software services in the form of SaaS/ Hosted services, COTS, customized COTS, in"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_060",
+        "affected_circular_id": "sebi_cscrf_2024_113",
+        "relationship_type": "AMENDS",
+        "exceptions_and_scope": "MIIs must use dedicated HSM; smaller REs allowed multi-tenant alternatives"
+      }
+    },
+    {
+      "query_id": "q08_mfa_reset_controls",
+      "query_text": "What are the multi-factor authentication (MFA) reset and out-of-band requirements for user accounts?",
+      "query_category": "technical_spec",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "Annexure-E specifies multi-factor credential management and out-of-band reset procedures."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2024_113_p159_124"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p159_124",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 159,
+            "printed_page": "159-160 of 205",
+            "provision_ref": "Annexure-E / Multi-factor Reset",
+            "verbatim_excerpt": "multi-factor credentials, and to ensure that their out-of-band authentication reset information"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2024_113",
+        "affected_circular_id": null,
+        "relationship_type": null,
+        "exceptions_and_scope": "All REs managing multi-factor credentials"
+      }
+    },
+    {
+      "query_id": "q09_soc_monitoring_log_retention",
+      "query_text": "What is the role and log analysis expectation of the Security Operations Centre (SOC) in CSCRF?",
+      "query_category": "technical_spec",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "CSCRF Section 4.6 details SOC capabilities and log analysis requirements."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2024_113_p69_58"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p69_58",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 69,
+            "printed_page": "69 of 205",
+            "provision_ref": "CSCRF Section 4.6",
+            "verbatim_excerpt": "all logs to identify the root cause of the incident and prevent its reoccurrence after incorporating"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2024_113",
+        "affected_circular_id": null,
+        "relationship_type": null,
+        "exceptions_and_scope": "All REs establishing SOC operations"
+      }
+    },
+    {
+      "query_id": "q10_api_security_rate_limiting",
+      "query_text": "What strategies like rate limiting and throttling are mandated for API security under CSCRF?",
+      "query_category": "technical_spec",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "Annexure-J PR.AC.S3 mandates rate limiting, throttling, and API security strategies."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2024_113_p101_84"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p101_84",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 101,
+            "printed_page": "101 of 205",
+            "provision_ref": "Annexure-J / PR.AC.S3",
+            "verbatim_excerpt": "API security protects against vulnerabilities and misconfigurations in the APIs and prevents their misuse. Thu"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2024_113",
+        "affected_circular_id": null,
+        "relationship_type": null,
+        "exceptions_and_scope": "All REs developing and consuming APIs"
+      }
+    },
+    {
+      "query_id": "q11_august_deadline_extension",
+      "query_text": "extension compliance timelines August 31 2025 except MIIs KRAs QRTAs",
+      "query_category": "deadline_exception",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_096"
+        ],
+        "rationale": "CIR/2025/096 granted a 2-month compliance extension to August 31, 2025 for eligible REs."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_096_p1_0"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_096_p1_0",
+            "document_id": "sebi_cscrf_2025_096",
+            "pdf_page": 1,
+            "printed_page": "1 of 2",
+            "provision_ref": "Clause 3",
+            "verbatim_excerpt": "Adoption and Implementation of Cybersecurity and Cyber Resilience Framework (CSCRF) for SEBI Regulat"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_096",
+        "affected_circular_id": "sebi_cscrf_2024_113",
+        "relationship_type": "AMENDS",
+        "exceptions_and_scope": "Excludes MIIs, KRAs, and QRTAs who had already transitioned"
+      }
+    },
+    {
+      "query_id": "q12_march_2025_extension_circular",
+      "query_text": "What timeline relief or extension was issued in SEBI circular CIR/2025/45 dated March 28, 2025?",
+      "query_category": "deadline_exception",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_045"
+        ],
+        "rationale": "CIR/2025/045 granted an initial extension towards implementation of CSCRF."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_045_p1_0"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_045_p1_0",
+            "document_id": "sebi_cscrf_2025_045",
+            "pdf_page": 1,
+            "printed_page": "1 of 3",
+            "provision_ref": "Preamble / Circular Title",
+            "verbatim_excerpt": "SEBI/HO/ ITD-1/ITD_CSC_EXT/P/CIR/2025/45 March 28, 2025 To, All Altern"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_045",
+        "affected_circular_id": "sebi_cscrf_2024_113",
+        "relationship_type": "AMENDS",
+        "exceptions_and_scope": "All REs transitioning to CSCRF"
+      }
+    },
+    {
+      "query_id": "q13_rto_iosco_clarification",
+      "query_text": "Recovery Time Objective RTO two hours IOSCO resumption critical operations 15 minutes RPO",
+      "query_category": "deadline_exception",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_119",
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "CIR/2025/119 clarified RTO as 2 hours citing IOSCO standards, referencing Master Annexure-J RC.RP.S2."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_119_p9_6",
+          "sebi_cscrf_2024_113_p128_106"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_119_p9_6",
+            "document_id": "sebi_cscrf_2025_119",
+            "pdf_page": 9,
+            "printed_page": "9 of 11",
+            "provision_ref": "Clause 6.10 / IOSCO Clarification",
+            "verbatim_excerpt": "Resumption within two hours (i.e. two-hour RTO). REs shall design and test its systems and processes to enable"
+          },
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p128_106",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 128,
+            "printed_page": "128 of 205",
+            "provision_ref": "Annexure-J / RC.RP.S2",
+            "verbatim_excerpt": "damaged/unbroken. 7. In case of ransomware attacks"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_119",
+        "affected_circular_id": "sebi_cscrf_2024_113",
+        "relationship_type": "AMENDS",
+        "exceptions_and_scope": "Critical operations of all REs"
+      }
+    },
+    {
+      "query_id": "q14_press_release_high_impact_cyber_attack",
+      "query_text": "What are the conditions and guidelines for issuing a press release following a high impact cyber attack?",
+      "query_category": "deadline_exception",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_119",
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "CIR/2025/119 Clause 6.4 clarified the press release requirement under RS.CO.S2."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_119_p7_4",
+          "sebi_cscrf_2024_113_p124_103"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_119_p7_4",
+            "document_id": "sebi_cscrf_2025_119",
+            "pdf_page": 7,
+            "printed_page": "7 of 11",
+            "provision_ref": "Clause 6.4 Clarification",
+            "verbatim_excerpt": "If the cyber-attack is of high impact and has a broad reach, the RE shall give a press release which"
+          },
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p124_103",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 124,
+            "printed_page": "124 of 205",
+            "provision_ref": "Annexure-J / RS.CO.S2",
+            "verbatim_excerpt": "RS.CO.S2 1. IT Committee for REs shall discuss res"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_119",
+        "affected_circular_id": "sebi_cscrf_2024_113",
+        "relationship_type": "AMENDS",
+        "exceptions_and_scope": "REs facing high-impact broad-reach cyber attacks"
+      }
+    },
+    {
+      "query_id": "q15_patch_management_policy_timelines",
+      "query_text": "What are the patch management policy and timeline requirements under PR.MA.S3?",
+      "query_category": "deadline_exception",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_119",
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "CIR/2025/119 Item 3 provides clarification on PR.MA.S3 Patch Management policy guidelines."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_119_p5_3",
+          "sebi_cscrf_2024_113_p116_97"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_119_p5_3",
+            "document_id": "sebi_cscrf_2025_119",
+            "pdf_page": 5,
+            "printed_page": "6 of 11",
+            "provision_ref": "Item 3 / PR.MA.S3",
+            "verbatim_excerpt": "Patch Management policy PR.MA.S3 Guidelines 8-10 (Page 117-118) 4. Cybersecurity policy GV"
+          },
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p116_97",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 116,
+            "printed_page": "116 of 205",
+            "provision_ref": "Annexure-J / PR.MA.S3",
+            "verbatim_excerpt": "Compensatory controls like virtual patching shall be implemented for l"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_119",
+        "affected_circular_id": "sebi_cscrf_2024_113",
+        "relationship_type": "AMENDS",
+        "exceptions_and_scope": "All REs managing software vulnerability patching"
+      }
+    },
+    {
+      "query_id": "q16_stock_broker_thresholds",
+      "query_text": "What are the criteria and thresholds for categorizing Stock Brokers under CSCRF into Qualified, Mid-size, and Small-size REs?",
+      "query_category": "entity_applicability",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_060"
+        ],
+        "rationale": "CIR/2025/060 Section 2.1 provides detailed classification parameters and thresholds for Stock Brokers."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_060_p2_1"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_060_p2_1",
+            "document_id": "sebi_cscrf_2025_060",
+            "pdf_page": 2,
+            "printed_page": "2 of 7",
+            "provision_ref": "Section 2.1",
+            "verbatim_excerpt": "Stock brokers: 2.1.1. Stockbrokers fulfilling any one of the following parameters shall be classified accordin"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_060",
+        "affected_circular_id": "sebi_cscrf_2024_113",
+        "relationship_type": "AMENDS",
+        "exceptions_and_scope": "Applies to all registered stock brokers"
+      }
+    },
+    {
+      "query_id": "q17_ia_ra_standalone_exemption",
+      "query_text": "Are standalone Investment Advisers (IAs) and Research Analysts (RAs) exempted from CSCRF?",
+      "query_category": "entity_applicability",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_060"
+        ],
+        "rationale": "CIR/2025/060 Clause 2.3 & 2.4 exempts IAs/RAs not registered in other capacities."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_060_p3_2"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_060_p3_2",
+            "document_id": "sebi_cscrf_2025_060",
+            "pdf_page": 3,
+            "printed_page": "3-4 of 7",
+            "provision_ref": "Section 2.3 & 2.4",
+            "verbatim_excerpt": "IAs not registered with SEBI in other capacities shall be exempted from provisions of CSCRF. With respect to I"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_060",
+        "affected_circular_id": "sebi_cscrf_2024_113",
+        "relationship_type": "AMENDS",
+        "exceptions_and_scope": "IAs/RAs registered in other capacities must follow the highest applicable category"
+      }
+    },
+    {
+      "query_id": "q18_portfolio_managers_aum",
+      "query_text": "Portfolio Managers categorization Asset Under Management AUM 10000 crores",
+      "query_category": "entity_applicability",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_119",
+          "sebi_cscrf_2025_060"
+        ],
+        "rationale": "CIR/2025/119 Table 1 revised Portfolio Managers AUM thresholds, superseding CIR/2025/060."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_119_p9_6",
+          "sebi_cscrf_2025_060_p5_3"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_119_p9_6",
+            "document_id": "sebi_cscrf_2025_119",
+            "pdf_page": 9,
+            "printed_page": "10 of 11",
+            "provision_ref": "Table 1 / Portfolio Managers",
+            "verbatim_excerpt": "Table 1: Criteria and thresholds for Portfolio Managers categorization S. No. Criteria Qualified REs"
+          },
+          {
+            "chunk_id": "sebi_cscrf_2025_060_p5_3",
+            "document_id": "sebi_cscrf_2025_060",
+            "pdf_page": 5,
+            "printed_page": "5 of 7",
+            "provision_ref": "Section 2.5",
+            "verbatim_excerpt": "Rs. 10,000 crores and above More than RS. 3000 Crores and less than Rs. 10,000 C"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_119",
+        "affected_circular_id": "sebi_cscrf_2025_060",
+        "relationship_type": "AMENDS",
+        "exceptions_and_scope": "All registered Portfolio Managers"
+      }
+    },
+    {
+      "query_id": "q19_merchant_bankers_categorization",
+      "query_text": "How are active and inactive Merchant Bankers categorized under CSCRF?",
+      "query_category": "entity_applicability",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_119"
+        ],
+        "rationale": "CIR/2025/119 Table 2 categorizes active MBs as Small-size REs and inactive MBs as Self-certification REs."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_119_p10_7"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_119_p10_7",
+            "document_id": "sebi_cscrf_2025_119",
+            "pdf_page": 10,
+            "printed_page": "11 of 11",
+            "provision_ref": "Table 2 / Merchant Bankers",
+            "verbatim_excerpt": "Table 2: Criteria and thresholds for MBs categorization S. No. Criteria Merchant Bankers (MBs) categorisation"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_119",
+        "affected_circular_id": null,
+        "relationship_type": null,
+        "exceptions_and_scope": "All registered Merchant Bankers"
+      }
+    },
+    {
+      "query_id": "q20_kra_re_categorization",
+      "query_text": "What CSCRF entity category is assigned to KYC Registration Agencies (KRAs)?",
+      "query_category": "entity_applicability",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_060"
+        ],
+        "rationale": "CIR/2025/060 Clause 2.5 explicitly re-categorizes KRAs from MIIs to Qualified REs."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_060_p3_2"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_060_p3_2",
+            "document_id": "sebi_cscrf_2025_060",
+            "pdf_page": 3,
+            "printed_page": "4 of 7",
+            "provision_ref": "Section 2.5 / KRAs",
+            "verbatim_excerpt": "KRAs shall be re-categorised from MIIs to Qualified REs. 2.6. Portfoli"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_060",
+        "affected_circular_id": "sebi_cscrf_2024_113",
+        "relationship_type": "AMENDS",
+        "exceptions_and_scope": "All SEBI-registered KRAs"
+      }
+    },
+    {
+      "query_id": "q21_iso27001_relaxation",
+      "query_text": "ISO 27001 certification mandatory or recommended for Qualified REs",
+      "query_category": "cross_circular_amendment",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_119",
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "CIR/2025/119 relaxed ISO 27001 from mandatory to recommended for Qualified REs."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_119_p9_6",
+          "sebi_cscrf_2024_113_p47_37"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_119_p9_6",
+            "document_id": "sebi_cscrf_2025_119",
+            "pdf_page": 9,
+            "printed_page": "9 of 11",
+            "provision_ref": "Clause 6.9",
+            "verbatim_excerpt": "ISO 27001 certification for Qualified REs (PR.IP.S16 (Page 66) and corresponding"
+          },
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p47_37",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 47,
+            "printed_page": "48 of 205",
+            "provision_ref": "Part I Section 4.3",
+            "verbatim_excerpt": "27001 (latest version) certification. Accordingly, all MIIs and Qualified REs shall obtain ISO 27001"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_119",
+        "affected_circular_id": "sebi_cscrf_2024_113",
+        "relationship_type": "AMENDS",
+        "exceptions_and_scope": "MIIs must continue mandatory compliance; Qualified REs relaxed to recommendatory"
+      }
+    },
+    {
+      "query_id": "q22_nciipc_guidelines_applicability",
+      "query_text": "Is compliance with NCIIPC guidelines mandatory for all REs or only Critical Information Infrastructure CII?",
+      "query_category": "cross_circular_amendment",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_119",
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "CIR/2025/119 Clause 6.7 clarifies that NCIIPC guidelines apply only to entities identified as CII."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_119_p8_5",
+          "sebi_cscrf_2024_113_p85_71"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_119_p8_5",
+            "document_id": "sebi_cscrf_2025_119",
+            "pdf_page": 8,
+            "printed_page": "8 of 11",
+            "provision_ref": "Clause 6.7 Clarification",
+            "verbatim_excerpt": "The above-mentioned clause is applicable only on REs which have been identified as Critical Information Infras"
+          },
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p85_71",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 85,
+            "printed_page": "85 of 205",
+            "provision_ref": "Annexure-J / GV.PO.S4",
+            "verbatim_excerpt": "which have been identified as CII by NCIIPC (Mandatory) 12. REs shall incorporate best practices fro"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_119",
+        "affected_circular_id": "sebi_cscrf_2024_113",
+        "relationship_type": "AMENDS",
+        "exceptions_and_scope": "Applicable solely to REs designated as CII by NCIIPC"
+      }
+    },
+    {
+      "query_id": "q23_shared_infra_primary_regulator_audit",
+      "query_text": "How is shared infrastructure audited when an RE is regulated by multiple primary regulators under CSCRF?",
+      "query_category": "cross_circular_amendment",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_119"
+        ],
+        "rationale": "CIR/2025/119 clarifies shared infrastructure audit scope across primary regulators."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_119_p4_2"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_119_p4_2",
+            "document_id": "sebi_cscrf_2025_119",
+            "pdf_page": 4,
+            "printed_page": "4 of 11",
+            "provision_ref": "Clause 4 / Shared Infrastructure",
+            "verbatim_excerpt": "shared infrastructure/ network/ technology stack, security solutions shall be included in the audit/ inspectio"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_119",
+        "affected_circular_id": null,
+        "relationship_type": null,
+        "exceptions_and_scope": "REs utilizing shared infrastructure with bank or other regulated parents"
+      }
+    },
+    {
+      "query_id": "q24_governance_board_approval_clarification",
+      "query_text": "Who is responsible for approving cybersecurity compliance and tracking audit observations under CSCRF?",
+      "query_category": "cross_circular_amendment",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2024_113",
+          "sebi_cscrf_2025_060"
+        ],
+        "rationale": "CSCRF Part I Clause 4.4.4 and CIR/2025/060 Clause 5 define IT Committee tracking and Board/Partners approval."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2024_113_p52_41",
+          "sebi_cscrf_2025_060_p6_4"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p52_41",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 52,
+            "printed_page": "52 of 205",
+            "provision_ref": "Part I Clause 4.4.4",
+            "verbatim_excerpt": "IT Committee for REs. Additionally, all open observation after 3 month"
+          },
+          {
+            "chunk_id": "sebi_cscrf_2025_060_p6_4",
+            "document_id": "sebi_cscrf_2025_060",
+            "pdf_page": 6,
+            "printed_page": "6 of 7",
+            "provision_ref": "Clause 5",
+            "verbatim_excerpt": "approved by the Board/ Partners/ Proprietor of the RE. 6. Stock Brokers, Deposit"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_060",
+        "affected_circular_id": "sebi_cscrf_2024_113",
+        "relationship_type": "AMENDS",
+        "exceptions_and_scope": "All REs governing boards and compliance committees"
+      }
+    },
+    {
+      "query_id": "q25_ciso_reporting_paraphrase",
+      "query_text": "Who is the direct supervisory executive for the Chief Information Security Officer according to SEBI cybersecurity norms?",
+      "query_category": "paraphrase",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "Paraphrase of CISO direct reporting mandate under GV.GO.S1."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2024_113_p80_67"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p80_67",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 80,
+            "printed_page": "80 of 205",
+            "provision_ref": "Annexure-J / GV.GO.S1",
+            "verbatim_excerpt": "The reporting of the CISO of the MII and Qualified REs shall be directly to the MD & CEO of the"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2024_113",
+        "affected_circular_id": null,
+        "relationship_type": null,
+        "exceptions_and_scope": "All REs except small-size, self-certification REs"
+      }
+    },
+    {
+      "query_id": "q26_air_gapped_backup_paraphrase",
+      "query_text": "Is an isolated offline immutable copy required for disaster recovery of critical market infrastructure against ransomware?",
+      "query_category": "paraphrase",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "Paraphrase of offline air-gapped backup requirement in RC.RP.S2."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2024_113_p128_106"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p128_106",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 128,
+            "printed_page": "128 of 205",
+            "provision_ref": "Annexure-J / RC.RP.S2",
+            "verbatim_excerpt": "ransomware attacks that specifically target backups, conventional data backups may not be effective."
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2024_113",
+        "affected_circular_id": null,
+        "relationship_type": null,
+        "exceptions_and_scope": "Mandatory for critical operations"
+      }
+    },
+    {
+      "query_id": "q27_ia_ra_exemption_paraphrase",
+      "query_text": "Do independent research analysts without any other market intermediary registration have to comply with CSCRF rules?",
+      "query_category": "paraphrase",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_060"
+        ],
+        "rationale": "Paraphrase of research analysts exemption in CIR/2025/060."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_060_p3_2"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_060_p3_2",
+            "document_id": "sebi_cscrf_2025_060",
+            "pdf_page": 3,
+            "printed_page": "4 of 7",
+            "provision_ref": "Section 2.4",
+            "verbatim_excerpt": "IAs not registered with SEBI in other capacities shall be exempted from provisions of CSCRF. With respect to I"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_060",
+        "affected_circular_id": "sebi_cscrf_2024_113",
+        "relationship_type": "AMENDS",
+        "exceptions_and_scope": "Standalone RAs only"
+      }
+    },
+    {
+      "query_id": "q28_iso_27001_relaxation_paraphrase",
+      "query_text": "Did SEBI change the requirement for ISO 27001 from obligatory to advisory for Qualified Regulated Entities?",
+      "query_category": "paraphrase",
+      "answerability": "answerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "verified"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [
+          "sebi_cscrf_2025_119",
+          "sebi_cscrf_2024_113"
+        ],
+        "rationale": "Paraphrase of ISO 27001 relaxation in CIR/2025/119."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [
+          "sebi_cscrf_2025_119_p9_6",
+          "sebi_cscrf_2024_113_p47_37"
+        ],
+        "evidence_items": [
+          {
+            "chunk_id": "sebi_cscrf_2025_119_p9_6",
+            "document_id": "sebi_cscrf_2025_119",
+            "pdf_page": 9,
+            "printed_page": "9 of 11",
+            "provision_ref": "Clause 6.9",
+            "verbatim_excerpt": "ISO 27001 certification for Qualified REs (PR.IP.S16 (Page 66) and corresponding"
+          },
+          {
+            "chunk_id": "sebi_cscrf_2024_113_p47_37",
+            "document_id": "sebi_cscrf_2024_113",
+            "pdf_page": 47,
+            "printed_page": "48 of 205",
+            "provision_ref": "Part I Section 4.3",
+            "verbatim_excerpt": "27001 (latest version) certification. Accordingly, all MIIs and Qualified REs shall obtain ISO 27001"
+          }
+        ]
+      },
+      "regulatory_context": {
+        "acting_circular_id": "sebi_cscrf_2025_119",
+        "affected_circular_id": "sebi_cscrf_2024_113",
+        "relationship_type": "AMENDS",
+        "exceptions_and_scope": "Qualified REs"
+      }
+    },
+    {
+      "query_id": "q29_unanswerable_rbi_psl_targets",
+      "query_text": "What are the priority sector lending (PSL) sub-targets for small and marginal farmers under RBI master directions?",
+      "query_category": "unanswerable",
+      "answerability": "unanswerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "not_applicable"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [],
+        "rationale": "Completely outside the SEBI CSCRF regulatory corpus scope."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [],
+        "evidence_items": []
+      },
+      "regulatory_context": null
+    },
+    {
+      "query_id": "q30_unanswerable_dora_tlpt_rules",
+      "query_text": "What are the threat-led penetration testing (TLPT) frequencies mandated by the EU Digital Operational Resilience Act (DORA)?",
+      "query_category": "unanswerable",
+      "answerability": "unanswerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "not_applicable"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [],
+        "rationale": "EU DORA regulation is not part of the SEBI CSCRF corpus."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [],
+        "evidence_items": []
+      },
+      "regulatory_context": null
+    },
+    {
+      "query_id": "q31_unanswerable_crypto_tax_tds",
+      "query_text": "What is the TDS rate and threshold under Section 194S for transfer of virtual digital assets (VDA)?",
+      "query_category": "unanswerable",
+      "answerability": "unanswerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "not_applicable"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [],
+        "rationale": "Income Tax VDA rules are not present in SEBI CSCRF cybersecurity documents."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [],
+        "evidence_items": []
+      },
+      "regulatory_context": null
+    },
+    {
+      "query_id": "q32_unanswerable_bitcoin_mining_asic_efficiency",
+      "query_text": "What is the minimum hash rate and energy efficiency ratio mandated for ASIC Bitcoin mining rigs?",
+      "query_category": "unanswerable",
+      "answerability": "unanswerable",
+      "annotation_status": {
+        "document_level": "verified",
+        "chunk_level": "not_applicable"
+      },
+      "source_text_verified": true,
+      "provenance_verified": true,
+      "annotation_support_verified": true,
+      "document_labels": {
+        "gold_document_ids": [],
+        "rationale": "ASIC mining hardware specifications are not covered in SEBI CSCRF framework."
+      },
+      "chunk_labels": {
+        "gold_chunk_ids": [],
+        "evidence_items": []
+      },
+      "regulatory_context": null
+    }
+  ]
+}
