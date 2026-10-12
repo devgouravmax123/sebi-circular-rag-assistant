@@ -1,7 +1,7 @@
 """
 FastAPI Request and Response schemas for POST /api/v1/query.
 """
-from typing import List, Optional
+from typing import List, Optional, Any
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from app.schemas.safety_gate import (
@@ -34,6 +34,46 @@ class QueryRequest(BaseModel):
         default=False,
         description="Whether to include historical superseded provisions if asking historical questions.",
     )
+    regulator: Optional[str] = Field(
+        default="SEBI",
+        description="Regulator code (e.g. 'SEBI'). Multi-regulator queries outside SEBI are not supported in Phase 8C.",
+    )
+    domain: Optional[str] = Field(
+        default=None,
+        description="Optional regulatory domain filter (e.g. 'CSCRF', 'LODR', 'ICDR').",
+    )
+    document_id: Optional[str] = Field(
+        default=None,
+        description="Optional filter targeting a specific regulatory document ID.",
+    )
+    start_date: Optional[str] = Field(
+        default=None,
+        description="Optional earliest circular issue_date (YYYY-MM-DD).",
+    )
+    end_date: Optional[str] = Field(
+        default=None,
+        description="Optional latest circular issue_date (YYYY-MM-DD).",
+    )
+
+    @field_validator("regulator")
+    @classmethod
+    def validate_regulator(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            norm = v.strip().upper()
+            if norm != "SEBI":
+                raise ValueError("Only 'SEBI' is supported as the regulator in Phase 8C.")
+            return norm
+        return v
+
+    @field_validator("domain")
+    @classmethod
+    def validate_domain(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            stripped = v.strip().upper()
+            if not stripped:
+                return None
+            return stripped
+        return v
 
     @field_validator("query")
     @classmethod
@@ -89,4 +129,25 @@ class QueryResponse(BaseModel):
             "Excerpts represent technical document grounding only and do not establish universal legal currency."
         ),
         description="Authoritative notice defining the 5-document pilot boundary.",
+    )
+    # Phase 8E: Grounded LLM Synthesis fields (backward compatible)
+    answer_text: Optional[str] = Field(
+        None,
+        description="Synthesized regulatory answer strictly grounded in verified evidence.",
+    )
+    synthesis_status: Optional[str] = Field(
+        None,
+        description="Status of answer synthesis (e.g. FULLY_ANSWERED, PARTIALLY_ANSWERED, ABSTAINED, PROVIDER_FAILED).",
+    )
+    claim_citations: List[Any] = Field(
+        default_factory=list,
+        description="Structured claim-level citations tying specific answer assertions to source chunks.",
+    )
+    unresolved_subquestions: List[Any] = Field(
+        default_factory=list,
+        description="Disclosures of subquestions or details not substantiated by retrieved evidence.",
+    )
+    synthesis_failure_reason: Optional[str] = Field(
+        None,
+        description="Safe, sanitized explanation if synthesis failed or could not be completed.",
     )

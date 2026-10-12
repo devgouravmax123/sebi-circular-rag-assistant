@@ -261,3 +261,64 @@ def test_archetype_8_unregulated_fintech_abstention(client):
     assert data["disposition"] == AnswerDisposition.CONTROLLED_ABSTENTION
     assert len(data["verified_excerpts"]) == 0
     assert "outside the demonstrated regulatory scope" in data["summary_narrative"]
+
+# ---------------------------------------------------------------------------
+# Phase 8F.2.3: Targeted Adversarial and Precision Tests
+# ---------------------------------------------------------------------------
+
+def test_adversarial_named_external_framework_abstains(client):
+    """Questions asking about named external frameworks absent from the corpus must abstain."""
+    response = client.post(
+        "/api/v1/query",
+        json={"query": "What are the technical controls required under DORA TLPT threat-led penetration testing?"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["disposition"] == AnswerDisposition.CONTROLLED_ABSTENTION
+    assert len(data["verified_excerpts"]) == 0
+    assert data["synthesis_status"] == "ABSTAINED"
+
+
+def test_adversarial_paraphrased_genuine_question_accepted(client):
+    """Genuine in-scope requirement with non-verbatim query phrasing must be accepted."""
+    response = client.post(
+        "/api/v1/query",
+        json={"query": "Must offline isolated backups be stored in air-gapped locations to prevent tampering by ransomware?"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["disposition"] == AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS
+    assert len(data["verified_excerpts"]) > 0
+    assert any("air-gapped" in e["excerpt_text"].lower() or "isolated" in e["excerpt_text"].lower() for e in data["verified_excerpts"])
+
+
+def test_adversarial_leading_zero_circular_number_accepted(client):
+    """Questions referencing circular numbers with leading zeros (e.g. 096) must match document 96."""
+    response = client.post(
+        "/api/v1/query",
+        json={"query": "What extension was granted under circular 096?"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["disposition"] == AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS
+    assert len(data["verified_excerpts"]) > 0
+    assert any("96" in e["document_id"] or "timeline" in e["excerpt_text"].lower() for e in data["verified_excerpts"])
+
+
+def test_adversarial_generic_cyber_terms_documented_related_excerpts(client):
+    """
+    Broad generic cybersecurity query lacking distinguishing subject anchors must result in
+    controlled abstention rather than false acceptance (val_unans_08 contract).
+    """
+    response = client.post(
+        "/api/v1/query",
+        json={"query": "How should general risk management and operational controls be implemented across financial systems?"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["disposition"] == AnswerDisposition.CONTROLLED_ABSTENTION
+    assert len(data["verified_excerpts"]) == 0
+    assert data["synthesis_status"] == "ABSTAINED"
+    assert "Insufficient evidence" in data["abstention_reason"]
+
+# ---------------------------------------------------------------------------

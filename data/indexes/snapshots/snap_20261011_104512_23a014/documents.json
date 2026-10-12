@@ -1,0 +1,67 @@
+{
+  "sebi_cscrf_2024_113": {
+    "document_id": "sebi_cscrf_2024_113",
+    "circular_number": "SEBI/HO/ITD-1/ITD_CSC_EXT/P/CIR/2024/113",
+    "title": "Cybersecurity and Cyber Resilience Framework (CSCRF) for SEBI Regulated Entities (REs)",
+    "department": "Information Technology Department (ITD-1)",
+    "issue_date": "2024-08-20",
+    "effective_date": null,
+    "source_url": "https://www.sebi.gov.in/legal/circulars/aug-2024/cybersecurity-and-cyber-resilience-framework-cscrf-for-sebi-regulated-entities-res-_85942.html",
+    "retrieved_at": "2026-10-10T21:14:08.005811+00:00",
+    "sha256": "bd9ddb68bb49b9a92771ff01ed3138e01f0962b383e9ff643008b729290fc85d",
+    "pdf_path": "data\\raw\\CSCRF_2024_113.pdf",
+    "extraction_status": "extracted"
+  },
+  "sebi_cscrf_2025_045": {
+    "document_id": "sebi_cscrf_2025_045",
+    "circular_number": "SEBI/HO/ITD-1/ITD_CSC_EXT/P/CIR/2025/45",
+    "title": "Extension towards Adoption and Implementation of Cybersecurity and Cyber Resilience Framework (CSCRF) for SEBI Regulated Entities (REs)",
+    "department": "Information Technology Department (ITD-1)",
+    "issue_date": "2025-03-28",
+    "effective_date": null,
+    "source_url": "https://www.sebi.gov.in/legal/circulars/mar-2025/extension-towards-adoption-and-implementation-of-cybersecurity-and-cyber-resilience-framework-cscrf-for-sebi-regulated-entities-res-_93175.html",
+    "retrieved_at": "2026-10-10T21:14:08.058936+00:00",
+    "sha256": "d04db094f5c66332ad5ac9eaa532f3103896443ef0d55f48da82965e082a04f6",
+    "pdf_path": "data\\raw\\CSCRF_2025_045.pdf",
+    "extraction_status": "extracted"
+  },
+  "sebi_cscrf_2025_060": {
+    "document_id": "sebi_cscrf_2025_060",
+    "circular_number": "SEBI/HO/ITD-1/ITD_CSC_EXT/P/CIR/2025/60",
+    "title": "Clarifications to Cybersecurity and Cyber Resilience Framework (CSCRF) for SEBI Regulated Entities (REs)",
+    "department": "Information Technology Department (ITD-1)",
+    "issue_date": "2025-04-30",
+    "effective_date": null,
+    "source_url": "https://www.sebi.gov.in/legal/circulars/apr-2025/clarifications-to-cybersecurity-and-cyber-resilience-framework-cscrf-for-sebi-regulated-entities-res-_93784.html",
+    "retrieved_at": "2026-10-10T21:14:08.116452+00:00",
+    "sha256": "bd7105a2f1e2b985d9e34aec02c8760549c3b54629b3771b9f8ee80949a6875d",
+    "pdf_path": "data\\raw\\CSCRF_2025_060.pdf",
+    "extraction_status": "extracted"
+  },
+  "sebi_cscrf_2025_096": {
+    "document_id": "sebi_cscrf_2025_096",
+    "circular_number": "SEBI/HO/ITD-1/ITD_CSC_EXT/P/CIR/2025/96",
+    "title": "Extension towards Adoption and Implementation of Cybersecurity and Cyber Resilience Framework (CSCRF) for SEBI Regulated Entities (REs)",
+    "department": "Information Technology Department (ITD-1)",
+    "issue_date": "2025-06-30",
+    "effective_date": null,
+    "source_url": "https://www.sebi.gov.in/legal/circulars/jun-2025/extension-towards-adoption-and-implementation-of-cybersecurity-and-cyber-resilience-framework-cscrf-for-sebi-regulated-entities-res-_95123.html",
+    "retrieved_at": "2026-10-10T21:14:08.151460+00:00",
+    "sha256": "1cfe435dc21149027bad0ddb0ed7c156dbe000b01b29e72faa05935c71561465",
+    "pdf_path": "data\\raw\\CSCRF_2025_096.pdf",
+    "extraction_status": "extracted"
+  },
+  "sebi_cscrf_2025_119": {
+    "document_id": "sebi_cscrf_2025_119",
+    "circular_number": "SEBI/HO/ITD-1/ITD_CSC_EXT/P/CIR/2025/119",
+    "title": "Technical Clarifications to Cybersecurity and Cyber Resilience Framework (CSCRF) for SEBI Regulated Entities (REs)",
+    "department": "Information Technology Department (ITD-1)",
+    "issue_date": "2025-08-28",
+    "effective_date": null,
+    "source_url": "https://www.sebi.gov.in/legal/circulars/aug-2025/technical-clarifications-to-cybersecurity-and-cyber-resilience-framework-cscrf-for-sebi-regulated-entities-res-_96410.html",
+    "retrieved_at": "2026-10-10T21:14:08.219485+00:00",
+    "sha256": "7eb58ae065db764eec8a118c35777c8d4fb3a3b4ceee15878c28cb9599f1c31d",
+    "pdf_path": "data\\raw\\CSCRF_2025_119.pdf",
+    "extraction_status": "extracted"
+  }
+}

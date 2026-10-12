@@ -1,0 +1,51 @@
+{
+  "documents": {
+    "sebi_cscrf_2024_113": {
+      "document_id": "sebi_cscrf_2024_113",
+      "title": "Cybersecurity and Cyber Resilience Framework (CSCRF) for SEBI Regulated Entities (REs)",
+      "sha256": "bd9ddb68bb49b9a92771ff01ed3138e01f0962b383e9ff643008b729290fc85d",
+      "page_count": 205,
+      "chunk_count": 151,
+      "processed_path": "data/processed/sebi_cscrf_2024_113"
+    },
+    "sebi_cscrf_2025_045": {
+      "document_id": "sebi_cscrf_2025_045",
+      "title": "Extension towards Adoption and Implementation of Cybersecurity and Cyber Resilience Framework (CSCRF) for SEBI Regulated Entities (REs)",
+      "sha256": "d04db094f5c66332ad5ac9eaa532f3103896443ef0d55f48da82965e082a04f6",
+      "page_count": 3,
+      "chunk_count": 2,
+      "processed_path": "data/processed/sebi_cscrf_2025_045"
+    },
+    "sebi_cscrf_2025_060": {
+      "document_id": "sebi_cscrf_2025_060",
+      "title": "Clarifications to Cybersecurity and Cyber Resilience Framework (CSCRF) for SEBI Regulated Entities (REs)",
+      "sha256": "bd7105a2f1e2b985d9e34aec02c8760549c3b54629b3771b9f8ee80949a6875d",
+      "page_count": 7,
+      "chunk_count": 5,
+      "processed_path": "data/processed/sebi_cscrf_2025_060"
+    },
+    "sebi_cscrf_2025_096": {
+      "document_id": "sebi_cscrf_2025_096",
+      "title": "Extension towards Adoption and Implementation of Cybersecurity and Cyber Resilience Framework (CSCRF) for SEBI Regulated Entities (REs)",
+      "sha256": "1cfe435dc21149027bad0ddb0ed7c156dbe000b01b29e72faa05935c71561465",
+      "page_count": 2,
+      "chunk_count": 2,
+      "processed_path": "data/processed/sebi_cscrf_2025_096"
+    },
+    "sebi_cscrf_2025_119": {
+      "document_id": "sebi_cscrf_2025_119",
+      "title": "Technical Clarifications to Cybersecurity and Cyber Resilience Framework (CSCRF) for SEBI Regulated Entities (REs)",
+      "sha256": "7eb58ae065db764eec8a118c35777c8d4fb3a3b4ceee15878c28cb9599f1c31d",
+      "page_count": 11,
+      "chunk_count": 8,
+      "processed_path": "data/processed/sebi_cscrf_2025_119"
+    }
+  },
+  "sha256_index": {
+    "bd9ddb68bb49b9a92771ff01ed3138e01f0962b383e9ff643008b729290fc85d": "sebi_cscrf_2024_113",
+    "d04db094f5c66332ad5ac9eaa532f3103896443ef0d55f48da82965e082a04f6": "sebi_cscrf_2025_045",
+    "bd7105a2f1e2b985d9e34aec02c8760549c3b54629b3771b9f8ee80949a6875d": "sebi_cscrf_2025_060",
+    "1cfe435dc21149027bad0ddb0ed7c156dbe000b01b29e72faa05935c71561465": "sebi_cscrf_2025_096",
+    "7eb58ae065db764eec8a118c35777c8d4fb3a3b4ceee15878c28cb9599f1c31d": "sebi_cscrf_2025_119"
+  }
+}

@@ -147,12 +147,13 @@ class AnswerSafetyGate:
                 disposition=AnswerDisposition.CONTROLLED_ABSTENTION,
                 verified_excerpts=[],
                 historical_superseded_excerpts=[],
-                summary_narrative="Controlled Abstention: Zero candidate chunks retrieved from 5-document CSCRF corpus for this query.",
+                summary_narrative="Controlled Abstention: Zero candidate chunks retrieved from the registered regulatory corpus for this query.",
                 technical_validation_passed=False,
                 retrieval_candidate_count=0,
                 abstention_reason="No candidate passages found in registered corpus for query.",
                 regulatory_warnings=[],
             )
+
 
         if not payload.excerpts:
             return SafetyGateResponse(

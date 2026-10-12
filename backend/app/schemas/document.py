@@ -16,6 +16,8 @@ class DocumentRecord(BaseModel):
     sha256: str = Field(..., description="SHA-256 checksum of source PDF")
     pdf_path: str = Field(..., description="Relative path to stored PDF artifact")
     extraction_status: str = Field("pending_review", description="Status of extraction")
+    regulator: str = Field("SEBI", description="Regulatory authority code (e.g. SEBI)")
+    domain: str = Field("CSCRF", description="Regulatory domain (e.g. CSCRF, LODR, ICDR)")
 
 
 class PageContent(BaseModel):

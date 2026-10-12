@@ -3,7 +3,7 @@ Query API router implementing POST /api/v1/query.
 """
 from typing import Optional, Set, List
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import ValidationError
 
 from app.schemas.query import QueryRequest, QueryResponse
@@ -16,9 +16,12 @@ from app.schemas.safety_gate import (
 )
 from app.retrieval.service import RetrievalService
 from app.grounding.safety_gate import AnswerSafetyGate
+from app.synthesis.service import SynthesisService, get_synthesis_service
+from app.core.rate_limiter import get_query_rate_limiter
 
 from app.grounding.classifier import QueryIntent, classify_query_intent
 from app.grounding.relevance import filter_relevant_candidates, RelevanceDecisionCode
+from app.core.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -29,23 +32,38 @@ _retrieval_service: Optional[RetrievalService] = None
 _safety_gate: Optional[AnswerSafetyGate] = None
 
 
-def get_retrieval_service() -> RetrievalService:
+def get_retrieval_service(settings: Settings = Depends(get_settings)) -> RetrievalService:
     """Dependency provider for the shared RetrievalService instance."""
     global _retrieval_service
-    if _retrieval_service is None:
-        service = RetrievalService(processed_dir="data/processed", indexes_dir="data/indexes")
+    if (
+        _retrieval_service is None
+        or str(_retrieval_service.processed_dir) != settings.processed_dir
+        or str(_retrieval_service.indexes_dir) != settings.indexes_dir
+        or _retrieval_service.retrieval_mode != settings.retrieval_mode.strip().lower()
+    ):
+        service = RetrievalService(
+            processed_dir=settings.processed_dir,
+            indexes_dir=settings.indexes_dir,
+            retrieval_mode=settings.retrieval_mode,
+        )
         service.load_and_index_corpus()
         service.load_and_index_dense()
         _retrieval_service = service
+    else:
+        # Check if active index snapshot was updated and reload atomically
+        _retrieval_service.reload_if_stale()
     return _retrieval_service
 
 
-def get_safety_gate() -> AnswerSafetyGate:
+def get_safety_gate(settings: Settings = Depends(get_settings)) -> AnswerSafetyGate:
     """Dependency provider for the shared AnswerSafetyGate instance."""
     global _safety_gate
-    if _safety_gate is None:
-        _safety_gate = AnswerSafetyGate(processed_dir="data/processed")
+    if _safety_gate is None or str(_safety_gate.processed_dir) != settings.processed_dir:
+        _safety_gate = AnswerSafetyGate(processed_dir=settings.processed_dir)
     return _safety_gate
+
+
+from app.schemas.retrieval import RetrievalFilter
 
 
 def build_response_narrative(
@@ -54,19 +72,22 @@ def build_response_narrative(
     historical_superseded_excerpts: List[ValidatedExcerptItem],
     include_superseded: bool,
     intent: Optional[QueryIntent] = None,
+    domain: Optional[str] = None,
 ) -> str:
     """
     Constructs a deterministic, accurate summary narrative matching the exact visible returned excerpts.
     """
+    corpus_label = f"SEBI {domain} corpus" if domain else "SEBI regulatory corpus"
+
     if disposition == AnswerDisposition.CONTROLLED_ABSTENTION:
         if intent == QueryIntent.OUT_OF_SCOPE_OR_UNESTABLISHED:
-            return "Controlled Abstention: The query is outside the demonstrated regulatory scope of the 5-document SEBI CSCRF corpus."
+            return f"Controlled Abstention: The query is outside the demonstrated regulatory scope of the {corpus_label}."
         if len(historical_superseded_excerpts) > 0 and not verified_excerpts:
             return (
-                "Controlled Abstention: All relevant excerpts in the corpus for this current-compliance query "
+                f"Controlled Abstention: All relevant excerpts in the {corpus_label} for this current-compliance query "
                 "are SUPERSEDED by subsequent circulars."
             )
-        return "Controlled Abstention: Zero candidate passages found in the 5-document SEBI CSCRF corpus for this query."
+        return f"Controlled Abstention: Zero candidate passages found in the {corpus_label} for this query."
 
     if disposition == AnswerDisposition.REJECTED_UNSAFE:
         return "Draft payload rejected: malformed structure, unexpected fields, or duplicate excerpt IDs."
@@ -82,7 +103,7 @@ def build_response_narrative(
                 f"plus {s_count} separated historical superseded excerpt(s)."
             )
         return (
-            f"Verified Historical Excerpts: {v_count} excerpt(s) verified against authoritative SEBI CSCRF corpus "
+            f"Verified Historical Excerpts: {v_count} excerpt(s) verified against authoritative {corpus_label} "
             f"with fully resolved graph status."
         )
 
@@ -90,14 +111,14 @@ def build_response_narrative(
     if v_count > 0:
         if include_superseded and s_count > 0:
             return (
-                f"Qualified Historical Excerpts: {v_count} excerpt(s) verified as authentic text from SEBI CSCRF circulars "
+                f"Qualified Historical Excerpts: {v_count} excerpt(s) verified as authentic text from {corpus_label} "
                 f"(with {s_count} separated historical superseded excerpt(s)). Provisions with UNRESOLVED status reflect historical "
-                f"baseline circular content; active legal currency is not independently established beyond the 5-document pilot."
+                f"circular content; active legal currency is not independently established beyond the pilot."
             )
         return (
-            f"Qualified Historical Excerpts: {v_count} excerpt(s) verified as authentic text from SEBI CSCRF circulars. "
-            f"Provisions with UNRESOLVED status reflect historical baseline circular content; active legal currency "
-            f"is not independently established beyond the 5-document pilot."
+            f"Qualified Historical Excerpts: {v_count} excerpt(s) verified as authentic text from {corpus_label}. "
+            f"Provisions with UNRESOLVED status reflect historical circular content; active legal currency "
+            f"is not independently established beyond the pilot."
         )
     elif s_count > 0:
         return (
@@ -112,29 +133,53 @@ def build_response_narrative(
     "/query",
     response_model=QueryResponse,
     status_code=status.HTTP_200_OK,
-    summary="Query SEBI CSCRF regulatory circulars with deterministic grounding",
+    summary="Query SEBI regulatory circulars with deterministic grounding",
     description=(
-        "Executes hybrid retrieval over the 5-document SEBI CSCRF corpus, verifies excerpts "
-        "through the AnswerSafetyGate, and returns grounded historical excerpts or controlled abstention."
+        "Executes hybrid retrieval over the published SEBI corpus with optional domain and date filtering, "
+        "verifies excerpts through the AnswerSafetyGate, and returns grounded excerpts or controlled abstention."
     ),
 )
 async def query_cscrf(
     request: QueryRequest,
-    retrieval_service: RetrievalService = Depends(get_retrieval_service),
-    safety_gate: AnswerSafetyGate = Depends(get_safety_gate),
+    http_request: Request,
+    retrieval_service: Optional[RetrievalService] = Depends(get_retrieval_service),
+    safety_gate: Optional[AnswerSafetyGate] = Depends(get_safety_gate),
+    synthesis_service: Optional[SynthesisService] = Depends(get_synthesis_service),
 ) -> QueryResponse:
+    # Phase 10.1.20: Enforce in-memory sliding-window rate limit on public query endpoint
+    limiter = get_query_rate_limiter()
+    limiter.check_rate_limit(http_request)
+
+    if retrieval_service is None or not hasattr(retrieval_service, "search_hybrid"):
+        retrieval_service = get_retrieval_service()
+    if safety_gate is None or not hasattr(safety_gate, "evaluate_draft"):
+        safety_gate = get_safety_gate()
+    if synthesis_service is None or not hasattr(synthesis_service, "synthesize_answer"):
+        synthesis_service = get_synthesis_service()
+
     query = request.query.strip()
     top_k = request.top_k
     include_superseded = request.include_superseded
 
-    # 1. Execute server-side hybrid retrieval
-    # Retrieve top 20 fused candidates to ensure candidate filtering has full scope of candidate circulars
+    # Construct optional multi-domain retrieval filter
+    filters = None
+    if any([request.domain, request.document_id, request.start_date, request.end_date, request.regulator]):
+        filters = RetrievalFilter(
+            regulator=request.regulator,
+            domain=request.domain,
+            document_id=request.document_id,
+            start_date=request.start_date,
+            end_date=request.end_date,
+        )
+
+    # 1. Execute server-side hybrid retrieval with pre-fusion filters
     try:
         retrieval_response = retrieval_service.search_hybrid(
             query=query,
-            top_k=20,
+            top_k=50,
             candidate_k=50,
             rrf_k=60,
+            filters=filters,
         )
     except Exception as e:
         logger.error(f"Retrieval execution failure for query length {len(query)}: {str(e)}")
@@ -149,33 +194,60 @@ async def query_cscrf(
     # Limit relevant results to requested top_k after intent-aware filtering and sorting
     relevant_results = relevant_results[:top_k]
 
+    corpus_label = f"SEBI {request.domain} corpus" if request.domain else "SEBI regulatory corpus"
+
     if intent == QueryIntent.OUT_OF_SCOPE_OR_UNESTABLISHED:
         return QueryResponse(
             query=query,
             disposition=AnswerDisposition.CONTROLLED_ABSTENTION,
             verified_excerpts=[],
             historical_superseded_excerpts=[],
-            summary_narrative="Controlled Abstention: The query is outside the demonstrated regulatory scope of the 5-document SEBI CSCRF corpus.",
+            summary_narrative=f"Controlled Abstention: The query is outside the demonstrated regulatory scope of the {corpus_label}.",
             technical_validation_passed=False,
             retrieval_candidate_count=len(retrieval_response.results),
-            abstention_reason="Query subject is outside the scope of the 5-document cybersecurity framework pilot corpus.",
+            abstention_reason=f"Query subject is outside the scope of the {corpus_label}.",
             regulatory_warnings=[],
+            synthesis_status="ABSTAINED",
+            answer_text="Controlled Abstention: The query is outside the demonstrated regulatory scope of the corpus.",
+            claim_citations=[],
+            unresolved_subquestions=[],
+            synthesis_failure_reason=f"Query subject is outside the scope of the {corpus_label}.",
         )
 
     authorized_chunk_ids: Set[str] = {r.chunk_id for r in relevant_results}
 
     # 3. Check for zero relevant candidates -> Controlled Abstention
     if not relevant_results or len(authorized_chunk_ids) == 0:
+        # Check if any candidates were evaluated and rejected for insufficient topical coverage
+        low_coverage_assessments = [
+            a for a in assessments if a.decision_code == RelevanceDecisionCode.INSUFFICIENT_RELEVANCE
+        ]
+        if low_coverage_assessments:
+            abstention_reason = (
+                f"Insufficient evidence: candidate passages in the {corpus_label} do not substantively cover the query topic."
+            )
+            narrative = (
+                f"Controlled Abstention: Insufficient evidence found in the {corpus_label} to substantiate an answer for this query."
+            )
+        else:
+            abstention_reason = f"No relevant circular passages identified in the registered {corpus_label}."
+            narrative = f"Controlled Abstention: Zero candidate passages found in the {corpus_label} for this query."
+
         return QueryResponse(
             query=query,
             disposition=AnswerDisposition.CONTROLLED_ABSTENTION,
             verified_excerpts=[],
             historical_superseded_excerpts=[],
-            summary_narrative="Controlled Abstention: Zero candidate passages found in the 5-document SEBI CSCRF corpus for this query.",
+            summary_narrative=narrative,
             technical_validation_passed=False,
             retrieval_candidate_count=len(retrieval_response.results),
-            abstention_reason="No relevant circular passages identified in the registered corpus.",
+            abstention_reason=abstention_reason,
             regulatory_warnings=[],
+            synthesis_status="ABSTAINED",
+            answer_text=narrative,
+            claim_citations=[],
+            unresolved_subquestions=[],
+            synthesis_failure_reason=abstention_reason,
         )
 
     # 4. Form deterministic excerpt draft from authorized relevant candidates
@@ -217,6 +289,16 @@ async def query_cscrf(
         historical_superseded_excerpts=superseded_to_return,
         include_superseded=include_superseded,
         intent=intent,
+        domain=request.domain,
+    )
+
+    # 7. Execute Grounded LLM Synthesis over verified excerpts (Phase 8E)
+    synthesis_result = synthesis_service.synthesize_answer(
+        query=query,
+        verified_excerpts=gate_response.verified_excerpts,
+        disposition=gate_response.disposition,
+        regulatory_warnings=gate_response.regulatory_warnings,
+        domain=request.domain,
     )
 
     return QueryResponse(
@@ -230,4 +312,9 @@ async def query_cscrf(
         abstention_reason=gate_response.abstention_reason,
         regulatory_warnings=gate_response.regulatory_warnings,
         pilot_corpus_scope_limitation=gate_response.pilot_corpus_scope_limitation,
+        answer_text=synthesis_result.answer,
+        synthesis_status=synthesis_result.status.value,
+        claim_citations=synthesis_result.claims,
+        unresolved_subquestions=synthesis_result.unresolved_subquestions,
+        synthesis_failure_reason=synthesis_result.failure_reason,
     )

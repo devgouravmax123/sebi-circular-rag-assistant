@@ -156,6 +156,7 @@ def test_5_only_superseded_evidence_for_current_compliance_query():
     assert resp.disposition == AnswerDisposition.CONTROLLED_ABSTENTION
     assert len(resp.verified_excerpts) == 0
     assert len(resp.historical_superseded_excerpts) == 1
+    assert resp.abstention_reason is not None
     assert "all matching corpus provisions are superseded" in resp.abstention_reason.lower()
 
 
@@ -357,3 +358,51 @@ def test_14_no_untrusted_draft_narrative_or_metadata_leaking(gate):
     assert "raw_llm_markdown" not in data
     assert resp.verified_excerpts[0].excerpt_text == exact_text
     assert resp.verified_excerpts[0].document_id == "sebi_cscrf_2025_045"
+
+
+def test_15_relevance_safeguard_filters_low_coverage_out_of_domain_candidates():
+    from app.grounding.relevance import filter_relevant_candidates, RelevanceDecisionCode
+    from app.grounding.classifier import QueryIntent
+
+    # Out-of-domain query with arbitrary cyber text that doesn't match substantive tokens
+    query = "What are the threat-led penetration testing (TLPT) frequencies mandated by the EU Digital Operational Resilience Act (DORA)?"
+    cand = RetrievalResult(
+        chunk_id="sebi_cscrf_2024_113_p15_13",
+        document_id="sebi_cscrf_2024_113",
+        circular_number="CIR/2024/113",
+        title="Baseline Circular",
+        issue_date="2024-08-20",
+        page_start=15,
+        page_end=15,
+        text="vulnerabilities, likelihoods, and impacts shall be used to understand inherent risks and undertake risk response prioritization.",
+        score=0.0306,
+        rank=1,
+    )
+    relevant, intent, assessments = filter_relevant_candidates(query, [cand])
+    assert len(relevant) == 0
+    assert len(assessments) == 1
+    assert assessments[0].is_relevant is False
+    assert assessments[0].decision_code == RelevanceDecisionCode.INSUFFICIENT_RELEVANCE
+    assert "lacks substantive query topical coverage" in assessments[0].reason
+
+
+def test_16_relevance_safeguard_accepts_substantive_in_scope_candidates():
+    from app.grounding.relevance import filter_relevant_candidates, RelevanceDecisionCode
+
+    query = "What is the mandatory compliance deadline extension under circular CIR/2025/045?"
+    cand = RetrievalResult(
+        chunk_id="sebi_cscrf_2025_045_p2_1",
+        document_id="sebi_cscrf_2025_045",
+        circular_number="CIR/2025/045",
+        title="Extension Circular",
+        issue_date="2025-03-28",
+        page_start=2,
+        page_end=2,
+        text="SEBI had received multiple requests for CSCRF compliance timelines extension. Decided to extend the compliance timelines by three months, i.e., till June 30, 2025.",
+        score=0.038,
+        rank=1,
+    )
+    relevant, intent, assessments = filter_relevant_candidates(query, [cand])
+    assert len(relevant) == 1
+    assert assessments[0].is_relevant is True
+    assert assessments[0].decision_code == RelevanceDecisionCode.RELEVANT_EVIDENCE

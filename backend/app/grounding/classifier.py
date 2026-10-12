@@ -31,14 +31,16 @@ OUT_OF_SCOPE_PATTERNS = [
     r"\bfund\s+manager\s+salary\b",
 ]
 
-# Specific circular mention patterns
+# Specific circular mention patterns (generalized regex + baseline aliases)
 CIRCULAR_SPECIFIC_PATTERNS = [
+    r"\b(?:circular\s+)?(?:20\d{2}[/_-]0?\d{1,4}|\d{1,4}/20\d{2})\b",
     r"\b(?:circular\s+)?(?:2025/0?96|cir/2025/0?96|2025_0?96|96/2025)\b",
     r"\b(?:circular\s+)?(?:2025/0?45|cir/2025/0?45|2025_0?45|45/2025)\b",
     r"\b(?:circular\s+)?(?:2025/0?60|cir/2025/0?60|2025_0?60|60/2025)\b",
     r"\b(?:circular\s+)?(?:2025/119|cir/2025/119|2025_119|119/2025)\b",
     r"\b(?:circular\s+)?(?:2024/113|cir/2024/113|2024_113|113/2024)\b",
 ]
+
 
 # Historical deadline patterns
 HISTORICAL_DEADLINE_PATTERNS = [

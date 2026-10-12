@@ -240,7 +240,7 @@ def test_12_safety_gate_failure_produces_sanitized_500(client):
 
     app.dependency_overrides[get_safety_gate] = lambda: mock_gate
     try:
-        response = client.post("/api/v1/query", json={"query": "Valid query text"})
+        response = client.post("/api/v1/query", json={"query": "ISO 27001 certification requirement"})
         assert response.status_code == 500
         data = response.json()
         assert "0xDEADBEEF" not in data["detail"]
@@ -305,9 +305,9 @@ def test_15_regression_narrative_count_include_superseded_false(client):
         query="Test query",
         total_results=3,
         results=[
-            RetrievalResult(chunk_id="c1", document_id="doc1", page_start=1, page_end=2, text="t1", score=1.0, rank=1),
-            RetrievalResult(chunk_id="c2", document_id="doc1", page_start=2, page_end=3, text="t2", score=0.9, rank=2),
-            RetrievalResult(chunk_id="c3", document_id="doc2", page_start=1, page_end=1, text="t3", score=0.8, rank=3),
+            RetrievalResult(chunk_id="c1", document_id="doc1", page_start=1, page_end=2, text="Test query text 1", score=1.0, rank=1),
+            RetrievalResult(chunk_id="c2", document_id="doc1", page_start=2, page_end=3, text="Test query text 2", score=0.9, rank=2),
+            RetrievalResult(chunk_id="c3", document_id="doc2", page_start=1, page_end=1, text="Test query text 3", score=0.8, rank=3),
         ],
     )
 
@@ -377,9 +377,9 @@ def test_16_regression_narrative_count_include_superseded_true(client):
         query="Test query",
         total_results=3,
         results=[
-            RetrievalResult(chunk_id="c1", document_id="doc1", page_start=1, page_end=2, text="t1", score=1.0, rank=1),
-            RetrievalResult(chunk_id="c2", document_id="doc1", page_start=2, page_end=3, text="t2", score=0.9, rank=2),
-            RetrievalResult(chunk_id="c3", document_id="doc2", page_start=1, page_end=1, text="t3", score=0.8, rank=3),
+            RetrievalResult(chunk_id="c1", document_id="doc1", page_start=1, page_end=2, text="Test query text 1", score=1.0, rank=1),
+            RetrievalResult(chunk_id="c2", document_id="doc1", page_start=2, page_end=3, text="Test query text 2", score=0.9, rank=2),
+            RetrievalResult(chunk_id="c3", document_id="doc2", page_start=1, page_end=1, text="Test query text 3", score=0.8, rank=3),
         ],
     )
 
@@ -448,7 +448,7 @@ def test_18_regression_warnings_and_disposition_preserved_under_filtering(client
         query="Test query",
         total_results=1,
         results=[
-            RetrievalResult(chunk_id="c1", document_id="doc1", page_start=1, page_end=2, text="t1", score=1.0, rank=1)
+            RetrievalResult(chunk_id="c1", document_id="doc1", page_start=1, page_end=2, text="Test query text 1", score=1.0, rank=1)
         ],
     )
 

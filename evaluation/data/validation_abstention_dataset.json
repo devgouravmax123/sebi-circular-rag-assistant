@@ -1,0 +1,146 @@
+{
+  "dataset_version": "1.0.0-dev-val",
+  "dataset_description": "Separate development and validation dataset for evaluating application-level abstention and in-scope retrieval without altering the 32-query golden benchmark.",
+  "queries": [
+    {
+      "query_id": "val_ans_01_soc_retention_days",
+      "query_text": "What is the mandatory retention period for security logs and SOC alerts under SEBI CSCRF guidelines?",
+      "answerability": "answerable",
+      "expected_outcome": "accepted",
+      "category": "in_scope_exact"
+    },
+    {
+      "query_id": "val_ans_02_ciso_direct_reporting",
+      "query_text": "Is the CISO required to report directly to the MD and CEO or equivalent authority in Qualified Regulated Entities?",
+      "answerability": "answerable",
+      "expected_outcome": "accepted",
+      "category": "in_scope_paraphrase"
+    },
+    {
+      "query_id": "val_ans_03_march_2025_timeline_relief",
+      "query_text": "Which entities received a compliance timeline extension until June 30, 2025 under circular SEBI/HO/ITD/ITD-PoD-2/P/CIR/2025/045?",
+      "answerability": "answerable",
+      "expected_outcome": "accepted",
+      "category": "in_scope_circular_specific"
+    },
+    {
+      "query_id": "val_ans_04_isolated_ransomware_backups",
+      "query_text": "Must offline isolated backups be stored in air-gapped locations to prevent tampering by ransomware?",
+      "answerability": "answerable",
+      "expected_outcome": "accepted",
+      "category": "in_scope_security_control"
+    },
+    {
+      "query_id": "val_ans_05_ia_ra_standalone_carveout",
+      "query_text": "Are standalone Research Analysts exempted from complying with the detailed provisions of CSCRF?",
+      "answerability": "answerable",
+      "expected_outcome": "accepted",
+      "category": "in_scope_entity_exemption"
+    },
+    {
+      "query_id": "val_unans_01_rbi_liquidity_coverage_ratio",
+      "query_text": "What is the minimum Liquidity Coverage Ratio (LCR) mandated for commercial banks under RBI Basel III guidelines?",
+      "answerability": "unanswerable",
+      "expected_outcome": "abstained",
+      "category": "out_of_domain_banking"
+    },
+    {
+      "query_id": "val_unans_02_gdpr_breach_72_hours",
+      "query_text": "Under EU GDPR Article 33, what are the formal conditions for notifying the supervisory authority within 72 hours of a personal data breach?",
+      "answerability": "unanswerable",
+      "expected_outcome": "abstained",
+      "category": "out_of_domain_eu_privacy"
+    },
+    {
+      "query_id": "val_unans_03_hipaa_phi_encryption",
+      "query_text": "What encryption standard does HIPAA require for protected health information (PHI) stored on cloud medical servers?",
+      "answerability": "unanswerable",
+      "expected_outcome": "abstained",
+      "category": "out_of_domain_healthcare_cyber"
+    },
+    {
+      "query_id": "val_unans_04_sebi_insider_trading_trading_window",
+      "query_text": "When must the trading window be closed for designated persons prior to declaration of financial results under SEBI PIT Regulations?",
+      "answerability": "unanswerable",
+      "expected_outcome": "abstained",
+      "category": "out_of_scope_sebi_non_cscrf"
+    },
+    {
+      "query_id": "val_unans_05_nist_sp_800_53_rev5_controls",
+      "query_text": "What are the baseline control enhancements in NIST SP 800-53 Revision 5 for supply chain risk management?",
+      "answerability": "unanswerable",
+      "expected_outcome": "abstained",
+      "category": "semantically_close_unsupported_framework"
+    },
+    {
+      "query_id": "val_ans_06_cscrf_vapt_periodic_frequency",
+      "query_text": "What is the mandated frequency for conducting Vulnerability Assessment and Penetration Testing (VAPT) for Qualified REs?",
+      "answerability": "answerable",
+      "expected_outcome": "accepted",
+      "category": "in_scope_exact_circular_terminology"
+    },
+    {
+      "query_id": "val_ans_07_multifactor_admin_access_perimeter",
+      "query_text": "Is dual authentication strictly enforced for systems administrators accessing critical perimeter networking devices?",
+      "answerability": "answerable",
+      "expected_outcome": "accepted",
+      "category": "in_scope_paraphrase_non_verbatim"
+    },
+    {
+      "query_id": "val_ans_08_board_approval_ciso_appointment",
+      "query_text": "Does the appointment of the Chief Information Security Officer require approval from the Board of Directors?",
+      "answerability": "answerable",
+      "expected_outcome": "accepted",
+      "category": "in_scope_multi_requirement_governance"
+    },
+    {
+      "query_id": "val_ans_09_tradable_asset_aum_threshold_pms",
+      "query_text": "What is the asset under management (AUM) threshold for Portfolio Managers to be categorized as Qualified REs under CSCRF?",
+      "answerability": "answerable",
+      "expected_outcome": "accepted",
+      "category": "in_scope_entity_threshold"
+    },
+    {
+      "query_id": "val_ans_10_account_lockout_failed_logins",
+      "query_text": "How many consecutive invalid login attempts must trigger temporary account lockout for users under CSCRF access controls?",
+      "answerability": "answerable",
+      "expected_outcome": "accepted",
+      "category": "in_scope_access_control"
+    },
+    {
+      "query_id": "val_unans_06_pci_dss_pan_truncation",
+      "query_text": "What are the masking requirements for primary account numbers (PAN) under PCI-DSS v4.0 requirement 3.4?",
+      "answerability": "unanswerable",
+      "expected_outcome": "abstained",
+      "category": "out_of_scope_payment_card_framework"
+    },
+    {
+      "query_id": "val_unans_07_cobit_governance_objectives_edm",
+      "query_text": "What are the Evaluate, Direct and Monitor (EDM) governance objectives under the COBIT 2019 framework?",
+      "answerability": "unanswerable",
+      "expected_outcome": "abstained",
+      "category": "out_of_scope_it_governance_framework"
+    },
+    {
+      "query_id": "val_unans_08_generic_cyber_risk_controls",
+      "query_text": "How should general risk management and operational controls be implemented across financial systems?",
+      "answerability": "unanswerable",
+      "expected_outcome": "abstained",
+      "category": "generic_vocabulary_unsupported_scope"
+    },
+    {
+      "query_id": "val_unans_09_algo_colocation_latency_nanoseconds",
+      "query_text": "What maximum tick-to-trade latency in nanoseconds is prescribed by SEBI for colocation servers running HFT algorithms?",
+      "answerability": "unanswerable",
+      "expected_outcome": "abstained",
+      "category": "in_scope_domain_unanswerable_from_passages"
+    },
+    {
+      "query_id": "val_unans_10_cyber_insurance_coverage_sum_insured",
+      "query_text": "What is the minimum mandatory sum insured in Rupees for cyber insurance policies under CSCRF?",
+      "answerability": "unanswerable",
+      "expected_outcome": "abstained",
+      "category": "multi_requirement_partial_coverage_unanswerable"
+    }
+  ]
+}

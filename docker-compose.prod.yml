@@ -1,0 +1,216 @@
+services:
+  # ---------------------------------------------------------------------------
+  # 1. Authoritative PostgreSQL 16 + pgvector Database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: sebi-rag-postgres
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Database password must be set in .env.prod}
+      POSTGRES_DB: ${POSTGRES_DB:-sebi_rag_prod}
+    volumes:
+      - sebi_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-sebi_rag_prod}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - sebi-internal-net
+    # Do NOT publish port 5432 to host in production; kept internal to sebi-internal-net
+
+  # ---------------------------------------------------------------------------
+  # 2. Database Migration Initialization
+  # ---------------------------------------------------------------------------
+  alembic-upgrade:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: sebi-rag-alembic
+    restart: "no"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be configured}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-bootstrap_migration_key_123456}
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    networks:
+      - sebi-internal-net
+
+  # ---------------------------------------------------------------------------
+  # 3. Grounded Regulatory Query API Service
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: sebi-rag-api
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      alembic-upgrade:
+        condition: service_completed_successfully
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be configured}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY must be configured}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:80,http://127.0.0.1:80,http://localhost}
+      PROCESSED_DIR: /app/data/processed
+      RAW_DIR: /app/data/raw
+      BACKUPS_DIR: /app/data/backups
+      SYNTHESIS_PROVIDER: ${SYNTHESIS_PROVIDER:-mock}
+      SYNTHESIS_TIMEOUT_SECONDS: ${SYNTHESIS_TIMEOUT_SECONDS:-5.0}
+      MAX_SYNTHESIS_EVIDENCE_CHUNKS: ${MAX_SYNTHESIS_EVIDENCE_CHUNKS:-5}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
+      HF_HOME: /home/sebi/.cache/huggingface
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - ./data/processed:/app/data/processed:ro
+      - ./data/indexes:/app/data/indexes:ro
+      - ./data/raw:/app/data/raw:ro
+      - ./data/backups:/app/data/backups:rw
+      - huggingface_model_cache:/home/sebi/.cache/huggingface:ro
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8000/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+    networks:
+      - sebi-internal-net
+
+  # ---------------------------------------------------------------------------
+  # 4. Background Ingestion Worker Service
+  # ---------------------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: sebi-rag-worker
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      alembic-upgrade:
+        condition: service_completed_successfully
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must be configured}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?ADMIN_API_KEY must be configured}
+      PROCESSED_DIR: /app/data/processed
+      INDEXES_DIR: /app/data/indexes
+      RAW_DIR: /app/data/raw
+      BACKUPS_DIR: /app/data/backups
+      HF_HOME: /home/sebi/.cache/huggingface
+      TRANSFORMERS_OFFLINE: "1"
+      HF_HUB_OFFLINE: "1"
+    volumes:
+      - ./data/processed:/app/data/processed:rw
+      - ./data/indexes:/app/data/indexes:rw
+      - ./data/raw:/app/data/raw:rw
+      - ./data/backups:/app/data/backups:rw
+      - huggingface_model_cache:/home/sebi/.cache/huggingface:ro
+    command: ["python", "-m", "app.ingestion.cli", "work", "--poll-interval", "2.0"]
+    networks:
+      - sebi-internal-net
+
+  # ---------------------------------------------------------------------------
+  # 5. Unprivileged Static Web Server for Frontend
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/}
+    container_name: sebi-rag-frontend
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - sebi-internal-net
+
+  # ---------------------------------------------------------------------------
+  # 6. Production Edge Reverse Proxy (Caddy)
+  # ---------------------------------------------------------------------------
+  reverse-proxy:
+    image: caddy:2-alpine
+    container_name: sebi-rag-proxy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - sebi-internal-net
+
+# ---------------------------------------------------------------------------
+# Durable Storage Volumes and Isolated Network
+# ---------------------------------------------------------------------------
+volumes:
+  sebi_db_data:
+    name: sebi_rag_postgres_data
+  huggingface_model_cache:
+    name: sebi_rag_hf_model_cache
+  caddy_data:
+    name: sebi_rag_caddy_data
+  caddy_config:
+    name: sebi_rag_caddy_config
+
+networks:
+  sebi-internal-net:
+    name: sebi_rag_network
+    driver: bridge

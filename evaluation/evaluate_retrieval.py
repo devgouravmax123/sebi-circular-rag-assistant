@@ -570,8 +570,8 @@ def main():
 
     print("Loading and validating gold evaluation dataset...")
     try:
-        evaluator.load_and_validate_dataset()
-        print(f"Dataset successfully validated! Total queries: {len(evaluator.dataset.queries)}")
+        dataset = evaluator.load_and_validate_dataset()
+        print(f"Dataset successfully validated! Total queries: {len(dataset.queries)}")
     except Exception as e:
         print(f"FATAL: Dataset validation failed: {e}", file=sys.stderr)
         sys.exit(1)

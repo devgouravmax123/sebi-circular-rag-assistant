@@ -5,11 +5,19 @@ from app.schemas.graph import GraphEdge, RelationshipType
 class GraphEdgeCollection:
     """In-memory collection and structural validator for supersession graph edges."""
 
-    def __init__(self, known_document_ids: Optional[Set[str]] = None):
+    def __init__(
+        self,
+        edges: Optional[List[GraphEdge]] = None,
+        known_document_ids: Optional[Set[str]] = None,
+    ):
         self.known_document_ids: Set[str] = known_document_ids if known_document_ids is not None else set()
         self.edges: Dict[str, GraphEdge] = {}
         # Tracks unique (source, target, relationship) triples to prevent duplicate relationship edges
         self._relationship_triples: Set[tuple[str, str, RelationshipType]] = set()
+
+        if edges:
+            for e in edges:
+                self.add_edge(e)
 
     def add_edge(self, edge: GraphEdge) -> None:
         """Add and structurally validate a graph edge."""

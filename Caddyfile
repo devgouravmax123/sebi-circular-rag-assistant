@@ -1,0 +1,72 @@
+# Configuration file for Caddy Reverse Proxy
+# SEBI Regulatory Intelligence Platform (Production)
+#
+# Environment variables:
+#   DOMAIN: Public domain name or hostname (e.g., sebi-rag.yourdomain.com or :80)
+#   ACME_EMAIL: Optional email for Let's Encrypt notifications
+#
+{
+    # Global ACME configuration
+    # If no DOMAIN is configured, falls back to plain HTTP on :80 without automatic TLS failures.
+    email {$ACME_EMAIL:admin@example.com}
+}
+
+# Edge Server Site Block
+# Listens on configured domain or fallback port 80
+{$DOMAIN::80} {
+    # Encode responses using modern gzip and zstd compression
+    encode zstd gzip
+
+    # Request headers and security headers
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=()"
+        -Server
+    }
+
+    # Bounded client body size for standard queries (10MB maximum)
+    request_body {
+        max_size 10MB
+    }
+
+    # =========================================================================
+    # Edge Security Rules: Strictly block internal/administrative endpoints
+    # =========================================================================
+    @forbidden_admin {
+        path /api/v1/admin*
+        path /api/v1/admin/*
+    }
+    respond @forbidden_admin "Access Denied: Administrative endpoints are internal only." 403
+
+    # =========================================================================
+    # Public API Routing: Forward query, health, and readiness to FastAPI API
+    # =========================================================================
+    @public_api {
+        path /api/*
+        path /health
+        path /ready
+        path /openapi.json
+        path /docs*
+    }
+    handle @public_api {
+        reverse_proxy api:8000 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+        }
+    }
+
+    # =========================================================================
+    # Public Frontend Routing: Forward all other web traffic to Nginx Frontend
+    # =========================================================================
+    handle {
+        reverse_proxy frontend:8080
+    }
+
+    # Logging directive (stdout for container log collector)
+    log {
+        output stdout
+        format json
+    }
+}

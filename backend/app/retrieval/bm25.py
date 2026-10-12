@@ -6,8 +6,52 @@ from typing import List, Dict, Tuple, Optional, Any, Set
 from collections import Counter
 
 from app.schemas.document import ChunkRecord, DocumentRecord
-from app.schemas.retrieval import RetrievalResult, RetrievalResponse
+from app.schemas.retrieval import RetrievalResult, RetrievalResponse, RetrievalFilter
 from app.retrieval.tokenizer import tokenize_text
+
+
+def _matches_filter(
+    chunk: ChunkRecord,
+    doc_meta: Optional[DocumentRecord],
+    filters: Optional[RetrievalFilter],
+) -> bool:
+    """
+    Evaluates whether a chunk and its parent document satisfy the optional retrieval filter.
+    Returns True if no filter or all active filter clauses match; False otherwise.
+    """
+    if filters is None:
+        return True
+
+    # 1. Document ID filter
+    if filters.document_id and chunk.document_id != filters.document_id:
+        return False
+
+    if doc_meta is not None:
+        # 2. Regulator filter
+        if filters.regulator:
+            doc_reg = (getattr(doc_meta, "regulator", None) or "SEBI").upper()
+            if doc_reg != filters.regulator.upper():
+                return False
+
+        # 3. Domain filter
+        if filters.domain:
+            doc_dom = (getattr(doc_meta, "domain", None) or "CSCRF").upper()
+            if doc_dom != filters.domain.upper():
+                return False
+
+        # 4. Date range filters (issue_date: YYYY-MM-DD)
+        if filters.start_date:
+            if not doc_meta.issue_date or doc_meta.issue_date < filters.start_date:
+                return False
+        if filters.end_date:
+            if not doc_meta.issue_date or doc_meta.issue_date > filters.end_date:
+                return False
+    else:
+        # If no document metadata available, reject if domain/regulator/date filters are active
+        if filters.domain or filters.start_date or filters.end_date:
+            return False
+
+    return True
 
 
 class BM25Index:
@@ -92,12 +136,18 @@ class BM25Index:
 
         return self
 
-    def search(self, query: str, top_k: int = 5) -> RetrievalResponse:
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        filters: Optional[RetrievalFilter] = None,
+    ) -> RetrievalResponse:
         """
-        Execute BM25 lexical search over indexed chunks.
+        Execute BM25 lexical search over indexed chunks with optional pre-fusion metadata filtering.
 
         Features:
         - Deterministic scoring.
+        - Pre-fusion filtering: discards candidates outside filter criteria before ranking.
         - Stable tie-breaker: sort primarily by score descending, secondarily by chunk_id ascending.
         - Safe validation: empty queries return empty results; invalid top_k is handled safely.
         """
@@ -121,6 +171,13 @@ class BM25Index:
         scores: List[Tuple[float, str, int]] = []  # (score, chunk_id, idx)
 
         for idx in candidate_indices:
+            chunk = self.chunks[idx]
+            doc_meta = self.doc_metadata.get(chunk.document_id)
+
+            # Apply pre-ranking metadata filter
+            if not _matches_filter(chunk, doc_meta, filters):
+                continue
+
             score = 0.0
             doc_len = self.doc_lengths[idx]
             tf_map = self.term_freqs[idx]
@@ -136,7 +193,6 @@ class BM25Index:
                     score += idf * (num / denom)
 
             if score > 0.0:
-                chunk = self.chunks[idx]
                 scores.append((score, chunk.chunk_id, idx))
 
         # Stable sort: score DESC, chunk_id ASC
@@ -156,6 +212,10 @@ class BM25Index:
                 title=doc_meta.title if doc_meta else None,
                 circular_number=doc_meta.circular_number if doc_meta else None,
                 issue_date=doc_meta.issue_date if doc_meta else None,
+                effective_date=doc_meta.effective_date if doc_meta else None,
+                regulator=getattr(doc_meta, "regulator", "SEBI") if doc_meta else "SEBI",
+                domain=getattr(doc_meta, "domain", "CSCRF") if doc_meta else "CSCRF",
+                sha256=doc_meta.sha256 if doc_meta else None,
                 page_start=chunk.page_start,
                 page_end=chunk.page_end,
                 text=chunk.text,

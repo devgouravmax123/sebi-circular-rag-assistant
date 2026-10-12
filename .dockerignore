@@ -1,0 +1,39 @@
+# Git and VCS
+.git/
+.gitignore
+
+# Python virtual environments, caches, and bytecode
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node / Frontend build artifacts and dependencies
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.vite/
+
+# Local sensitive configuration and environment variables
+.env
+.env.*
+!.env.example
+!.env.prod.example
+
+# Large data directories (mounted dynamically in production VM; snapshot assets allowed for standalone demo)
+data/raw/
+data/backups/
+data/indexes/*.npy
+data/indexes/snapshots/*/*.npy
+
+# Logs and local artifacts
+*.log
+logs/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

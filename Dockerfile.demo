@@ -1,0 +1,48 @@
+# Standalone Minimal Demo Container for Render Free (512MB RAM target)
+# Lexical-only BM25 mode; No PyTorch, SentenceTransformers, or PostgreSQL required.
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install minimal system dependencies (curl for healthcheck)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install slim Python dependencies
+COPY backend/requirements-demo.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements-demo.txt
+
+# Create non-root application user
+RUN groupadd -g 10001 sebi && \
+    useradd -u 10001 -g sebi -m -s /bin/bash sebi
+
+# Copy application source code
+COPY --chown=sebi:sebi backend/app /app/app
+
+# Copy immutable snapshot assets and verified graph
+COPY --chown=sebi:sebi data/indexes/active_snapshot.json /app/data/indexes/active_snapshot.json
+COPY --chown=sebi:sebi data/indexes/snapshots /app/data/indexes/snapshots
+COPY --chown=sebi:sebi data/processed/cscrf_graph.json /app/data/processed/cscrf_graph.json
+COPY --chown=sebi:sebi data/processed/manifest.json /app/data/processed/manifest.json
+
+# Configure runtime environment
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    PROCESSED_DIR=/app/data/processed \
+    INDEXES_DIR=/app/data/indexes \
+    RETRIEVAL_MODE=lexical_only \
+    APP_ENV=production \
+    SYNTHESIS_PROVIDER=mock \
+    PORT=8000
+
+USER sebi
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]

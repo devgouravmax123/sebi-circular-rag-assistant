@@ -2,9 +2,11 @@
 .env
 .env.*
 !.env.example
+!.env.prod.example
 **/.env
 **/.env.*
 !**/.env.example
+!**/.env.prod.example
 
 # Python
 __pycache__/
@@ -22,8 +24,24 @@ dist/
 
 # Generated data and indexes (review before committing any small curated fixtures)
 data/raw/
-data/processed/
-data/indexes/
+data/backups/
+**/*.npy
+
+data/processed/*
+!data/processed/cscrf_graph.json
+!data/processed/manifest.json
+
+data/indexes/*
+!data/indexes/active_snapshot.json
+!data/indexes/snapshots/
+data/indexes/snapshots/*
+!data/indexes/snapshots/snap_20261011_104512_23a014/
+data/indexes/snapshots/snap_20261011_104512_23a014/*
+!data/indexes/snapshots/snap_20261011_104512_23a014/chunks.json
+!data/indexes/snapshots/snap_20261011_104512_23a014/documents.json
+!data/indexes/snapshots/snap_20261011_104512_23a014/manifest.json
+data/indexes/.publish.lock
+data/indexes/snapshots/*/.publish.lock
 *.faiss
 *.index
 

@@ -8,8 +8,9 @@ from typing import List, Dict, Tuple, Optional, Any
 import numpy as np
 
 from app.schemas.document import ChunkRecord, DocumentRecord
-from app.schemas.retrieval import RetrievalResult, RetrievalResponse
+from app.schemas.retrieval import RetrievalResult, RetrievalResponse, RetrievalFilter
 from app.retrieval.dense_embedder import DenseEmbedder, DEFAULT_MODEL_NAME, DEFAULT_EMBEDDING_DIM
+from app.retrieval.bm25 import _matches_filter
 
 
 class DenseIndex:
@@ -145,9 +146,10 @@ class DenseIndex:
         query: str,
         top_k: int = 5,
         query_vector: Optional[np.ndarray] = None,
+        filters: Optional[RetrievalFilter] = None,
     ) -> RetrievalResponse:
         """
-        Execute dense vector search using cosine similarity.
+        Execute dense vector search using cosine similarity with optional pre-fusion metadata filtering.
         """
         if top_k <= 0 or self.corpus_size == 0 or self.embeddings.shape[0] == 0:
             return RetrievalResponse(query=query, total_results=0, results=[])
@@ -174,6 +176,12 @@ class DenseIndex:
         scores: List[Tuple[float, str, int]] = []
         for idx, score_val in enumerate(sim_scores):
             chunk = self.chunks[idx]
+            doc_meta = self.doc_metadata.get(chunk.document_id)
+
+            # Pre-ranking metadata filter
+            if not _matches_filter(chunk, doc_meta, filters):
+                continue
+
             scores.append((round(float(score_val), 6), chunk.chunk_id, idx))
 
         # Deterministic sort: score DESC, chunk_id ASC
@@ -192,6 +200,10 @@ class DenseIndex:
                 title=doc_meta.title if doc_meta else None,
                 circular_number=doc_meta.circular_number if doc_meta else None,
                 issue_date=doc_meta.issue_date if doc_meta else None,
+                effective_date=doc_meta.effective_date if doc_meta else None,
+                regulator=getattr(doc_meta, "regulator", "SEBI") if doc_meta else "SEBI",
+                domain=getattr(doc_meta, "domain", "CSCRF") if doc_meta else "CSCRF",
+                sha256=doc_meta.sha256 if doc_meta else None,
                 page_start=chunk.page_start,
                 page_end=chunk.page_end,
                 text=chunk.text,

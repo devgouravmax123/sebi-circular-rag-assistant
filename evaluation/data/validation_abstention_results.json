@@ -1,0 +1,214 @@
+{
+  "dataset": "SEPARATE DEV/VALIDATION DATASET (20 QUERIES)",
+  "total_queries": 20,
+  "total_answerable": 10,
+  "total_unanswerable": 10,
+  "answerable_accepted": 10,
+  "answerable_incorrectly_abstained": 0,
+  "unanswerable_correctly_abstained": 10,
+  "unanswerable_incorrectly_answered": 0,
+  "false_abstention_rate": 0.0,
+  "unanswerable_abstention_rate": 1.0,
+  "per_query_results": [
+    {
+      "query_id": "val_ans_01_soc_retention_days",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "val_ans_02_ciso_direct_reporting",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 1,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 1 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "val_ans_03_march_2025_timeline_relief",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 4,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 4 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "val_ans_04_isolated_ransomware_backups",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 2,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 2 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "val_ans_05_ia_ra_standalone_carveout",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "val_unans_01_rbi_liquidity_coverage_ratio",
+      "answerability": "unanswerable",
+      "disposition": "CONTROLLED_ABSTENTION",
+      "verified_excerpts": 0,
+      "historical_superseded": 0,
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)"
+    },
+    {
+      "query_id": "val_unans_02_gdpr_breach_72_hours",
+      "answerability": "unanswerable",
+      "disposition": "CONTROLLED_ABSTENTION",
+      "verified_excerpts": 0,
+      "historical_superseded": 0,
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)"
+    },
+    {
+      "query_id": "val_unans_03_hipaa_phi_encryption",
+      "answerability": "unanswerable",
+      "disposition": "CONTROLLED_ABSTENTION",
+      "verified_excerpts": 0,
+      "historical_superseded": 0,
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)"
+    },
+    {
+      "query_id": "val_unans_04_sebi_insider_trading_trading_window",
+      "answerability": "unanswerable",
+      "disposition": "CONTROLLED_ABSTENTION",
+      "verified_excerpts": 0,
+      "historical_superseded": 0,
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)"
+    },
+    {
+      "query_id": "val_unans_05_nist_sp_800_53_rev5_controls",
+      "answerability": "unanswerable",
+      "disposition": "CONTROLLED_ABSTENTION",
+      "verified_excerpts": 0,
+      "historical_superseded": 0,
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)"
+    },
+    {
+      "query_id": "val_ans_06_cscrf_vapt_periodic_frequency",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "val_ans_07_multifactor_admin_access_perimeter",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 1,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 1 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "val_ans_08_board_approval_ciso_appointment",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 3,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 3 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "val_ans_09_tradable_asset_aum_threshold_pms",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "val_ans_10_account_lockout_failed_logins",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 2,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 2 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "val_unans_06_pci_dss_pan_truncation",
+      "answerability": "unanswerable",
+      "disposition": "CONTROLLED_ABSTENTION",
+      "verified_excerpts": 0,
+      "historical_superseded": 0,
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)"
+    },
+    {
+      "query_id": "val_unans_07_cobit_governance_objectives_edm",
+      "answerability": "unanswerable",
+      "disposition": "CONTROLLED_ABSTENTION",
+      "verified_excerpts": 0,
+      "historical_superseded": 0,
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)"
+    },
+    {
+      "query_id": "val_unans_08_generic_cyber_risk_controls",
+      "answerability": "unanswerable",
+      "disposition": "CONTROLLED_ABSTENTION",
+      "verified_excerpts": 0,
+      "historical_superseded": 0,
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)"
+    },
+    {
+      "query_id": "val_unans_09_algo_colocation_latency_nanoseconds",
+      "answerability": "unanswerable",
+      "disposition": "CONTROLLED_ABSTENTION",
+      "verified_excerpts": 0,
+      "historical_superseded": 0,
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)"
+    },
+    {
+      "query_id": "val_unans_10_cyber_insurance_coverage_sum_insured",
+      "answerability": "unanswerable",
+      "disposition": "CONTROLLED_ABSTENTION",
+      "verified_excerpts": 0,
+      "historical_superseded": 0,
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)"
+    }
+  ]
+}

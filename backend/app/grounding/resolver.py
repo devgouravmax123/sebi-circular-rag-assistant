@@ -195,12 +195,23 @@ class ConservativeGraphResolver:
         # 2. Inspect incoming edges (newer circulars acting on this doc)
         incoming_edges = self.graph.get_incoming_edges(doc_id)
 
-        # Filter verified edges
+        # Filter verified edges - only VERIFIED edges ever influence regulatory status
         verified_edges = [e for e in incoming_edges if e.review_status == ReviewStatus.VERIFIED]
 
         # Categorize edges by relationship type
-        amending_edges = [e for e in verified_edges if e.relationship in (RelationshipType.AMENDS, RelationshipType.RESCINDS)]
-        referencing_edges = [e for e in verified_edges if e.relationship == RelationshipType.REFERENCES]
+        amending_edges = [
+            e for e in verified_edges
+            if e.relationship in (
+                RelationshipType.AMENDS,
+                RelationshipType.SUPERSEDES,
+                RelationshipType.REPLACES,
+                RelationshipType.RESCINDS,
+            )
+        ]
+        informational_edges = [
+            e for e in verified_edges
+            if e.relationship in (RelationshipType.REFERENCES, RelationshipType.CLARIFIES)
+        ]
 
         # Default state
         status = RegulatoryStatus.UNRESOLVED
@@ -211,14 +222,27 @@ class ConservativeGraphResolver:
         # Check full-scope supersession / rescission
         full_amendments = [e for e in amending_edges if e.scope == ScopeType.FULL]
         if full_amendments:
-            acting_edge = full_amendments[0]
-            status = RegulatoryStatus.SUPERSEDED
-            status_reason = (
-                f"Entire document '{doc_id}' is superseded/rescinded by '{acting_edge.source_document_id}' "
-                f"via verified {acting_edge.relationship.value} edge '{acting_edge.edge_id}'."
-            )
-            applicable_edge_ids.append(acting_edge.edge_id)
-            acting_doc_ids.append(acting_edge.source_document_id)
+            acting_sources = {e.source_document_id for e in full_amendments}
+            acting_relationships = {e.relationship for e in full_amendments}
+            # If multiple full-scope edges exist from conflicting source documents or conflicting relationship types, mark UNRESOLVED
+            if len(acting_sources) > 1 or len(acting_relationships) > 1:
+                status = RegulatoryStatus.UNRESOLVED
+                status_reason = (
+                    f"Conflicting verified full-scope relationship edges detected for '{doc_id}' from multiple source circulars "
+                    f"({list(acting_sources)}); unresolved outcome applied conservatively."
+                )
+                applicable_edge_ids.extend([e.edge_id for e in full_amendments])
+                acting_doc_ids.extend(list(acting_sources))
+            else:
+                acting_edge = full_amendments[0]
+                status = RegulatoryStatus.SUPERSEDED
+                status_reason = (
+                    f"Entire document '{doc_id}' is superseded/rescinded by '{acting_edge.source_document_id}' "
+                    f"via verified {acting_edge.relationship.value} edge '{acting_edge.edge_id}'."
+                )
+                applicable_edge_ids.append(acting_edge.edge_id)
+                acting_doc_ids.append(acting_edge.source_document_id)
+
             return GroundedEvidenceItem(
                 chunk_id=item.chunk_id,
                 document_id=item.document_id,
@@ -259,12 +283,12 @@ class ConservativeGraphResolver:
             applicable_edge_ids.append(acting_edge.edge_id)
             acting_doc_ids.append(acting_edge.source_document_id)
 
-        elif referencing_edges and not amending_edges:
-            # Referenced informational context
-            acting_edge = referencing_edges[0]
+        elif informational_edges and not amending_edges:
+            # Referenced / Clarified informational context
+            acting_edge = informational_edges[0]
             status = RegulatoryStatus.INFORMATIONAL
             status_reason = (
-                f"Document '{doc_id}' is referenced by '{acting_edge.source_document_id}' "
+                f"Document '{doc_id}' is referenced/clarified by '{acting_edge.source_document_id}' "
                 f"via non-superseding {acting_edge.relationship.value} edge '{acting_edge.edge_id}'."
             )
             applicable_edge_ids.append(acting_edge.edge_id)

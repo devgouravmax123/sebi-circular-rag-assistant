@@ -37,6 +37,55 @@ class CandidateRelevanceAssessment:
         self.reason = reason
 
 
+STOP_WORDS = {
+    "what", "which", "where", "when", "whose", "whom", "there", "their", "under",
+    "about", "these", "those", "shall", "should", "would", "could", "other", "another",
+    "having", "being", "between", "before", "after", "during", "through", "across",
+    "against", "mandated", "required", "prescribed", "specified", "does", "did",
+    "the", "for", "are", "is", "with", "from", "how", "have", "has", "had", "been",
+    "and", "but", "any", "all", "into", "out", "per", "can", "may", "circular",
+    "cir", "mandatory", "must", "stored", "locations", "prevent", "tampering",
+    "was", "were", "announced", "today", "now", "current",
+}
+
+SYNONYM_EXPANSIONS = {
+    "deadline": ["deadline", "deadlines", "timeline", "timelines"],
+    "deadlines": ["deadline", "deadlines", "timeline", "timelines"],
+    "timeline": ["deadline", "deadlines", "timeline", "timelines"],
+    "timelines": ["deadline", "deadlines", "timeline", "timelines"],
+}
+
+# Generic cybersecurity vocabulary common across all frameworks (both CSCRF and external standards)
+GENERIC_SECURITY_TERMS = {
+    "security", "cybersecurity", "cyber", "resilience", "framework", "policy",
+    "policies", "guidelines", "guideline", "risk", "management", "control", "controls",
+    "measures", "requirements", "compliance", "system", "systems", "information", "entity",
+    "entities", "operational", "process", "processes", "standard", "standards",
+    "general", "implemented", "financial", "implement", "implementation", "across",
+    "baseline", "enhancements", "enhancement",
+}
+
+
+def extract_substantive_query_tokens(query: str) -> List[str]:
+    """
+    Extract informative topic keywords from a regulatory query, removing functional stop words.
+    """
+    return [
+        w.lower()
+        for w in re.findall(r"[a-zA-Z0-9]+", query)
+        if len(w) >= 3 and w.lower() not in STOP_WORDS
+    ]
+
+
+def extract_specific_query_tokens(query: str) -> List[str]:
+    """
+    Extract distinguishing domain-specific terms by excluding generic cybersecurity vocabulary.
+    Returns empty list if the query consists entirely of generic cybersecurity terms.
+    """
+    substantive = extract_substantive_query_tokens(query)
+    return [t for t in substantive if t not in GENERIC_SECURITY_TERMS]
+
+
 def assess_candidate_relevance(
     query: str,
     intent: QueryIntent,
@@ -62,6 +111,15 @@ def assess_candidate_relevance(
         # Check if candidate comes from or explicitly references the requested circular
         # Look for circular number tokens in query
         target_circulars = []
+        # General pattern: match year and circular sequence numbers (e.g. 2024/113, 2025/045, 2026/012)
+        year_seq_matches = re.findall(r"\b(20\d{2})[/_-](0?\d{1,4})\b", q_lower)
+        for yr, seq in year_seq_matches:
+            padded_seq = seq.zfill(3)
+            target_circulars.append(f"{yr}_{padded_seq}")
+            if seq.lstrip("0"):
+                target_circulars.append(f"{yr}_{seq.lstrip('0')}")
+
+        # Baseline circular aliases with leading zeros or bare numbers
         if "096" in q_lower or "96" in q_lower:
             target_circulars.append("2025_096")
         if "045" in q_lower or "45" in q_lower:
@@ -72,6 +130,7 @@ def assess_candidate_relevance(
             target_circulars.append("2025_119")
         if "113" in q_lower:
             target_circulars.append("2024_113")
+
 
         if target_circulars:
             if not any(tc in candidate.document_id for tc in target_circulars):
@@ -166,6 +225,61 @@ def assess_candidate_relevance(
                     decision_code=RelevanceDecisionCode.INSUFFICIENT_RELEVANCE,
                     reason="Passage does not contain CISO requirements or anchors.",
                 )
+
+    # 5. General Evidence Coverage Verification:
+    # Substantive query terms must have meaningful representation in the candidate text.
+    # We check:
+    #   (a) Substantive token coverage (>= 40%) using exact word-boundary matching.
+    #   (b) Specific token coverage (>= 40%) excluding generic cybersecurity vocabulary.
+    # Note on RRF scores: In standard 2-retriever RRF with k=60, top-1 in both BM25 and dense
+    # yields max theoretical score 2 / 61 = 0.0328. Therefore, RRF scores never reach 0.040.
+    # High retrieval rank alone does not prove topical relevance when candidate passages
+    # merely share generic vocabulary.
+    query_tokens = extract_substantive_query_tokens(query)
+    if query_tokens:
+        def _token_matches(token: str) -> bool:
+            if re.search(r"\b" + re.escape(token) + r"\b", text_lower) is not None:
+                return True
+            if token.isdigit() and token.startswith("0"):
+                stripped = token.lstrip("0")
+                if re.search(r"\b" + re.escape(stripped) + r"\b", text_lower) is not None:
+                    return True
+            if token in SYNONYM_EXPANSIONS:
+                for syn in SYNONYM_EXPANSIONS[token]:
+                    if re.search(r"\b" + re.escape(syn) + r"\b", text_lower) is not None:
+                        return True
+            return False
+
+        matched_tokens = [t for t in query_tokens if _token_matches(t)]
+        substantive_coverage = len(matched_tokens) / len(query_tokens)
+        if substantive_coverage < 0.40:
+            missing = [t for t in query_tokens if t not in matched_tokens]
+            return CandidateRelevanceAssessment(
+                chunk_id=candidate.chunk_id,
+                is_relevant=False,
+                decision_code=RelevanceDecisionCode.INSUFFICIENT_RELEVANCE,
+                reason=f"Passage lacks substantive query topical coverage ({substantive_coverage:.0%}, missing {missing[:4]}).",
+            )
+
+        specific_tokens = extract_specific_query_tokens(query)
+        if not specific_tokens:
+            return CandidateRelevanceAssessment(
+                chunk_id=candidate.chunk_id,
+                is_relevant=False,
+                decision_code=RelevanceDecisionCode.INSUFFICIENT_RELEVANCE,
+                reason="Query consists entirely of generic cybersecurity terms without distinguishing specific subject anchors.",
+            )
+
+        matched_specific = [t for t in specific_tokens if _token_matches(t)]
+        specific_coverage = len(matched_specific) / len(specific_tokens)
+        if specific_coverage < 0.41:
+            missing_spec = [t for t in specific_tokens if t not in matched_specific]
+            return CandidateRelevanceAssessment(
+                chunk_id=candidate.chunk_id,
+                is_relevant=False,
+                decision_code=RelevanceDecisionCode.INSUFFICIENT_RELEVANCE,
+                reason=f"Passage lacks distinguishing specific subject coverage ({specific_coverage:.0%}, missing {missing_spec[:4]}).",
+            )
 
     return CandidateRelevanceAssessment(
         chunk_id=candidate.chunk_id,

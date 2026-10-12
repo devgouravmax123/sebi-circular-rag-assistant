@@ -1,0 +1,73 @@
+# Multi-stage reproducible production build for FastAPI Backend & Ingestion Worker
+# Python 3.12-slim base
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+
+# Install build tools for native C-extensions (psycopg, numpy)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy dependency definition and build wheels using CPU-only PyTorch index to avoid massive CUDA downloads
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu torch && \
+    pip wheel --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu --wheel-dir /build/wheels -r requirements.txt
+
+
+# Final runtime image
+FROM python:3.12-slim AS runtime
+
+WORKDIR /app
+
+# Install minimal runtime dependencies (libpq, curl for health checks)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install wheels from builder
+COPY --from=builder /build/wheels /wheels
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir /wheels/* && \
+    rm -rf /wheels
+
+# Create unprivileged application user
+RUN groupadd -g 10001 sebi && \
+    useradd -u 10001 -g sebi -m -s /bin/bash sebi
+
+# Create durable data mount points with proper permissions
+RUN mkdir -p /app/data/processed /app/data/indexes /app/data/raw /home/sebi/.cache && \
+    chown -R sebi:sebi /app /home/sebi
+
+# Copy backend application code and alembic configuration
+COPY --chown=sebi:sebi alembic.ini /app/alembic.ini
+COPY --chown=sebi:sebi backend/alembic /app/backend/alembic
+COPY --chown=sebi:sebi backend/alembic /app/alembic
+COPY --chown=sebi:sebi backend/app /app/app
+
+# Set environment defaults
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    PROCESSED_DIR=/app/data/processed \
+    INDEXES_DIR=/app/data/indexes \
+    HF_HOME=/home/sebi/.cache/huggingface \
+    TRANSFORMERS_OFFLINE=1 \
+    HF_HUB_OFFLINE=1
+
+# Switch to unprivileged user
+USER sebi
+
+# Default port for FastAPI HTTP serving
+EXPOSE 8000
+
+# Health check using HTTP /ready probe
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl -f http://127.0.0.1:8000/ready || exit 1
+
+# Default command launches FastAPI API via uvicorn (defaults to 1 worker to conserve RAM and avoid duplicate embedding model loads)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--lifespan", "on"]

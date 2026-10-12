@@ -1,0 +1,334 @@
+{
+  "dataset": "GOLDEN EVALUATION DATASET (32 QUERIES)",
+  "total_queries": 32,
+  "total_answerable": 28,
+  "total_unanswerable": 4,
+  "answerable_accepted": 28,
+  "answerable_incorrectly_abstained": 0,
+  "unanswerable_correctly_abstained": 4,
+  "unanswerable_incorrectly_answered": 0,
+  "false_abstention_rate": 0.0,
+  "unanswerable_abstention_rate": 1.0,
+  "per_query_results": [
+    {
+      "query_id": "q01_ciso_reporting_line",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q02_air_gapped_backup",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q03_vapt_cert_in_requirement",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q04_cyber_audit_open_observations",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q05_password_lockout_policy",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q06_legacy_systems_virtual_patching",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 2,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 2 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q07_cloud_hsm_mandate",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q08_mfa_reset_controls",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q09_soc_monitoring_log_retention",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q10_api_security_rate_limiting",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q11_august_deadline_extension",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q12_march_2025_extension_circular",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 4,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 4 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q13_rto_iosco_clarification",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q14_press_release_high_impact_cyber_attack",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 4,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 4 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q15_patch_management_policy_timelines",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q16_stock_broker_thresholds",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q17_ia_ra_standalone_exemption",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q18_portfolio_managers_aum",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q19_merchant_bankers_categorization",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q20_kra_re_categorization",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q21_iso27001_relaxation",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q22_nciipc_guidelines_applicability",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q23_shared_infra_primary_regulator_audit",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q24_governance_board_approval_clarification",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 5,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q25_ciso_reporting_paraphrase",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 1,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 1 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q26_air_gapped_backup_paraphrase",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 4,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 4 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q27_ia_ra_exemption_paraphrase",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 4,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 4 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q28_iso_27001_relaxation_paraphrase",
+      "answerability": "answerable",
+      "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
+      "verified_excerpts": 4,
+      "historical_superseded": 0,
+      "summary_narrative": "Qualified Historical Excerpts: 4 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "abstention_reason": null,
+      "evaluation_outcome": "ACCEPTED (CORRECT)"
+    },
+    {
+      "query_id": "q29_unanswerable_rbi_psl_targets",
+      "answerability": "unanswerable",
+      "disposition": "CONTROLLED_ABSTENTION",
+      "verified_excerpts": 0,
+      "historical_superseded": 0,
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)"
+    },
+    {
+      "query_id": "q30_unanswerable_dora_tlpt_rules",
+      "answerability": "unanswerable",
+      "disposition": "CONTROLLED_ABSTENTION",
+      "verified_excerpts": 0,
+      "historical_superseded": 0,
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)"
+    },
+    {
+      "query_id": "q31_unanswerable_crypto_tax_tds",
+      "answerability": "unanswerable",
+      "disposition": "CONTROLLED_ABSTENTION",
+      "verified_excerpts": 0,
+      "historical_superseded": 0,
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)"
+    },
+    {
+      "query_id": "q32_unanswerable_bitcoin_mining_asic_efficiency",
+      "answerability": "unanswerable",
+      "disposition": "CONTROLLED_ABSTENTION",
+      "verified_excerpts": 0,
+      "historical_superseded": 0,
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)"
+    }
+  ]
+}
