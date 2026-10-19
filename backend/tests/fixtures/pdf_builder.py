@@ -11,7 +11,7 @@ def create_synthetic_pdf(
     file_path.parent.mkdir(parents=True, exist_ok=True)
     doc = fitz.open()
     for text in pages_text:
-        page = doc.new_page()
+        page = doc.new_page()  # type: ignore[attr-defined]
         # insert text starting at top-left
         p = fitz.Point(50, 72)
         page.insert_text(p, text, fontsize=11)

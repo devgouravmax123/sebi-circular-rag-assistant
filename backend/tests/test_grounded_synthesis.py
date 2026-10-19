@@ -55,7 +55,13 @@ from app.schemas.retrieval import RetrievalResult, RetrievalResponse
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    from app.api.v1.query import get_synthesis_service as api_get_synthesis_service
+    # Explicitly isolate the test client with a MockSynthesisProvider so tests
+    # never leak live outbound requests to the Gemini API, regardless of .env settings.
+    app.dependency_overrides[api_get_synthesis_service] = lambda: SynthesisService(provider=MockSynthesisProvider())
+    test_client = TestClient(app)
+    yield test_client
+    app.dependency_overrides.pop(api_get_synthesis_service, None)
 
 
 @pytest.fixture
@@ -420,3 +426,72 @@ def test_14_retrieval_filters_and_version_aware_search(client):
     ]
     for exc in data["verified_excerpts"]:
         assert exc["document_id"].startswith("sebi_cscrf_")
+
+
+# 15. Mock mode disclosure prefix and explicit offline simulation note
+def test_15_mock_mode_disclosure_and_metadata():
+    provider = MockSynthesisProvider()
+    input_payload = SynthesisInput(
+        query="Must offline backups be air-gapped?",
+        evidence_items=[
+            SynthesisEvidenceItem(
+                chunk_id="chunk_test_1",
+                document_id="sebi_cscrf_2024_113",
+                text="REs shall maintain offline isolated backups in air-gapped locations.",
+                regulatory_status=RegulatoryStatus.UNRESOLVED.value,
+                status_reason="Test chunk",
+            )
+        ],
+    )
+    output = provider.synthesize(input_payload)
+    assert "[MOCK SYNTHESIS - OFFLINE TEST MODE" in output.answer
+    assert output.failure_reason is not None
+    assert "Mock offline mode" in output.failure_reason
+
+
+# 16. No-overlap evidence returns disclosed mock result without inventing assertions
+def test_16_mock_mode_zero_overlap_evidence():
+    provider = MockSynthesisProvider()
+    input_payload = SynthesisInput(
+        query="What are the specific penalties for non-filing of quarterly cyber reports?",
+        evidence_items=[
+            SynthesisEvidenceItem(
+                chunk_id="chunk_test_2",
+                document_id="sebi_cscrf_2024_113",
+                text="The framework applies to all designated stock brokers and depository participants.",
+                regulatory_status=RegulatoryStatus.UNRESOLVED.value,
+                status_reason="Test chunk",
+            )
+        ],
+    )
+    output = provider.synthesize(input_payload)
+    assert output.status == SynthesisStatus.PARTIALLY_ANSWERED
+    assert len(output.claims) == 0
+    assert "[MOCK SYNTHESIS - OFFLINE TEST MODE]" in output.answer
+    assert "The retrieved passages do not contain substantive provisions" in output.answer
+    assert len(output.unresolved_subquestions) > 0
+
+
+# 17. Preamble-only and non-ASCII header evidence is filtered and rejected
+def test_17_mock_mode_preamble_and_non_ascii_rejected():
+    provider = MockSynthesisProvider()
+    preamble_chunk = SynthesisEvidenceItem(
+        chunk_id="chunk_test_preamble",
+        document_id="sebi_cscrf_2024_113",
+        text=(
+            "CIRCULAR SEBI/HO/ITD/ITD_PoD-1/P/CIR/2024/113 August 20, 2024. "
+            "To All Recognized Stock Exchanges, All Clearing Corporations. "
+            "Dear Sir / Madam, Sub: Cybersecurity Framework."
+        ),
+        regulatory_status=RegulatoryStatus.UNRESOLVED.value,
+        status_reason="Preamble header chunk",
+    )
+    input_payload = SynthesisInput(
+        query="What are the key governance requirements for board of directors?",
+        evidence_items=[preamble_chunk],
+    )
+    output = provider.synthesize(input_payload)
+    # The administrative header should not be extracted as an affirmative regulatory claim
+    assert len(output.claims) == 0
+    assert "CIRCULAR SEBI/HO/ITD" not in output.answer
+    assert output.status == SynthesisStatus.PARTIALLY_ANSWERED

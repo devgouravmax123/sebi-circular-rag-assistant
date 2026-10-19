@@ -4,8 +4,17 @@ Supports environment-based configuration, secure defaults, and database URL pars
 without exposing secrets in exceptions or logs.
 """
 import os
+from pathlib import Path
 from typing import Optional
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator
+
+# Automatically load backend/.env using absolute path relative to this file
+# backend/app/core/config.py -> parent(core) -> parent(app) -> parent(backend)
+_BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+_ENV_FILE = _BACKEND_DIR / ".env"
+if _ENV_FILE.is_file():
+    load_dotenv(dotenv_path=_ENV_FILE)
 
 
 class Settings(BaseModel):
@@ -27,10 +36,14 @@ class Settings(BaseModel):
     db_max_overflow: int = Field(default_factory=lambda: int(os.getenv("DB_MAX_OVERFLOW", "10")))
     db_pool_timeout: float = Field(default_factory=lambda: float(os.getenv("DB_POOL_TIMEOUT", "30.0")))
     db_pool_recycle: int = Field(default_factory=lambda: int(os.getenv("DB_POOL_RECYCLE", "300")))
-    # Phase 8E: Synthesis Provider Configuration
+    # Phase 8E: Synthesis Provider Configuration (mock, gemini, groq)
     synthesis_provider: str = Field(default_factory=lambda: os.getenv("SYNTHESIS_PROVIDER", "mock"))
     synthesis_timeout_seconds: float = Field(default_factory=lambda: float(os.getenv("SYNTHESIS_TIMEOUT_SECONDS", "5.0")))
     max_synthesis_evidence_chunks: int = Field(default_factory=lambda: int(os.getenv("MAX_SYNTHESIS_EVIDENCE_CHUNKS", "5")))
+    gemini_api_key: Optional[str] = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY"), repr=False)
+    gemini_model: str = Field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-2.0-flash"))
+    groq_api_key: Optional[str] = Field(default_factory=lambda: os.getenv("GROQ_API_KEY"), repr=False)
+    groq_model: str = Field(default_factory=lambda: os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"))
     # Phase 10.1.20: Public Rate Limiting Configuration
     rate_limit_query_per_minute: int = Field(default_factory=lambda: int(os.getenv("RATE_LIMIT_QUERY_PER_MINUTE", "20")))
     rate_limit_query_burst: int = Field(default_factory=lambda: int(os.getenv("RATE_LIMIT_QUERY_BURST", "10")))
@@ -125,6 +138,18 @@ class Settings(BaseModel):
                 "Unsupported database dialect scheme. Must begin with postgresql:// or sqlite://"
             )
         return v_stripped
+
+    @field_validator("synthesis_provider")
+    @classmethod
+    def validate_synthesis_provider(cls, v: str) -> str:
+        if not v or not v.strip():
+            return "mock"
+        norm = v.strip().lower()
+        if norm not in ("mock", "gemini", "groq"):
+            raise ValueError(
+                f"Unsupported SYNTHESIS_PROVIDER '{v}'. Must be 'mock', 'gemini', or 'groq'."
+            )
+        return norm
 
     @field_validator("retrieval_mode")
     @classmethod

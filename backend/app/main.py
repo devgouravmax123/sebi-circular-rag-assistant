@@ -6,6 +6,20 @@ import logging
 
 from app.core.config import Settings, get_settings
 
+# Configure the 'app' logger hierarchy to emit INFO-level messages without altering third-party loggers
+app_logger = logging.getLogger("app")
+app_logger.setLevel(logging.INFO)
+if not app_logger.handlers:
+    # Use uvicorn default handler if available, otherwise fallback to StreamHandler with standard format
+    uvicorn_logger = logging.getLogger("uvicorn")
+    if uvicorn_logger.handlers:
+        for _h in uvicorn_logger.handlers:
+            app_logger.addHandler(_h)
+    else:
+        _sh = logging.StreamHandler()
+        _sh.setFormatter(logging.Formatter("%(levelname)s:     %(message)s"))
+        app_logger.addHandler(_sh)
+
 logger = logging.getLogger(__name__)
 
 settings = get_settings()

@@ -79,7 +79,15 @@ class MockSynthesisProvider(SynthesisProvider):
         answer_paragraphs: List[str] = []
 
         # 4. Form claims from top evidence items
-        q_tokens = [w.lower() for w in re.findall(r"[a-zA-Z0-9]+", query) if len(w) >= 3]
+        raw_tokens = extract_keywords_from_claim(query)
+        q_tokens = [w for w in raw_tokens if w not in {"what", "which", "where", "when", "how", "define", "meaning", "explain"}]
+        preamble_markers = [
+            r"^circular\b",
+            r"^sebi/ho/",
+            r"^to\s+all\s+(?:registered|regulated|stock|depositories|clearing)",
+            r"dear\s+sir\s*/\s*madam",
+            r"^\s*sub\s*:",
+        ]
 
         for ev in payload.evidence_items[:3]:
             # Clean passage text: strip prompt injection attempts or raw formatting
@@ -88,26 +96,38 @@ class MockSynthesisProvider(SynthesisProvider):
             ).strip()
 
             # Extract sentences
-            sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", clean_text) if len(s.strip()) > 20]
-            if not sentences:
-                sentences = [clean_text[:200].strip()]
+            candidate_sentences = [
+                s.strip() for s in re.split(r"(?<=[.!?])\s+", clean_text) if len(s.strip()) > 20
+            ]
+            if not candidate_sentences:
+                candidate_sentences = [clean_text[:200].strip()]
 
-            # Select sentence that shares the highest token overlap with query
-            def _score_sentence(s: str) -> int:
-                s_lower = s.lower()
+            # Score each sentence against substantive query tokens and penalize non-ASCII / metadata preambles
+            def _score_and_filter(s: str) -> int:
+                # Discard sentences that are mostly non-ASCII (e.g. Hindi headers decoded in latin-1)
+                ascii_chars = sum(1 for c in s if ord(c) < 128)
+                if len(s) > 0 and (ascii_chars / len(s)) < 0.70:
+                    return 0
+
+                s_lower = s.lower().strip()
+                # Check for administrative circular preambles
+                if any(re.search(marker, s_lower) for marker in preamble_markers):
+                    return 0
+
                 return sum(1 for t in q_tokens if t in s_lower)
 
-            best_sentence = max(sentences, key=_score_sentence)
-            # If best sentence has zero overlap with query, default to first sentence
-            claim_sentence = best_sentence if _score_sentence(best_sentence) > 0 else sentences[0]
+            scored = [(s, _score_and_filter(s)) for s in candidate_sentences]
+            positive_scored = [pair for pair in scored if pair[1] > 0]
 
-            claims.append(
-                ClaimCitation(
-                    claim_text=claim_sentence,
-                    supporting_chunk_ids=[ev.chunk_id],
+            if positive_scored:
+                best_sentence = max(positive_scored, key=lambda x: x[1])[0]
+                claims.append(
+                    ClaimCitation(
+                        claim_text=best_sentence,
+                        supporting_chunk_ids=[ev.chunk_id],
+                    )
                 )
-            )
-            answer_paragraphs.append(claim_sentence)
+                answer_paragraphs.append(best_sentence)
 
 
         # 5. Simulated test condition injections
@@ -181,12 +201,34 @@ class MockSynthesisProvider(SynthesisProvider):
                     )
                     status = SynthesisStatus.PARTIALLY_ANSWERED
 
-        full_answer = "\n\n".join(answer_paragraphs)
+        # 7. Disclose mock/offline mode explicitly and handle zero qualifying sentences
+        if not claims or not answer_paragraphs:
+            return SynthesisOutput(
+                status=SynthesisStatus.PARTIALLY_ANSWERED,
+                answer=(
+                    "[MOCK SYNTHESIS - OFFLINE TEST MODE]\n\n"
+                    "The retrieved passages do not contain substantive provisions directly addressing "
+                    f"the key terms of query '{query}'. No speculative or preamble assertions have been fabricated."
+                ),
+                claims=[],
+                unresolved_subquestions=[
+                    UnresolvedSubquestion(
+                        subquestion=f"Regulatory answer for: '{query}'",
+                        reason="Passages in retrieved evidence contain only non-matching sections, administrative metadata, or circular headers.",
+                    )
+                ],
+                failure_reason="Mock offline mode: No evidence sentences matched query concepts.",
+            )
+
+        full_answer = (
+            "[MOCK SYNTHESIS - OFFLINE TEST MODE: The following sentences are extracted verbatim excerpts "
+            "for deterministic test verification only]\n\n" + "\n\n".join(answer_paragraphs)
+        )
 
         return SynthesisOutput(
             status=status,
             answer=full_answer,
             claims=claims,
             unresolved_subquestions=unresolved,
-            failure_reason=None,
+            failure_reason="Mock offline mode: Output consists of deterministic excerpt extractions, not live LLM regulatory synthesis.",
         )

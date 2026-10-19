@@ -30,7 +30,12 @@ from app.api.v1.query import get_synthesis_service as api_get_synthesis_service
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    # Explicitly isolate the test client with a MockSynthesisProvider so tests
+    # never leak live outbound requests to the Gemini API, regardless of .env settings.
+    app.dependency_overrides[api_get_synthesis_service] = lambda: SynthesisService(provider=MockSynthesisProvider())
+    test_client = TestClient(app)
+    yield test_client
+    app.dependency_overrides.pop(api_get_synthesis_service, None)
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +223,7 @@ def test_contract_provider_timeout_fallback(client, monkeypatch):
         assert len(data["claim_citations"]) == 0
         assert data["synthesis_failure_reason"] is not None
     finally:
-        app.dependency_overrides.pop(api_get_synthesis_service, None)
+        app.dependency_overrides[api_get_synthesis_service] = lambda: SynthesisService(provider=MockSynthesisProvider())
 
 
 # ---------------------------------------------------------------------------
@@ -245,4 +250,4 @@ def test_contract_unsupported_claim_rejected(client, monkeypatch):
         assert len(data["claim_citations"]) == 0
         assert "not substantiated by the retrieved evidence" in data["answer_text"]
     finally:
-        app.dependency_overrides.pop(api_get_synthesis_service, None)
+        app.dependency_overrides[api_get_synthesis_service] = lambda: SynthesisService(provider=MockSynthesisProvider())

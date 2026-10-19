@@ -45,6 +45,7 @@ class DenseEmbedder:
             return np.empty((0, DEFAULT_EMBEDDING_DIM), dtype=np.float32)
 
         self._load_model()
+        assert self._model is not None
         embeddings = self._model.encode(
             texts,
             batch_size=batch_size,
@@ -68,6 +69,7 @@ class DenseEmbedder:
             return np.empty((0,), dtype=np.float32)
 
         self._load_model()
+        assert self._model is not None
         # BGE models can take query as plain text or with prompt if needed, standard retrieval uses plain or 'Represent this sentence for searching relevant passages: '
         # BGE v1.5 standard evaluation uses direct text without compulsory prefix or standard instruction
         embedding = self._model.encode(

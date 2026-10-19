@@ -9,7 +9,7 @@ export const API_BASE_URL: string =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, '') ||
   'http://127.0.0.1:8000';
 
-const DEFAULT_TIMEOUT_MS = 15000;
+const DEFAULT_TIMEOUT_MS = 35000;
 
 /**
  * Executes health probe against GET /health.

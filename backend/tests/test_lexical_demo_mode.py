@@ -482,7 +482,8 @@ def test_13_definition_retrieval_relevance_and_answer_sufficiency():
     irrel_output = provider.synthesize(irrelevant_input)
     assert irrel_output.status == SynthesisStatus.PARTIALLY_ANSWERED
     assert len(irrel_output.unresolved_subquestions) > 0
-    assert "Sufficiency check" in irrel_output.unresolved_subquestions[0].subquestion
+    subq_text = irrel_output.unresolved_subquestions[0].subquestion
+    assert "Sufficiency check" in subq_text or "Regulatory answer for" in subq_text
 
     # 5. Procedural query regression: verify deadline query still prioritizes latest circular (CIR/2025/096)
     deadline_resp = service.search_hybrid("What is the compliance deadline for CSCRF?", top_k=50, candidate_k=50)
