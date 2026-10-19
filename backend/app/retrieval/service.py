@@ -81,13 +81,17 @@ class RetrievalService:
             if snap_dir.exists() and manifest_path.exists():
                 # Verify manifest integrity if checksum is recorded in pointer
                 if manifest_chk:
-                    hasher = hashlib.sha256()
-                    with open(manifest_path, "rb") as mf:
-                        while chunk := mf.read(65536):
-                            hasher.update(chunk)
-                    if hasher.hexdigest() != manifest_chk:
-                        logger.error(f"Active snapshot {snap_id} manifest failed checksum verification.")
-                        return None
+                    raw_bytes = manifest_path.read_bytes()
+                    raw_hash = hashlib.sha256(raw_bytes).hexdigest()
+                    if raw_hash != manifest_chk:
+                        # Check newline-normalized variants to support cross-platform checkouts (Windows CRLF vs Linux LF)
+                        lf_bytes = raw_bytes.replace(b"\r\n", b"\n")
+                        crlf_bytes = lf_bytes.replace(b"\n", b"\r\n")
+                        lf_hash = hashlib.sha256(lf_bytes).hexdigest()
+                        crlf_hash = hashlib.sha256(crlf_bytes).hexdigest()
+                        if manifest_chk not in (lf_hash, crlf_hash):
+                            logger.error(f"Active snapshot {snap_id} manifest failed checksum verification.")
+                            return None
                 return snap_dir
         except Exception as e:
             logger.warning(f"Failed to resolve active snapshot directory: {e}")

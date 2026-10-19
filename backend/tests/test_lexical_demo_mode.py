@@ -209,3 +209,65 @@ def test_10_app_startup_without_sqlalchemy():
     res = subprocess.run(cmd, cwd=str(project_root), capture_output=True, text=True)
     assert res.returncode == 0, f"Subprocess failed with code {res.returncode}:\nStdout: {res.stdout}\nStderr: {res.stderr}"
     assert "SUCCESS" in res.stdout
+
+
+def test_11_cross_platform_manifest_checksum_and_retrieval(tmp_path):
+    """
+    Verify that RetrievalService resolves the snapshot and successfully indexes passages
+    even when files have Linux LF line endings while active_snapshot.json has Windows CRLF checksum.
+    Also verifies that a genuinely tampered manifest is still rejected.
+    """
+    from app.retrieval.service import RetrievalService
+    from pathlib import Path
+    import json
+
+    real_snap_dir = Path("data/indexes/snapshots/snap_20261011_104512_23a014")
+    real_pointer_file = Path("data/indexes/active_snapshot.json")
+
+    # Set up isolated index directory mimicking Linux git checkout (LF only)
+    fake_indexes = tmp_path / "indexes"
+    fake_snap = fake_indexes / "snapshots" / "snap_20261011_104512_23a014"
+    fake_snap.mkdir(parents=True)
+
+    # Write snapshot files with strict LF line endings
+    for fname in ("manifest.json", "chunks.json", "documents.json"):
+        src = real_snap_dir / fname
+        data = src.read_bytes().replace(b"\r\n", b"\n")
+        (fake_snap / fname).write_bytes(data)
+
+    # Copy active pointer with Windows CRLF manifest checksum as committed
+    fake_pointer = fake_indexes / "active_snapshot.json"
+    fake_pointer.write_bytes(real_pointer_file.read_bytes())
+
+    # Empty processed directory to simulate Docker.demo container
+    empty_processed = tmp_path / "processed"
+    empty_processed.mkdir()
+
+    # 1. RetrievalService must resolve snapshot and load real documents and chunks
+    service = RetrievalService(
+        processed_dir=empty_processed,
+        indexes_dir=fake_indexes,
+        retrieval_mode="lexical_only",
+    )
+    docs_count, chunks_count = service.load_and_index_corpus()
+    assert docs_count == 5, f"Expected 5 documents, got {docs_count}"
+    assert chunks_count == 168, f"Expected 168 chunks, got {chunks_count}"
+
+    # 2. Must retrieve actual circular passages for regulatory queries
+    res = service.search("Cybersecurity and Cyber Resilience Framework", top_k=3)
+    assert res.total_results > 0, "Expected non-zero results from active snapshot"
+    assert len(res.results) > 0
+    assert any("CSCRF" in r.text or "Cybersecurity" in r.text for r in res.results)
+
+    # 3. Verify that true content tampering is still strictly rejected
+    tampered_manifest = fake_snap / "manifest.json"
+    manifest_data = json.loads(tampered_manifest.read_text(encoding="utf-8"))
+    manifest_data["total_chunks"] = 9999
+    tampered_manifest.write_text(json.dumps(manifest_data), encoding="utf-8")
+
+    tampered_service = RetrievalService(
+        processed_dir=empty_processed,
+        indexes_dir=fake_indexes,
+        retrieval_mode="lexical_only",
+    )
+    assert tampered_service.get_active_snapshot_dir() is None, "Tampered manifest must be rejected"
