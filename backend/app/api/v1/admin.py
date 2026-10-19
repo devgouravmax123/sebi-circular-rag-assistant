@@ -17,7 +17,6 @@ from app.persistence.interfaces import (
     PersistenceError,
     ConnectionStorageError,
 )
-from app.persistence.postgres import PostgresStorageRepositoryFactory
 from app.persistence.file_repo import FileStorageRepositoryFactory
 from app.schemas.ingestion_job import (
     IngestionJobRecord,
@@ -53,6 +52,7 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 def get_repository_factory(settings: Settings = Depends(get_settings)) -> StorageRepositoryFactory:
     """Dependency returning the active StorageRepositoryFactory (PostgreSQL or File)."""
     if settings.is_database_enabled and settings.database_url:
+        from app.persistence.postgres import PostgresStorageRepositoryFactory
         return PostgresStorageRepositoryFactory(settings.database_url)
     return FileStorageRepositoryFactory(processed_dir=settings.processed_dir)
 

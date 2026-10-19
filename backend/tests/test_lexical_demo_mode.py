@@ -165,3 +165,47 @@ def test_9_demo_requirements_contains_numpy():
     assert req_path.exists(), "backend/requirements-demo.txt must exist"
     req_text = req_path.read_text(encoding="utf-8")
     assert "numpy" in req_text, "requirements-demo.txt must include numpy"
+
+
+def test_10_app_startup_without_sqlalchemy():
+    """Verify app imports and startup succeed cleanly when sqlalchemy is completely unavailable."""
+    import sys
+    import subprocess
+    from pathlib import Path
+
+    # Determine stable absolute path to project root and backend directory
+    project_root = Path(__file__).resolve().parent.parent.parent
+    backend_dir = project_root / "backend"
+
+    # Run in a separate subprocess to ensure clean module isolation
+    cmd = [
+        sys.executable,
+        "-c",
+        (
+            f"import sys, os\n"
+            f"from pathlib import Path\n"
+            f"os.environ['RETRIEVAL_MODE'] = 'lexical_only'\n"
+            f"os.environ['SYNTHESIS_PROVIDER'] = 'mock'\n"
+            f"os.environ['APP_ENV'] = 'production'\n"
+            f"os.environ['ADMIN_API_KEY'] = 'test_secret_key_at_least_16_chars'\n"
+            f"sys.path.insert(0, r'{backend_dir}')\n"
+            f"# Block all database dependencies\n"
+            f"for mod in ['sqlalchemy', 'sqlalchemy.orm', 'sqlalchemy.exc', 'asyncpg', 'psycopg', 'psycopg2', 'alembic', 'pgvector']:\n"
+            f"    sys.modules[mod] = None\n"
+            f"import app.main\n"
+            f"from fastapi.testclient import TestClient\n"
+            f"client = TestClient(app.main.app)\n"
+            f"r1 = client.get('/health')\n"
+            f"assert r1.status_code == 200, f'health failed: {{r1.status_code}}'\n"
+            f"r2 = client.get('/ready')\n"
+            f"assert r2.status_code == 200, f'ready failed: {{r2.status_code}}'\n"
+            f"r3 = client.post('/api/v1/query', json={{'query': 'What is CSCRF?'}})\n"
+            f"assert r3.status_code == 200, f'query failed: {{r3.status_code}}'\n"
+            f"r4 = client.get('/api/v1/admin/jobs', headers={{'X-Admin-Key': 'test_secret_key_at_least_16_chars'}})\n"
+            f"assert r4.status_code == 200, f'admin failed: {{r4.status_code}}'\n"
+            f"print('SUCCESS')\n"
+        ),
+    ]
+    res = subprocess.run(cmd, cwd=str(project_root), capture_output=True, text=True)
+    assert res.returncode == 0, f"Subprocess failed with code {res.returncode}:\nStdout: {res.stdout}\nStderr: {res.stderr}"
+    assert "SUCCESS" in res.stdout
