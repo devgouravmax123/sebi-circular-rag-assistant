@@ -1,4 +1,4 @@
-import type { QueryResponse, QueryError, AnswerDisposition } from '../types/query';
+import type { QueryResponse, QueryError, AnswerDisposition, SynthesisStatus } from '../types/query';
 import { EvidenceCard } from './EvidenceCard';
 
 interface ResultsPanelProps {
@@ -7,6 +7,44 @@ interface ResultsPanelProps {
   response: QueryResponse | null;
   onRetry?: () => void;
 }
+
+const SYNTHESIS_STATUS_CONFIG: Partial<Record<SynthesisStatus, { label: string; bg: string; text: string; border: string; desc: string }>> = {
+  FULLY_ANSWERED: {
+    label: 'Fully Supported by Evidence',
+    bg: 'bg-emerald-950/80',
+    text: 'text-emerald-300',
+    border: 'border-emerald-700/60',
+    desc: 'The synthesized answer is completely supported by retrieved passages (reflects corpus evidence, not universal legal currency).',
+  },
+  PARTIALLY_ANSWERED: {
+    label: 'Partially Answered (Gaps Disclosed)',
+    bg: 'bg-amber-950/80',
+    text: 'text-amber-300',
+    border: 'border-amber-700/60',
+    desc: 'Some parts of the query are addressed by retrieved evidence; remaining gaps are explicitly disclosed.',
+  },
+  ABSTAINED: {
+    label: 'Controlled Abstention',
+    bg: 'bg-slate-900',
+    text: 'text-slate-300',
+    border: 'border-slate-700',
+    desc: 'The assistant abstained safely from generating an answer due to insufficient or superseded evidence.',
+  },
+  PROVIDER_FAILED: {
+    label: 'Synthesis Service Unavailable',
+    bg: 'bg-rose-950/80',
+    text: 'text-rose-300',
+    border: 'border-rose-700/60',
+    desc: 'Answer synthesis encountered an error or timeout; verified excerpts remain intact.',
+  },
+  UNSUPPORTED_CLAIMS_REJECTED: {
+    label: 'Unsupported Assertions Rejected',
+    bg: 'bg-rose-950/80',
+    text: 'text-rose-300',
+    border: 'border-rose-700/60',
+    desc: 'Draft synthesis contained assertions not substantiated by corpus excerpts and was rejected.',
+  },
+};
 
 const DISPOSITION_CONFIG: Record<AnswerDisposition, { label: string; bg: string; text: string; border: string; description: string }> = {
   VERIFIED_HISTORICAL_EXCERPTS: {
@@ -190,6 +228,99 @@ export const ResultsPanel = ({
           <span>{response.pilot_corpus_scope_limitation}</span>
         </div>
       </div>
+
+      {/* Synthesized Direct Answer Section */}
+      {Boolean(response.answer_text && response.answer_text.trim()) && (() => {
+        const statusKey = response.synthesis_status as SynthesisStatus | undefined;
+        const synthCfg =
+          (statusKey && SYNTHESIS_STATUS_CONFIG[statusKey]) || {
+            label: response.synthesis_status || 'Answer Generated',
+            bg: 'bg-cyan-950/80',
+            text: 'text-cyan-300',
+            border: 'border-cyan-700/60',
+            desc: 'Direct grounded synthesis generated from retrieved evidence.',
+          };
+
+        const showFailureReason =
+          Boolean(response.synthesis_failure_reason) &&
+          (response.synthesis_status === 'PROVIDER_FAILED' ||
+            response.synthesis_status === 'UNSUPPORTED_CLAIMS_REJECTED' ||
+            response.synthesis_status === 'ABSTAINED');
+
+        return (
+          <div
+            data-testid="direct-answer-section"
+            className="bg-slate-900/90 border border-slate-700/80 rounded-2xl p-5 sm:p-6 shadow-xl backdrop-blur-sm space-y-4"
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="text-xs uppercase tracking-wider text-cyan-400 font-bold flex items-center gap-1.5">
+                  <svg className="w-4 h-4 text-cyan-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                  </svg>
+                  Direct Grounded Answer
+                </span>
+              </div>
+
+              {response.synthesis_status && (
+                <span
+                  data-testid="synthesis-status-badge"
+                  className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-semibold border ${synthCfg.bg} ${synthCfg.text} ${synthCfg.border}`}
+                  title={synthCfg.desc}
+                >
+                  {synthCfg.label}
+                </span>
+              )}
+            </div>
+
+            {/* Answer Content */}
+            <div className="prose prose-invert max-w-none">
+              <p
+                data-testid="direct-answer-text"
+                className="text-sm sm:text-base text-slate-100 leading-relaxed whitespace-pre-wrap font-sans select-text"
+              >
+                {response.answer_text}
+              </p>
+            </div>
+
+            {/* Unresolved Subquestions (Compact View) */}
+            {response.unresolved_subquestions && response.unresolved_subquestions.length > 0 && (
+              <div
+                data-testid="unresolved-subquestions-section"
+                className="mt-3 bg-slate-950/70 border border-amber-900/40 rounded-xl p-3.5 space-y-2 text-xs"
+              >
+                <span className="font-semibold text-amber-400 flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Unresolved Sub-questions ({response.unresolved_subquestions.length})
+                </span>
+                <ul className="space-y-1.5 pl-1">
+                  {response.unresolved_subquestions.map((subq, idx) => (
+                    <li key={idx} className="text-slate-300">
+                      <span className="font-medium text-amber-200">{subq.subquestion}</span>
+                      <span className="text-slate-400 text-[11px] block sm:inline sm:ml-2">
+                        — {subq.reason}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Safe Failure Reason if useful */}
+            {showFailureReason && (
+              <div
+                data-testid="synthesis-failure-reason"
+                className="mt-2 bg-rose-950/40 border border-rose-900/50 rounded-lg p-2.5 text-xs text-rose-300"
+              >
+                <span className="font-semibold text-rose-400">Synthesis Note: </span>
+                {response.synthesis_failure_reason}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Primary Verified Evidence Section */}
       {hasVerified && (

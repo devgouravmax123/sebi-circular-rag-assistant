@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ValidatedExcerptItem, RegulatoryStatus } from '../types/query';
 
 interface EvidenceCardProps {
@@ -36,15 +37,19 @@ const STATUS_BADGE_CONFIG: Record<RegulatoryStatus, { label: string; bg: string;
     desc: 'Background or reference passage without operative mandate changes.',
   },
   UNRESOLVED: {
-    label: 'UNRESOLVED PILOT STATUS',
+    label: 'UNRESOLVED WITHIN PILOT SCOPE',
     bg: 'bg-purple-950/80',
     text: 'text-purple-300',
     border: 'border-purple-800/60',
-    desc: 'Corpus text verified; active legal currency not established beyond 5-doc pilot.',
+    desc: 'Passage verified from SEBI circular; active legal currency is not established beyond the 5-document pilot corpus.',
   },
 };
 
+const TRUNCATION_CHAR_LIMIT = 280;
+
 export const EvidenceCard = ({ excerpt, index, isHistorical = false }: EvidenceCardProps) => {
+  const [isExpanded, setIsExpanded] = useState<boolean>(false);
+
   const statusCfg = STATUS_BADGE_CONFIG[excerpt.regulatory_status] || {
     label: excerpt.regulatory_status || 'UNKNOWN',
     bg: 'bg-slate-900',
@@ -57,6 +62,11 @@ export const EvidenceCard = ({ excerpt, index, isHistorical = false }: EvidenceC
     excerpt.page_start === excerpt.page_end
       ? `Page ${excerpt.page_start}`
       : `Pages ${excerpt.page_start}–${excerpt.page_end}`;
+
+  const isLong = excerpt.excerpt_text.length > TRUNCATION_CHAR_LIMIT;
+  const displayedText = isLong && !isExpanded
+    ? `${excerpt.excerpt_text.slice(0, TRUNCATION_CHAR_LIMIT).trim()}...`
+    : excerpt.excerpt_text;
 
   return (
     <div
@@ -120,8 +130,29 @@ export const EvidenceCard = ({ excerpt, index, isHistorical = false }: EvidenceC
           <span className="font-mono text-[10px] text-slate-600">{excerpt.source_chunk_id}</span>
         </div>
         <p className="text-xs sm:text-sm text-slate-200 font-mono leading-relaxed whitespace-pre-wrap select-text">
-          {excerpt.excerpt_text}
+          {displayedText}
         </p>
+        {isLong && (
+          <div className="mt-2 pt-2 border-t border-slate-900 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setIsExpanded((prev) => !prev)}
+              className="text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1 cursor-pointer focus:outline-none focus:ring-1 focus:ring-cyan-500 rounded px-1.5 py-0.5"
+              aria-expanded={isExpanded}
+              aria-label={isExpanded ? 'Collapse excerpt text' : 'Expand full excerpt text'}
+            >
+              <span>{isExpanded ? 'Show less' : 'Show full passage'}</span>
+              <svg
+                className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Status Reason & Acting Documents Provenance */}
