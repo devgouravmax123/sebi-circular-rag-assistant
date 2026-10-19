@@ -4,6 +4,7 @@ Corpus loader and retrieval service for the processed SEBI circulars.
 import hashlib
 import json
 import logging
+import re
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Any, TYPE_CHECKING
 
@@ -243,6 +244,48 @@ class RetrievalService:
 
         return False
 
+    @staticmethod
+    def preprocess_query(query: str) -> str:
+        """
+        Preprocesses a natural language query for optimal BM25 matching:
+        1. Filters conversational question stop-words (e.g. 'what', 'is', 'how') if substantive terms exist,
+           preventing low-frequency stop-words from inflating irrelevant template/checklist chunks.
+        2. Expands key domain acronyms (e.g. 'cscrf' -> 'cscrf cybersecurity cyber resilience framework')
+           so foundational definition passages match effectively.
+        """
+        if not query:
+            return ""
+        tokens = [t.lower() for t in re.findall(r"[a-zA-Z0-9]+", query)]
+        if not tokens:
+            return query
+
+        # Conversational question framing words that distort BM25 scoring when rare
+        question_stop_words = {
+            "what", "which", "where", "when", "whose", "whom", "who", "why", "how",
+            "is", "are", "was", "were", "be", "been", "being", "the", "a", "an",
+            "does", "did", "do", "has", "have", "had", "define", "meaning", "explain",
+            "describe", "overview", "about",
+        }
+
+        substantive = [t for t in tokens if t not in question_stop_words]
+        active_tokens = substantive if substantive else tokens
+
+        # Domain acronym expansions
+        expansions = {
+            "cscrf": ["cscrf", "cybersecurity", "cyber", "resilience", "framework"],
+        }
+
+        expanded_tokens: List[str] = []
+        for t in active_tokens:
+            if t in expansions:
+                for exp in expansions[t]:
+                    if exp not in expanded_tokens:
+                        expanded_tokens.append(exp)
+            else:
+                expanded_tokens.append(t)
+
+        return " ".join(expanded_tokens)
+
     def search(
         self,
         query: str,
@@ -254,7 +297,9 @@ class RetrievalService:
         """
         if not self._is_indexed:
             self.load_and_index_corpus()
-        return self.bm25_index.search(query=query, top_k=top_k, filters=filters)
+        preprocessed = self.preprocess_query(query)
+        search_q = preprocessed if preprocessed.strip() else query
+        return self.bm25_index.search(query=search_q, top_k=top_k, filters=filters)
 
     def search_dense(
         self,

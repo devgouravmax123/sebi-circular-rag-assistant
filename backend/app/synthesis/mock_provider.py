@@ -132,10 +132,36 @@ class MockSynthesisProvider(SynthesisProvider):
                 )
             )
 
-        # 6. Multi-part coverage assessment
+        # 6. Topical coverage and answer sufficiency assessment
         unresolved: List[UnresolvedSubquestion] = []
         status = SynthesisStatus.FULLY_ANSWERED
 
+        # (a) Check if the synthesized claims substantively cover the key concepts of the query
+        # Prevent irrelevant evidence from receiving FULLY_ANSWERED status merely because citations pass mechanical checks.
+        query_substantive = extract_keywords_from_claim(query)
+        # Exclude pure question meta-words from sufficiency calculation
+        query_substantive = [
+            kw for kw in query_substantive
+            if kw not in {"what", "which", "where", "when", "how", "define", "meaning", "explain", "describe", "overview"}
+        ]
+        if query_substantive and answer_paragraphs:
+            combined_claims_text = " ".join(answer_paragraphs).lower()
+            matched_query_kw = [kw for kw in query_substantive if kw in combined_claims_text]
+            coverage = len(matched_query_kw) / len(query_substantive)
+            if coverage < 0.40:
+                missing_kw = [kw for kw in query_substantive if kw not in matched_query_kw]
+                unresolved.append(
+                    UnresolvedSubquestion(
+                        subquestion=f"Sufficiency check for query subject: '{query}'",
+                        reason=(
+                            f"Retrieved evidence does not substantively define or explain key query concepts "
+                            f"(coverage {coverage:.0%}, missing {missing_kw[:3]})."
+                        ),
+                    )
+                )
+                status = SynthesisStatus.PARTIALLY_ANSWERED
+
+        # (b) Multi-part coverage assessment
         if is_multipart:
             # Identify secondary question clause
             parts = re.split(r"\band\s+(?:what|how|when|which)\b", query, flags=re.IGNORECASE)

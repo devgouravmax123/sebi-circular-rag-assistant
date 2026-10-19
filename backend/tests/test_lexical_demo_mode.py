@@ -388,3 +388,104 @@ def test_12_end_to_end_query_safety_gate_with_snapshot_only(tmp_path):
         assert data["retrieval_candidate_count"] > 0
     finally:
         app.dependency_overrides.clear()
+
+
+def test_13_definition_retrieval_relevance_and_answer_sufficiency():
+    """
+    Verify that:
+    1. 'What is CSCRF?' prioritizes foundational definition passages (p13_11 or p31_25)
+       over procedural audit-report templates or checklist parameters.
+    2. Foundational definition chunks appear in the top-ranked retrieved results.
+    3. Mock synthesis assigns FULLY_ANSWERED when definition evidence substantively answers the query.
+    4. Mock synthesis downgrades to PARTIALLY_ANSWERED when evidence lacks substantive coverage.
+    5. Procedural queries (deadlines, ISO 27001) preserve their dedicated priority orders.
+    """
+    from app.retrieval.service import RetrievalService
+    from app.grounding.relevance import filter_relevant_candidates
+    from app.synthesis.mock_provider import MockSynthesisProvider
+    from app.schemas.synthesis import SynthesisInput, SynthesisStatus, SynthesisEvidenceItem
+    from pathlib import Path
+
+    indexes_dir = Path("data/indexes")
+    processed_dir = Path("data/processed")
+
+    service = RetrievalService(
+        processed_dir=processed_dir,
+        indexes_dir=indexes_dir,
+        retrieval_mode="lexical_only",
+    )
+    docs_cnt, chunks_cnt = service.load_and_index_corpus()
+    assert docs_cnt == 5
+    assert chunks_cnt == 168
+
+    # 1. Retrieval for 'What is CSCRF?'
+    retrieval_resp = service.search_hybrid("What is CSCRF?", top_k=50, candidate_k=50)
+    assert retrieval_resp.total_results > 0
+
+    # 2. Relevance filtering and definition intent prioritization
+    filtered, intent, assessments = filter_relevant_candidates("What is CSCRF?", retrieval_resp.results)
+    assert len(filtered) > 0
+
+    # Foundational definition chunks containing formulation/goals content must be prioritized in top results
+    top_chunks = filtered[:2]
+    assert any(
+        any(phrase in c.text.lower() for phrase in ["has been formulated", "formulated to consolidate", "resiliency goals namely"])
+        for c in top_chunks
+    ), "Expected foundational definition or framework goals text in top results"
+
+    # Top chunk text must contain substantive definition phrasing
+    top_chunk = filtered[0]
+    assert any(
+        phrase in top_chunk.text.lower()
+        for phrase in ["formulated", "cyber resilience framework", "cyber resiliency goals", "cscrf"]
+    )
+
+    # 3. Answer sufficiency: MockSynthesisProvider with responsive evidence receives FULLY_ANSWERED
+    provider = MockSynthesisProvider()
+    responsive_input = SynthesisInput(
+        query="What is CSCRF?",
+        evidence_items=[
+            SynthesisEvidenceItem(
+                chunk_id=top_chunk.chunk_id,
+                document_id=top_chunk.document_id,
+                text=top_chunk.text,
+                regulatory_status="ACTIVE_CURRENT",
+                status_reason="Active foundational circular",
+            )
+        ],
+    )
+    resp_output = provider.synthesize(responsive_input)
+    assert resp_output.status == SynthesisStatus.FULLY_ANSWERED
+    assert len(resp_output.unresolved_subquestions) == 0
+    # Meaningful synthesized content assertion: answer must assert CSCRF formulation
+    assert any(
+        phrase in resp_output.answer.lower()
+        for phrase in ["cyber resilience framework", "cscrf", "formulated"]
+    )
+    assert len(resp_output.claims) > 0
+    assert any(top_chunk.chunk_id in c.supporting_chunk_ids for c in resp_output.claims)
+
+    # 4. Answer sufficiency safeguard: MockSynthesisProvider with irrelevant evidence is downgraded
+    # Even if citation verification passes, answer must be downgraded to PARTIALLY_ANSWERED
+    irrelevant_input = SynthesisInput(
+        query="What is CSCRF?",
+        evidence_items=[
+            SynthesisEvidenceItem(
+                chunk_id="sebi_sample_chunk_other",
+                document_id="sebi_sample_doc",
+                text="The audit committee shall meet quarterly to review financial balance sheets and dividend distributions.",
+                regulatory_status="ACTIVE_CURRENT",
+                status_reason="Active unrelated provision",
+            )
+        ],
+    )
+    irrel_output = provider.synthesize(irrelevant_input)
+    assert irrel_output.status == SynthesisStatus.PARTIALLY_ANSWERED
+    assert len(irrel_output.unresolved_subquestions) > 0
+    assert "Sufficiency check" in irrel_output.unresolved_subquestions[0].subquestion
+
+    # 5. Procedural query regression: verify deadline query still prioritizes latest circular (CIR/2025/096)
+    deadline_resp = service.search_hybrid("What is the compliance deadline for CSCRF?", top_k=50, candidate_k=50)
+    deadline_filtered, deadline_intent, _ = filter_relevant_candidates("What is the compliance deadline for CSCRF?", deadline_resp.results)
+    assert len(deadline_filtered) > 0
+    assert "2025_096" in deadline_filtered[0].document_id

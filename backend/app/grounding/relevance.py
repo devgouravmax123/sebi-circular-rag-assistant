@@ -346,4 +346,39 @@ def filter_relevant_candidates(
 
         relevant_candidates.sort(key=iso_priority_key)
 
+    # For definition, overview, or foundational scope queries (e.g. "What is CSCRF?", "Overview of CSCRF"):
+    # Prioritize foundational introductory passages (e.g. Page 13 formulation, Page 31 goals/framework)
+    # over procedural audit-report templates, incident checklists, or CCI parameter tables.
+    # Must NOT override CURRENT_STATUS_OR_DEADLINE or PROVISION_SPECIFIC_REQUIREMENT (e.g. deadline queries).
+    is_definition_query = bool(
+        re.search(
+            r"^\s*(?:what\s+is\s+(?:the\s+)?cscrf|what\s+are\s+the\s+cyber\s+resilience\s+goals|define\s+cscrf|meaning\s+of\s+cscrf|overview\s+of\s+cscrf|structure\s+of\s+cscrf|purpose\s+of\s+cscrf|explain\s+cscrf)\b",
+            q_lower,
+        )
+    )
+    if (
+        is_definition_query
+        and intent not in (QueryIntent.CURRENT_STATUS_OR_DEADLINE, QueryIntent.PROVISION_SPECIFIC_REQUIREMENT)
+        and relevant_candidates
+    ):
+        def definition_priority_key(item: RetrievalResult) -> Tuple[int, float]:
+            txt = item.text.lower()
+            # Priority 0: Foundational definition & framework goals passages matched by content phrases
+            if any(
+                phrase in txt
+                for phrase in [
+                    "has been formulated",
+                    "formulated to consolidate",
+                    "resiliency goals namely",
+                    "structure of cscrf",
+                ]
+            ):
+                return (0, -item.score)
+            # Deprioritize audit checklist templates, parameter tables, reporting formats
+            if "parameter" in txt or "audit report" in txt or "annexure" in txt or "checklist" in txt:
+                return (2, -item.score)
+            return (1, -item.score)
+
+        relevant_candidates.sort(key=definition_priority_key)
+
     return relevant_candidates, intent, assessments
