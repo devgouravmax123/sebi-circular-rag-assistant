@@ -271,3 +271,120 @@ def test_11_cross_platform_manifest_checksum_and_retrieval(tmp_path):
         retrieval_mode="lexical_only",
     )
     assert tampered_service.get_active_snapshot_dir() is None, "Tampered manifest must be rejected"
+
+
+def test_12_end_to_end_query_safety_gate_with_snapshot_only(tmp_path):
+    """
+    Verify that in an environment mimicking Docker.demo (only active snapshot present,
+    empty processed_dir), POST /api/v1/query succeeds end-to-end with verified/qualified
+    excerpts instead of abstaining due to an empty validator corpus.
+    Also verifies that unknown or fabricated chunk IDs are rejected by the safety gate.
+    """
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.api.v1.query import get_retrieval_service, get_safety_gate, _retrieval_service, _safety_gate
+    from app.retrieval.service import RetrievalService
+    from app.grounding.safety_gate import AnswerSafetyGate
+    from app.schemas.safety_gate import ExcerptDraftPayload, CandidateExcerptDraft
+    from app.schemas.query import AnswerDisposition
+    from pathlib import Path
+    import json
+
+    real_snap_dir = Path("data/indexes/snapshots/snap_20261011_104512_23a014")
+    real_pointer_file = Path("data/indexes/active_snapshot.json")
+
+    # Set up isolated index directory mimicking Linux git checkout (LF only)
+    fake_indexes = tmp_path / "indexes"
+    fake_snap = fake_indexes / "snapshots" / "snap_20261011_104512_23a014"
+    fake_snap.mkdir(parents=True)
+
+    for fname in ("manifest.json", "chunks.json", "documents.json"):
+        src = real_snap_dir / fname
+        data = src.read_bytes().replace(b"\r\n", b"\n")
+        (fake_snap / fname).write_bytes(data)
+
+    fake_pointer = fake_indexes / "active_snapshot.json"
+    fake_pointer.write_bytes(real_pointer_file.read_bytes())
+
+    # Empty processed directory (no circular chunk folders)
+    empty_processed = tmp_path / "processed"
+    empty_processed.mkdir()
+
+    # Create dedicated retrieval service pointing to snapshot
+    retrieval = RetrievalService(
+        processed_dir=empty_processed,
+        indexes_dir=fake_indexes,
+        retrieval_mode="lexical_only",
+    )
+    retrieval.load_and_index_corpus()
+    assert len(retrieval.chunks) == 168
+
+    # Create safety gate using the retrieval service's loaded corpus
+    from app.grounding.validator import CitationValidator
+    validator = CitationValidator(
+        processed_dir=empty_processed,
+        corpus_chunks={c.chunk_id: c for c in retrieval.chunks},
+        corpus_documents=retrieval.documents,
+    )
+    safety_gate = AnswerSafetyGate(
+        processed_dir=empty_processed,
+        validator=validator,
+        retrieval_service=retrieval,
+    )
+
+    # 1. Verify that genuine chunk ID passes safety gate verification
+    real_chunk = retrieval.chunks[0]
+    valid_payload = ExcerptDraftPayload(
+        query="CSCRF",
+        excerpts=[
+            CandidateExcerptDraft(
+                excerpt_id="excerpt_1",
+                source_chunk_id=real_chunk.chunk_id,
+                proposed_excerpt_text=real_chunk.text,
+            )
+        ],
+    )
+    gate_res = safety_gate.evaluate_draft(
+        payload=valid_payload,
+        retrieval_candidates={real_chunk.chunk_id},
+    )
+    assert gate_res.disposition in (
+        AnswerDisposition.VERIFIED_HISTORICAL_EXCERPTS,
+        AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS,
+    )
+    assert len(gate_res.verified_excerpts) == 1
+
+    # 2. Verify that unknown or fabricated chunk ID is strictly rejected
+    fabricated_payload = ExcerptDraftPayload(
+        query="CSCRF",
+        excerpts=[
+            CandidateExcerptDraft(
+                excerpt_id="excerpt_bad",
+                source_chunk_id="sebi_cscrf_fake_chunk_99999",
+                proposed_excerpt_text="some fabricated text",
+            )
+        ],
+    )
+    bad_res = safety_gate.evaluate_draft(
+        payload=fabricated_payload,
+        retrieval_candidates={"sebi_cscrf_fake_chunk_99999"},
+    )
+    assert bad_res.disposition == AnswerDisposition.CONTROLLED_ABSTENTION
+    assert len(bad_res.verified_excerpts) == 0
+
+    # 3. Test end-to-end API call via TestClient with dependency overrides
+    app.dependency_overrides[get_retrieval_service] = lambda: retrieval
+    app.dependency_overrides[get_safety_gate] = lambda: safety_gate
+    try:
+        client = TestClient(app)
+        res = client.post("/api/v1/query", json={"query": "What is CSCRF?", "top_k": 3})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["disposition"] in [
+            AnswerDisposition.VERIFIED_HISTORICAL_EXCERPTS.value,
+            AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS.value,
+        ]
+        assert len(data["verified_excerpts"]) > 0
+        assert data["retrieval_candidate_count"] > 0
+    finally:
+        app.dependency_overrides.clear()

@@ -16,6 +16,7 @@ from app.schemas.safety_gate import (
 )
 from app.retrieval.service import RetrievalService
 from app.grounding.safety_gate import AnswerSafetyGate
+from app.grounding.validator import CitationValidator
 from app.synthesis.service import SynthesisService, get_synthesis_service
 from app.core.rate_limiter import get_query_rate_limiter
 
@@ -55,11 +56,38 @@ def get_retrieval_service(settings: Settings = Depends(get_settings)) -> Retriev
     return _retrieval_service
 
 
-def get_safety_gate(settings: Settings = Depends(get_settings)) -> AnswerSafetyGate:
+def get_safety_gate(
+    settings: Settings = Depends(get_settings),
+    retrieval_service: Optional[RetrievalService] = Depends(get_retrieval_service),
+) -> AnswerSafetyGate:
     """Dependency provider for the shared AnswerSafetyGate instance."""
     global _safety_gate
-    if _safety_gate is None or str(_safety_gate.processed_dir) != settings.processed_dir:
-        _safety_gate = AnswerSafetyGate(processed_dir=settings.processed_dir)
+    retrieval = retrieval_service if retrieval_service is not None else get_retrieval_service()
+    # Check if safety gate cache needs initialization or refresh
+    expected_chunks = len(retrieval.chunks) if retrieval else 0
+    current_validator_chunks = (
+        len(_safety_gate.validator.corpus_chunks)
+        if _safety_gate and _safety_gate.validator and _safety_gate.validator.corpus_chunks
+        else 0
+    )
+    if (
+        _safety_gate is None
+        or str(_safety_gate.processed_dir) != settings.processed_dir
+        or (_safety_gate.retrieval_service is not retrieval)
+        or (expected_chunks > 0 and current_validator_chunks == 0)
+    ):
+        corpus_chunks = {c.chunk_id: c for c in retrieval.chunks} if retrieval and retrieval.chunks else None
+        corpus_docs = retrieval.documents if retrieval and retrieval.documents else None
+        validator = CitationValidator(
+            processed_dir=settings.processed_dir,
+            corpus_chunks=corpus_chunks,
+            corpus_documents=corpus_docs,
+        )
+        _safety_gate = AnswerSafetyGate(
+            processed_dir=settings.processed_dir,
+            validator=validator,
+            retrieval_service=retrieval,
+        )
     return _safety_gate
 
 
@@ -73,6 +101,8 @@ def build_response_narrative(
     include_superseded: bool,
     intent: Optional[QueryIntent] = None,
     domain: Optional[str] = None,
+    candidate_count: Optional[int] = None,
+    abstention_reason: Optional[str] = None,
 ) -> str:
     """
     Constructs a deterministic, accurate summary narrative matching the exact visible returned excerpts.
@@ -86,6 +116,11 @@ def build_response_narrative(
             return (
                 f"Controlled Abstention: All relevant excerpts in the {corpus_label} for this current-compliance query "
                 "are SUPERSEDED by subsequent circulars."
+            )
+        if candidate_count is not None and candidate_count > 0 and not verified_excerpts:
+            return (
+                f"Controlled Abstention: Candidate passages were retrieved from the {corpus_label}, "
+                "but failed server-side regulatory safety and quotation verification."
             )
         return f"Controlled Abstention: Zero candidate passages found in the {corpus_label} for this query."
 
@@ -290,6 +325,8 @@ async def query_cscrf(
         include_superseded=include_superseded,
         intent=intent,
         domain=request.domain,
+        candidate_count=gate_response.retrieval_candidate_count,
+        abstention_reason=gate_response.abstention_reason,
     )
 
     # 7. Execute Grounded LLM Synthesis over verified excerpts (Phase 8E)
