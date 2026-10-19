@@ -156,3 +156,12 @@ def test_8_hybrid_mode_still_works_as_default(client, monkeypatch):
     data = resp.json()
     assert data["technical_validation_passed"] is True
     assert len(data["verified_excerpts"]) > 0
+
+
+def test_9_demo_requirements_contains_numpy():
+    """Verify backend/requirements-demo.txt specifies numpy for interfaces type-checking."""
+    from pathlib import Path
+    req_path = Path(__file__).resolve().parent.parent / "requirements-demo.txt"
+    assert req_path.exists(), "backend/requirements-demo.txt must exist"
+    req_text = req_path.read_text(encoding="utf-8")
+    assert "numpy" in req_text, "requirements-demo.txt must include numpy"
