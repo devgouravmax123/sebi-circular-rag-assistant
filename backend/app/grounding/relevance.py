@@ -66,14 +66,36 @@ GENERIC_SECURITY_TERMS = {
 }
 
 
+# Prompt meta-instruction framing terms that do not represent substantive regulatory subject matter.
+# These terms appear when users paste instructions (e.g. "cite the circular identifier", "evidence", "excerpts").
+# Note: Regulatory terms like "requirements", "elements", "information", and "audit" are deliberately preserved.
+META_INSTRUCTION_TERMS = {
+    "according",
+    "available",
+    "pilot",
+    "excerpt",
+    "excerpts",
+    "retrieved",
+    "cite",
+    "citing",
+    "citation",
+    "citations",
+    "identifier",
+    "evidence",
+    "establish",
+    "explicitly",
+}
+
+
 def extract_substantive_query_tokens(query: str) -> List[str]:
     """
-    Extract informative topic keywords from a regulatory query, removing functional stop words.
+    Extract informative topic keywords from a regulatory query, removing functional stop words
+    and prompt meta-instruction framing terms.
     """
     return [
         w.lower()
         for w in re.findall(r"[a-zA-Z0-9]+", query)
-        if len(w) >= 3 and w.lower() not in STOP_WORDS
+        if len(w) >= 3 and w.lower() not in STOP_WORDS and w.lower() not in META_INSTRUCTION_TERMS
     ]
 
 
@@ -380,5 +402,59 @@ def filter_relevant_candidates(
             return (1, -item.score)
 
         relevant_candidates.sort(key=definition_priority_key)
+
+    # For audit report structure/content queries (e.g. "what elements must be included in an audit report?"):
+    # Prioritize operative Annexure-B structured format passages (executive summary, scope,
+    # root cause analysis, observations, sampling methodology) over circular index tables,
+    # SBOM side-references, or auditor credential checklists.
+    # Preserve index tables if query is specifically asking for circular titles, dates, or numbers.
+    is_index_focused_query = bool(
+        re.search(
+            r"\b(?:circular\s+titles?|circular\s+numbers?|date\s+of\s+issuance|issuance\s+dates?|table\s+of\s+contents|circular\s+index)\b",
+            q_lower,
+        )
+    )
+    is_audit_report_content_query = (
+        bool(re.search(r"\baudit\s+reports?\b", q_lower))
+        and bool(re.search(r"\b(?:elements?|content|contents|include|included|format|formats|structure|template|annexure|observations?)\b", q_lower))
+        and not is_index_focused_query
+    )
+
+    if is_audit_report_content_query and relevant_candidates:
+        def audit_report_priority_key(item: RetrievalResult) -> Tuple[int, float]:
+            txt = item.text.lower()
+            is_index_table = bool(
+                re.search(r"\btable\s*(?:\d+:|of\s+contents)\b|\bdate\s+of\s+issuance\b|\bcircular\s+title\s+circular\s+number\b", txt)
+            )
+            # Priority 0: Operative Annexure-B format content chunks
+            # Matches executive summary, terms of reference, root cause, impact analysis, open observations, sampling method
+            is_operative_annexure_b = (
+                ("annexure-b" in txt or "annexure b" in txt or "audit report" in txt)
+                and any(
+                    marker in txt
+                    for marker in [
+                        "executive summary",
+                        "scope of audit",
+                        "terms of reference",
+                        "root cause",
+                        "impact analysis",
+                        "open observations",
+                        "auditor recommendations",
+                        "sampling method",
+                        "sample size",
+                        "conflict of interest",
+                        "it committee for res",
+                    ]
+                )
+            )
+            if is_operative_annexure_b and not is_index_table:
+                return (0, -item.score)
+            # Priority 2: Pure index / metadata tables
+            if is_index_table:
+                return (2, -item.score)
+            # Priority 1: Other general audit provisions (e.g. auditor credentials, general reporting schedules)
+            return (1, -item.score)
+
+        relevant_candidates.sort(key=audit_report_priority_key)
 
     return relevant_candidates, intent, assessments

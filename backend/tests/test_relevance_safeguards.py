@@ -322,3 +322,126 @@ def test_adversarial_generic_cyber_terms_documented_related_excerpts(client):
     assert "Insufficient evidence" in data["abstention_reason"]
 
 # ---------------------------------------------------------------------------
+# Phase 8F.2.4: Targeted Audit Report & Section-Aware Ranking Regressions
+# ---------------------------------------------------------------------------
+
+def test_audit_report_instruction_heavy_query_surfaces_annexure_b(client):
+    """
+    Long prompt-instruction-heavy audit query must not have its substantive tokens diluted
+    by framing terms ('according', 'available', 'pilot', 'excerpt', 'cite', 'evidence', 'establish').
+    Must surface >= 5 candidates and rank Annexure-B structured format passages in top positions.
+    """
+    long_query = (
+        "According to the SEBI CSCRF circulars available in this pilot, what specific elements "
+        "must be included in an audit report? List only requirements supported by retrieved excerpts, "
+        "cite the circular identifier and page numbers, and explicitly identify any information the evidence does not establish."
+    )
+    response = client.post("/api/v1/query", json={"query": long_query, "top_k": 5})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["retrieval_candidate_count"] >= 5
+    assert len(data["verified_excerpts"]) >= 5
+    top_excerpts = [e["excerpt_text"].lower() for e in data["verified_excerpts"][:3]]
+    # Top verified excerpts must feature Annexure-B operative audit report sections
+    assert any(
+        "annexure-b" in txt or "annexure b" in txt or "terms of reference" in txt or "executive summary" in txt or "observations" in txt
+        for txt in top_excerpts
+    )
+
+
+def test_audit_report_concise_query_prioritizes_annexure_b(client):
+    """
+    Concise query must prioritize operative Annexure-B audit report template chunks over
+    pure circular index tables or general auditor-credential paragraphs.
+    """
+    concise_query = "What specific elements must be included in an audit report under SEBI CSCRF?"
+    response = client.post("/api/v1/query", json={"query": concise_query, "top_k": 5})
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["verified_excerpts"]) >= 5
+    # The top excerpt should not be the circular index table (pages 2-4)
+    top_chunk_id = data["verified_excerpts"][0]["source_chunk_id"]
+    assert "p2_1" not in top_chunk_id
+    # Annexure-B operative content must appear in top results
+    first_two_texts = [e["excerpt_text"].lower() for e in data["verified_excerpts"][:2]]
+    assert any("annexure" in txt or "audit" in txt or "terms of reference" in txt for txt in first_two_texts)
+
+
+def test_index_table_deprioritized_for_substantive_requirement_queries(client):
+    """
+    For substantive requirement queries, circular table of contents / index tables must be
+    deprioritized behind operative regulatory provisions.
+    """
+    query = "What are the specific requirements for root cause analysis in audit reports?"
+    response = client.post("/api/v1/query", json={"query": query, "top_k": 5})
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["verified_excerpts"]) > 0
+    top_ex = data["verified_excerpts"][0]
+    assert "table of contents" not in top_ex["excerpt_text"].lower()
+    assert "date of issuance" not in top_ex["excerpt_text"].lower()
+
+
+def test_index_focused_query_preserves_circular_index_priority(client):
+    """
+    Queries explicitly asking about circular titles, dates of issuance, or circular index tables
+    must preserve high priority for circular index tables.
+    """
+    query = "What is listed under Table 1: Index of Circulars with Date of Issuance?"
+    response = client.post("/api/v1/query", json={"query": query, "top_k": 5})
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["verified_excerpts"]) > 0
+    first_two = [e["excerpt_text"].lower() for e in data["verified_excerpts"][:2]]
+    assert any("date" in txt or "circular" in txt or "index" in txt for txt in first_two)
+
+
+def test_claim_verifier_rejects_unsupported_audit_claims():
+    """
+    Inspect that claim verification rejects claims asserting specific audit elements when
+    the cited chunk text is merely an index table or does not support the specific assertions.
+    """
+    from app.schemas.synthesis import (
+        SynthesisInput,
+        SynthesisOutput,
+        SynthesisStatus,
+        SynthesisEvidenceItem,
+        ClaimCitation,
+    )
+    from app.synthesis.verifier import sanitize_and_validate_synthesis_output
+
+    fake_index_evidence = SynthesisEvidenceItem(
+        chunk_id="sebi_cscrf_2025_119_p2_1",
+        document_id="sebi_cscrf_2025_119",
+        circular_number="SEBI/HO/ITD-1/ITD_APCIS/P/CIR/2025/119",
+        title="Table of Contents and Circular Index",
+        issue_date="2025-01-10",
+        sha256="abc",
+        page_start=2,
+        page_end=4,
+        text="Table 1: Index of Circulars. Date of Issuance. Circular Title Circular Number.",
+        regulatory_status=RegulatoryStatus.ACTIVE_CURRENT.value,
+        status_reason="Active baseline",
+        mapped_provisions=[],
+    )
+
+    unsupported_claim = ClaimCitation(
+        claim_text="The audit report must include an executive summary and comprehensive root cause analysis.",
+        supporting_chunk_ids=["sebi_cscrf_2025_119_p2_1"],
+    )
+
+    synth_input = SynthesisInput(
+        query="What elements must be included in an audit report?",
+        evidence_items=[fake_index_evidence],
+    )
+
+    synth_output = SynthesisOutput(
+        status=SynthesisStatus.FULLY_ANSWERED,
+        answer="The audit report must include an executive summary and comprehensive root cause analysis.",
+        claims=[unsupported_claim],
+    )
+
+    validated_output = sanitize_and_validate_synthesis_output(synth_output, synth_input)
+    assert validated_output.status == SynthesisStatus.UNSUPPORTED_CLAIMS_REJECTED
+    assert len(validated_output.claims) == 0
+    assert "Controlled Abstention" in validated_output.answer
