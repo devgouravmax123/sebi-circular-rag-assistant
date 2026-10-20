@@ -429,3 +429,90 @@ def test_api_provider_unavailable_returns_safe_structured_error(client):
         ]
     finally:
         app.dependency_overrides.pop(get_synthesis_service, None)
+
+
+# ==============================================================================
+# SECTION 4: Inflection & Morphological Normalization Regressions
+# ==============================================================================
+
+def test_claim_verification_singular_plural_inflection_supported():
+    """
+    Safe singular/plural or common inflection differences (e.g. 'responses' vs 'response',
+    'documented' vs 'documentary', 'provisions' vs 'provision') must be supported.
+    """
+    chunk_text = (
+        "Format for reporting of Cyber Security Audit: "
+        "1. Executive Summary. 2. Scope of Audit. 3. Management response and action plan. "
+        "4. List of documentary evidence submitted by RE."
+    )
+    # Claim uses plural 'responses' and participle 'documented', matching 'response' and 'documentary'
+    claim = "The audit report must include management responses and documented evidence."
+    supported, ratio, missing = verify_claim_support(claim, chunk_text)
+    assert supported is True
+    assert ratio >= 0.50
+    assert len(missing) == 0
+
+
+def test_claim_verification_unsupported_detail_still_fails():
+    """
+    A claim introducing novel, genuinely unsupported substantive details must still fail,
+    even with safe morphological matching in place.
+    """
+    chunk_text = (
+        "Format for reporting of Cyber Security Audit: "
+        "1. Executive Summary. 2. Scope of Audit. 3. Management response and action plan."
+    )
+    # Claim asserts biometric facial scans and hardware security modules
+    claim = "The audit report must mandate biometric facial scanning and hardware security modules."
+    supported, ratio, missing = verify_claim_support(claim, chunk_text)
+    assert supported is False
+    assert ratio < 0.50
+    assert "biometric" in missing or "facial" in missing
+
+
+def test_claim_verification_unsupported_number_still_fails():
+    """
+    A claim with unsupported numbers must be strictly rejected under numeric fidelity.
+    """
+    chunk_text = "All Qualified REs shall submit their audit reports within 30 days."
+    # Alter 30 days to 60 days
+    claim = "All Qualified REs shall submit their audit reports within 60 days."
+    supported, ratio, missing = verify_claim_support(claim, chunk_text)
+    assert supported is False
+    assert any("unsupported_number_60" in m for m in missing)
+
+
+def test_claim_verification_unsupported_negation_still_fails():
+    """
+    A claim asserting an exemption or negation not present in the passage must be rejected under polarity checks.
+    """
+    chunk_text = "All Qualified REs shall conduct annual cyber security audits."
+    claim = "All Qualified REs are exempted from annual cyber security audits."
+    supported, ratio, missing = verify_claim_support(claim, chunk_text)
+    assert supported is False
+    assert any("unsupported_polarity_exempted" in m for m in missing)
+
+
+def test_claim_verification_conservative_normalization_prevents_false_positives():
+    """
+    Ensure normalize_token() does not over-stem unrelated roots ending in -ing, -ed, -ary,
+    such as 'summary', 'primary', 'speed', 'need', 'during', 'spring'.
+    """
+    from app.synthesis.verifier import normalize_token
+    # False-positive over-stemming checks
+    assert normalize_token("summary") == "summary"
+    assert normalize_token("primary") == "primary"
+    assert normalize_token("speed") == "speed"
+    assert normalize_token("need") == "need"
+    assert normalize_token("during") == "during"
+    assert normalize_token("spring") == "spring"
+    assert normalize_token("basis") == "basis"
+    assert normalize_token("status") == "status"
+    assert normalize_token("analysis") == "analysis"
+
+    # Confirms that a claim relying on unrelated word stems fails support check
+    chunk_text = "The executive summary describes the primary controls of the network."
+    claim = "The report mandates higher speed and annual salary for technicians."
+    supported, ratio, missing = verify_claim_support(claim, chunk_text)
+    assert supported is False
+    assert "salary" in missing or "speed" in missing

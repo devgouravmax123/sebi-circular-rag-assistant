@@ -423,11 +423,13 @@ def filter_relevant_candidates(
     if is_audit_report_content_query and relevant_candidates:
         def audit_report_priority_key(item: RetrievalResult) -> Tuple[int, float]:
             txt = item.text.lower()
+            # Distinguish pure circular index tables from Annexure-B internal table of contents
             is_index_table = bool(
-                re.search(r"\btable\s*(?:\d+:|of\s+contents)\b|\bdate\s+of\s+issuance\b|\bcircular\s+title\s+circular\s+number\b", txt)
+                re.search(r"\btable\s*\d+:|\bdate\s+of\s+issuance\b|\bcircular\s+title\s+circular\s+number\b", txt)
+                or ("table of contents" in txt and "circular" in txt and "date" in txt)
             )
             # Priority 0: Operative Annexure-B format content chunks
-            # Matches executive summary, terms of reference, root cause, impact analysis, open observations, sampling method
+            # Matches executive summary, terms of reference, root cause, impact analysis, open observations, sampling method, summary of findings, auditor declaration
             is_operative_annexure_b = (
                 ("annexure-b" in txt or "annexure b" in txt or "audit report" in txt)
                 and any(
@@ -444,6 +446,9 @@ def filter_relevant_candidates(
                         "sample size",
                         "conflict of interest",
                         "it committee for res",
+                        "summary of findings",
+                        "auditor declaration",
+                        "auditor's declaration",
                     ]
                 )
             )

@@ -70,6 +70,37 @@ def extract_numeric_tokens(text: str) -> Set[str]:
     return set(re.findall(r"\b\d+(?:[.,]\d+)*\b", text.lower()))
 
 
+def normalize_token(token: str) -> str:
+    """
+    Deterministically normalizes a word token for safe singular/plural and conservative inflection matching.
+    Prevents aggressive over-stemming:
+    - Standard plurals: -ies -> -y, -es (after sibilants), trailing -s (excluding ss/us/is/as)
+    - Conservative explicit participle/adjective pairs only (e.g. documented/documentary -> document, reporting -> report)
+    Does not truncate unrelated root words (e.g. summary, primary, speed, during).
+    """
+    t = token.lower().strip()
+    if len(t) < 4:
+        return t
+    # Suffix: -ies -> -y (e.g. entities -> entity, categories -> category, policies -> policy)
+    if t.endswith("ies") and len(t) >= 5:
+        return t[:-3] + "y"
+    # Suffix: -es (e.g. processes -> process, boxes -> box, patches -> patch)
+    if t.endswith("es") and len(t) >= 6 and (
+        t.endswith("sses") or t.endswith("shes") or t.endswith("ches") or t.endswith("xes") or t.endswith("zes")
+    ):
+        return t[:-2]
+    # Suffix: -s (e.g. responses -> response, circulars -> circular, audits -> audit)
+    # Exclude words that naturally end in 'ss', 'us', 'is', 'as' (e.g. process, status, analysis, basis)
+    if t.endswith("s") and not t.endswith(("ss", "us", "is", "as")):
+        return t[:-1]
+    # Safe explicit participle/adjective inflections needed for regulatory audit reporting
+    if t in ("documented", "documentary"):
+        return "document"
+    if t == "reporting":
+        return "report"
+    return t
+
+
 def verify_claim_support(
     claim_text: str,
     chunk_text: str,
@@ -90,7 +121,7 @@ def verify_claim_support(
            ('security', 'risk', 'management', 'controls'). It must match at least 50% of the
            distinguishing specific keywords (or all specific keywords if fewer than 3).
        (d) Substantive keyword overlap: At least min_keyword_overlap (50%) of all substantive
-           keywords must appear in the chunk text.
+           keywords must appear in the chunk text (via exact word match or safe singular/plural/inflection match).
     """
     claim_norm = claim_text.strip().lower()
     chunk_norm = chunk_text.strip().lower()
@@ -120,7 +151,17 @@ def verify_claim_support(
     if not keywords:
         return True, 1.0, []
 
-    matched = [kw for kw in keywords if re.search(r"\b" + re.escape(kw) + r"\b", chunk_norm) is not None]
+    # Extract chunk words and their normalized stems for safe morphological matching
+    chunk_tokens = re.findall(r"[a-zA-Z0-9]+", chunk_norm)
+    chunk_stems = {normalize_token(w) for w in chunk_tokens}
+
+    def keyword_matches_chunk(kw: str) -> bool:
+        if re.search(r"\b" + re.escape(kw) + r"\b", chunk_norm) is not None:
+            return True
+        norm_kw = normalize_token(kw)
+        return norm_kw in chunk_stems
+
+    matched = [kw for kw in keywords if keyword_matches_chunk(kw)]
     overlap_ratio = len(matched) / len(keywords)
     missing = [kw for kw in keywords if kw not in matched]
 
@@ -130,7 +171,7 @@ def verify_claim_support(
     # 2d. Guard against purely generic word matches
     specific_keywords = [kw for kw in keywords if kw not in GENERIC_CLAIM_WORDS]
     if specific_keywords:
-        matched_specific = [kw for kw in specific_keywords if re.search(r"\b" + re.escape(kw) + r"\b", chunk_norm) is not None]
+        matched_specific = [kw for kw in specific_keywords if keyword_matches_chunk(kw)]
         specific_ratio = len(matched_specific) / len(specific_keywords)
         # Must match at least 50% of specific keywords, or at least 1 if only 1 specific keyword exists
         min_spec_req = 0.50 if len(specific_keywords) > 1 else 1.0
