@@ -406,3 +406,278 @@ def test_16_relevance_safeguard_accepts_substantive_in_scope_candidates():
     assert len(relevant) == 1
     assert assessments[0].is_relevant is True
     assert assessments[0].decision_code == RelevanceDecisionCode.RELEVANT_EVIDENCE
+
+
+def test_17_relevance_safeguard_ciso_reporting_paraphrase():
+    from app.grounding.relevance import filter_relevant_candidates, RelevanceDecisionCode
+    from app.schemas.retrieval import RetrievalResult
+
+    query = "Who is the direct supervisory executive for the Chief Information Security Officer according to SEBI cybersecurity norms?"
+    cand = RetrievalResult(
+        chunk_id="sebi_cscrf_2024_113_p80_67",
+        document_id="sebi_cscrf_2024_113",
+        circular_number="CIR/2024/113",
+        title="Baseline Circular",
+        issue_date="2024-08-20",
+        page_start=80,
+        page_end=81,
+        text=(
+            "Processes and procedures as per the cybersecurity and cyber resilience policy approved by the Board. "
+            "The reporting of the CISO of the MII and Qualified REs shall be directly to the MD & CEO of their organization. "
+            "Appropriate standards and controls, and direct the establishment of guidelines issued by SEBI."
+        ),
+        score=0.035,
+        rank=1,
+    )
+    relevant, intent, assessments = filter_relevant_candidates(query, [cand])
+    assert len(relevant) == 1
+    assert assessments[0].is_relevant is True
+    assert assessments[0].decision_code == RelevanceDecisionCode.RELEVANT_EVIDENCE
+
+
+def test_18_relevance_safeguard_hsm_and_soc_coverage():
+    from app.grounding.relevance import filter_relevant_candidates, RelevanceDecisionCode
+    from app.schemas.retrieval import RetrievalResult
+
+    # Test HSM candidate
+    query_hsm = "Framework adoption cloud services hardware security module HSM mandatory MIIs"
+    cand_hsm = RetrievalResult(
+        chunk_id="sebi_cscrf_2025_060_p5_3",
+        document_id="sebi_cscrf_2025_060",
+        circular_number="CIR/2025/060",
+        title="Amending Circular",
+        issue_date="2025-05-15",
+        page_start=5,
+        page_end=5,
+        text="The implementation of a dedicated Hardware Security Module (HSM) shall be made mandatory for MIIs and Qualified REs adopting cloud services.",
+        score=0.033,
+        rank=1,
+    )
+    rel_hsm, _, ass_hsm = filter_relevant_candidates(query_hsm, [cand_hsm])
+    assert len(rel_hsm) == 1
+    assert ass_hsm[0].is_relevant is True
+
+    # Test SOC candidate
+    query_soc = "What is the role and log analysis expectation of the Security Operations Centre (SOC) in CSCRF?"
+    cand_soc = RetrievalResult(
+        chunk_id="sebi_cscrf_2024_113_p69_58",
+        document_id="sebi_cscrf_2024_113",
+        circular_number="CIR/2024/113",
+        title="Baseline Circular",
+        issue_date="2024-08-20",
+        page_start=69,
+        page_end=70,
+        text="SEBI's expectations from Market SOC are as follows: CSCRF provides setting different types of SOC for all REs.",
+        score=0.031,
+        rank=1,
+    )
+    rel_soc, _, ass_soc = filter_relevant_candidates(query_soc, [cand_soc])
+    assert len(rel_soc) == 1
+    assert ass_soc[0].is_relevant is True
+
+
+def test_19_guarded_specificity_aware_reranking():
+    """
+    Test Phase 6E / Specificity-aware reranking regression invariants:
+    1. HSM amendment chunk sebi_cscrf_2025_060_p5_3 ranks above generic cloud/security passages.
+    2. Empty specific-token handling does not divide by zero.
+    3. Repeated query tokens do not distort coverage.
+    4. Equal-coverage candidates retain RRF-score ordering.
+    5. Deadline queries retain circular-recency priority over specificity.
+    6. ISO 27001, definition, and audit-report queries retain specialized priorities.
+    7. Existing rejected candidates remain rejected.
+    """
+    from app.grounding.relevance import filter_relevant_candidates
+    from app.schemas.retrieval import RetrievalResult
+
+    # 1. HSM candidate ranking above generic cloud passage
+    query_hsm = "Framework adoption cloud services hardware security module HSM mandatory MIIs"
+    cand_generic_cloud = RetrievalResult(
+        chunk_id="sebi_cscrf_2024_113_p161_126",
+        document_id="sebi_cscrf_2024_113",
+        circular_number="CIR/2024/113",
+        title="Baseline Circular",
+        issue_date="2024-08-20",
+        page_start=161,
+        page_end=161,
+        text="Security, also referred to as SSL, should be used for cloud services adoption by MIIs.",
+        score=0.035,  # Higher raw RRF score
+        rank=1,
+    )
+    cand_hsm_mandate = RetrievalResult(
+        chunk_id="sebi_cscrf_2025_060_p5_3",
+        document_id="sebi_cscrf_2025_060",
+        circular_number="CIR/2025/060",
+        title="Amending Circular",
+        issue_date="2025-05-15",
+        page_start=5,
+        page_end=5,
+        text="W.r.t. Framework for Adoption of Cloud Services, implementation of a dedicated Hardware Security Module (HSM) shall be made mandatory for MIIs.",
+        score=0.016,  # Lower raw RRF score
+        rank=2,
+    )
+    rel_hsm, _, _ = filter_relevant_candidates(query_hsm, [cand_generic_cloud, cand_hsm_mandate])
+    assert len(rel_hsm) == 2
+    # Even with lower RRF score, cand_hsm_mandate has 100% specific coverage (matching hsm) and must rank 1
+    assert rel_hsm[0].chunk_id == "sebi_cscrf_2025_060_p5_3"
+    assert rel_hsm[1].chunk_id == "sebi_cscrf_2024_113_p161_126"
+
+    # 2. Empty specific-token handling (safe, no ZeroDivisionError)
+    query_generic = "Cybersecurity framework policy guidelines and management"
+    cand_gen = RetrievalResult(
+        chunk_id="cand_gen_1",
+        document_id="sebi_cscrf_2024_113",
+        circular_number="CIR/2024/113",
+        title="Doc",
+        issue_date="2024-08-20",
+        page_start=1,
+        page_end=1,
+        text="General cybersecurity framework policy and risk management measures.",
+        score=0.030,
+        rank=1,
+    )
+    rel_gen, _, ass_gen = filter_relevant_candidates(query_generic, [cand_gen])
+    # Rejected because no distinguishing specific tokens exist
+    assert len(rel_gen) == 0
+    assert ass_gen[0].is_relevant is False
+
+    # 3. Repeated query tokens do not distort coverage or ranking
+    query_repeated = "cloud cloud services HSM HSM"
+    cand_rep1 = RetrievalResult(
+        chunk_id="c_rep1",
+        document_id="sebi_cscrf_2025_060",
+        circular_number="CIR/2025/060",
+        title="Doc",
+        issue_date="2025-05-15",
+        page_start=1,
+        page_end=1,
+        text="Adoption of cloud services with hardware security module HSM.",
+        score=0.020,
+        rank=1,
+    )
+    cand_rep2 = RetrievalResult(
+        chunk_id="c_rep2",
+        document_id="sebi_cscrf_2024_113",
+        circular_number="CIR/2024/113",
+        title="Doc",
+        issue_date="2024-08-20",
+        page_start=1,
+        page_end=1,
+        text="Adoption of cloud services across infrastructure.",
+        score=0.025,
+        rank=2,
+    )
+    rel_rep, _, _ = filter_relevant_candidates(query_repeated, [cand_rep2, cand_rep1])
+    assert len(rel_rep) == 2
+    # c_rep1 has higher specific coverage (cloud, services, hsm = 3/3) vs c_rep2 (cloud, services = 2/3)
+    assert rel_rep[0].chunk_id == "c_rep1"
+
+    # 4. Equal-coverage candidates retain RRF-score tie-breaking
+    cand_tie_low = RetrievalResult(
+        chunk_id="c_tie_low",
+        document_id="sebi_cscrf_2024_113",
+        circular_number="CIR/2024/113",
+        title="Doc",
+        issue_date="2024-08-20",
+        page_start=1,
+        page_end=1,
+        text="Adoption of cloud services with hardware security module HSM.",
+        score=0.015,
+        rank=1,
+    )
+    cand_tie_high = RetrievalResult(
+        chunk_id="c_tie_high",
+        document_id="sebi_cscrf_2024_113",
+        circular_number="CIR/2024/113",
+        title="Doc",
+        issue_date="2024-08-20",
+        page_start=2,
+        page_end=2,
+        text="Adoption of cloud services with hardware security module HSM.",
+        score=0.028,
+        rank=2,
+    )
+    rel_tie, _, _ = filter_relevant_candidates(query_repeated, [cand_tie_low, cand_tie_high])
+    assert len(rel_tie) == 2
+    assert rel_tie[0].chunk_id == "c_tie_high"
+    assert rel_tie[1].chunk_id == "c_tie_low"
+
+    # 5. Deadline query preserves circular-recency priority over specificity
+    query_deadline = "What is the compliance deadline for CSCRF?"
+    cand_older_high_match = RetrievalResult(
+        chunk_id="cand_older_baseline",
+        document_id="sebi_cscrf_2024_113",
+        circular_number="CIR/2024/113",
+        title="Baseline Circular",
+        issue_date="2024-08-20",
+        page_start=33,
+        page_end=33,
+        text="Compliance timeline implementation period glide-path by January 01, 2025 and April 01, 2025.",
+        score=0.040,
+        rank=1,
+    )
+    cand_newer_ext = RetrievalResult(
+        chunk_id="cand_newer_096",
+        document_id="sebi_cscrf_2025_096",
+        circular_number="CIR/2025/096",
+        title="Extension Circular",
+        issue_date="2025-07-15",
+        page_start=1,
+        page_end=1,
+        text="Extend the compliance timelines till August 31, 2025 for CSCRF.",
+        score=0.020,
+        rank=2,
+    )
+    rel_dl, _, _ = filter_relevant_candidates(query_deadline, [cand_older_high_match, cand_newer_ext])
+    assert len(rel_dl) == 2
+    # Recency must prevail: CIR/2025/096 ranks first regardless of specificity or RRF
+    assert rel_dl[0].chunk_id == "cand_newer_096"
+    assert rel_dl[1].chunk_id == "cand_older_baseline"
+
+    # 6. ISO 27001 query preserves CIR/2025/119 clarification priority
+    query_iso = "What is the ISO 27001 certification requirement for Qualified REs under CSCRF?"
+    cand_iso_baseline = RetrievalResult(
+        chunk_id="cand_iso_baseline",
+        document_id="sebi_cscrf_2024_113",
+        circular_number="CIR/2024/113",
+        title="Baseline",
+        issue_date="2024-08-20",
+        page_start=114,
+        page_end=114,
+        text="Qualified REs mandatory obtaining ISO 27001 certification shall be required.",
+        score=0.038,
+        rank=1,
+    )
+    cand_iso_clarif = RetrievalResult(
+        chunk_id="cand_iso_clarif",
+        document_id="sebi_cscrf_2025_119",
+        circular_number="CIR/2025/119",
+        title="Clarification",
+        issue_date="2025-09-01",
+        page_start=9,
+        page_end=9,
+        text="Clause 6.11 ISO 27001 certification recommendation for Qualified REs.",
+        score=0.022,
+        rank=2,
+    )
+    rel_iso, _, _ = filter_relevant_candidates(query_iso, [cand_iso_baseline, cand_iso_clarif])
+    assert len(rel_iso) == 2
+    assert rel_iso[0].chunk_id == "cand_iso_clarif"
+    assert rel_iso[1].chunk_id == "cand_iso_baseline"
+
+    # 7. Irrelevant candidate remains rejected (reranking does not admit rejected items)
+    cand_irrel = RetrievalResult(
+        chunk_id="cand_irrel",
+        document_id="sebi_cscrf_2024_113",
+        circular_number="CIR/2024/113",
+        title="Doc",
+        issue_date="2024-08-20",
+        page_start=20,
+        page_end=20,
+        text="Completely unrelated content about agricultural commodities without matching query tokens.",
+        score=0.050,
+        rank=1,
+    )
+    rel_irrel, _, ass_irrel = filter_relevant_candidates(query_hsm, [cand_irrel])
+    assert len(rel_irrel) == 0
+    assert ass_irrel[0].is_relevant is False

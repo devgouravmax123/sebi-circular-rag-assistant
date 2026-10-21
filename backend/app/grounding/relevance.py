@@ -38,7 +38,7 @@ class CandidateRelevanceAssessment:
 
 
 STOP_WORDS = {
-    "what", "which", "where", "when", "whose", "whom", "there", "their", "under",
+    "what", "which", "where", "when", "whose", "whom", "who", "why", "there", "their", "under",
     "about", "these", "those", "shall", "should", "would", "could", "other", "another",
     "having", "being", "between", "before", "after", "during", "through", "across",
     "against", "mandated", "required", "prescribed", "specified", "does", "did",
@@ -62,7 +62,7 @@ GENERIC_SECURITY_TERMS = {
     "measures", "requirements", "compliance", "system", "systems", "information", "entity",
     "entities", "operational", "process", "processes", "standard", "standards",
     "general", "implemented", "financial", "implement", "implementation", "across",
-    "baseline", "enhancements", "enhancement",
+    "baseline", "enhancements", "enhancement", "norms", "norm",
 }
 
 
@@ -87,14 +87,27 @@ META_INSTRUCTION_TERMS = {
 }
 
 
+def normalize_query_acronyms(query: str) -> str:
+    """
+    Normalizes multi-word regulatory acronym phrases into their standard canonical forms
+    (e.g., 'Chief Information Security Officer' -> 'ciso', 'Hardware Security Module' -> 'hsm',
+    'Security Operations Centre/Center' -> 'soc') to align with corpus usage.
+    """
+    norm = re.sub(r"\bchief\s+information\s+security\s+officer\b", "ciso", query, flags=re.IGNORECASE)
+    norm = re.sub(r"\bhardware\s+security\s+module\b", "hsm", norm, flags=re.IGNORECASE)
+    norm = re.sub(r"\bsecurity\s+operations\s+cent(?:re|er)\b", "soc", norm, flags=re.IGNORECASE)
+    return norm
+
+
 def extract_substantive_query_tokens(query: str) -> List[str]:
     """
     Extract informative topic keywords from a regulatory query, removing functional stop words
     and prompt meta-instruction framing terms.
     """
+    clean_query = normalize_query_acronyms(query)
     return [
         w.lower()
-        for w in re.findall(r"[a-zA-Z0-9]+", query)
+        for w in re.findall(r"[a-zA-Z0-9]+", clean_query)
         if len(w) >= 3 and w.lower() not in STOP_WORDS and w.lower() not in META_INSTRUCTION_TERMS
     ]
 
@@ -106,6 +119,24 @@ def extract_specific_query_tokens(query: str) -> List[str]:
     """
     substantive = extract_substantive_query_tokens(query)
     return [t for t in substantive if t not in GENERIC_SECURITY_TERMS]
+
+
+def check_token_match(token: str, text_lower: str) -> bool:
+    """
+    Checks if a token, its zero-stripped number variant, or its synonyms appear in text_lower
+    with word boundaries.
+    """
+    if re.search(r"\b" + re.escape(token) + r"\b", text_lower) is not None:
+        return True
+    if token.isdigit() and token.startswith("0"):
+        stripped = token.lstrip("0")
+        if re.search(r"\b" + re.escape(stripped) + r"\b", text_lower) is not None:
+            return True
+    if token in SYNONYM_EXPANSIONS:
+        for syn in SYNONYM_EXPANSIONS[token]:
+            if re.search(r"\b" + re.escape(syn) + r"\b", text_lower) is not None:
+                return True
+    return False
 
 
 def assess_candidate_relevance(
@@ -233,7 +264,7 @@ def assess_candidate_relevance(
                     reason="Passage does not contain operative ISO 27001 requirements or anchors.",
                 )
 
-        if "ciso" in q_lower:
+        if "ciso" in q_lower or "chief information security officer" in q_lower:
             has_ciso_anchor = bool(
                 re.search(
                     r"\bciso\b|\bchief\s+information\s+security\s+officer\b|\bgv\.go\.s1\b",
@@ -259,20 +290,7 @@ def assess_candidate_relevance(
     # merely share generic vocabulary.
     query_tokens = extract_substantive_query_tokens(query)
     if query_tokens:
-        def _token_matches(token: str) -> bool:
-            if re.search(r"\b" + re.escape(token) + r"\b", text_lower) is not None:
-                return True
-            if token.isdigit() and token.startswith("0"):
-                stripped = token.lstrip("0")
-                if re.search(r"\b" + re.escape(stripped) + r"\b", text_lower) is not None:
-                    return True
-            if token in SYNONYM_EXPANSIONS:
-                for syn in SYNONYM_EXPANSIONS[token]:
-                    if re.search(r"\b" + re.escape(syn) + r"\b", text_lower) is not None:
-                        return True
-            return False
-
-        matched_tokens = [t for t in query_tokens if _token_matches(t)]
+        matched_tokens = [t for t in query_tokens if check_token_match(t, text_lower)]
         substantive_coverage = len(matched_tokens) / len(query_tokens)
         if substantive_coverage < 0.40:
             missing = [t for t in query_tokens if t not in matched_tokens]
@@ -292,7 +310,7 @@ def assess_candidate_relevance(
                 reason="Query consists entirely of generic cybersecurity terms without distinguishing specific subject anchors.",
             )
 
-        matched_specific = [t for t in specific_tokens if _token_matches(t)]
+        matched_specific = [t for t in specific_tokens if check_token_match(t, text_lower)]
         specific_coverage = len(matched_specific) / len(specific_tokens)
         if specific_coverage < 0.41:
             missing_spec = [t for t in specific_tokens if t not in matched_specific]
@@ -461,5 +479,29 @@ def filter_relevant_candidates(
             return (1, -item.score)
 
         relevant_candidates.sort(key=audit_report_priority_key)
+
+    # For ordinary queries without specialized intent-specific ordering priorities:
+    # Rank candidates by:
+    # 1. Specific query-token coverage, descending.
+    # 2. Candidate/RRF score, descending as tie-breaker.
+    has_specialized_intent_order = (
+        (intent == QueryIntent.CURRENT_STATUS_OR_DEADLINE)
+        or (intent == QueryIntent.PROVISION_SPECIFIC_REQUIREMENT and ("iso 27001" in q_lower or "iso27001" in q_lower))
+        or is_definition_query
+        or is_audit_report_content_query
+    )
+    if not has_specialized_intent_order and relevant_candidates:
+        # Extract unique specific query tokens
+        unique_specific_tokens = list(dict.fromkeys(extract_specific_query_tokens(query)))
+        total_unique = len(unique_specific_tokens)
+
+        if total_unique > 0:
+            def specificity_priority_key(item: RetrievalResult) -> Tuple[float, float]:
+                txt_lower = item.text.lower()
+                matched_count = sum(1 for t in unique_specific_tokens if check_token_match(t, txt_lower))
+                coverage = matched_count / total_unique
+                return (-coverage, -item.score)
+
+            relevant_candidates.sort(key=specificity_priority_key)
 
     return relevant_candidates, intent, assessments
