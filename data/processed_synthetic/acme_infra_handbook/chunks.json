@@ -1,0 +1,16 @@
+[
+  {
+    "chunk_id": "acme_infra_handbook_p1_0",
+    "document_id": "acme_infra_handbook",
+    "collection_id": "general_synthetic",
+    "text": "Acme Global Systems Infrastructure and Operations Handbook Version 2.4. Section 1. Overview and Core Architecture. Acme Global maintains multi-region Kubernetes clusters across primary-us-east and secondary-eu-west regions. All production database instances utilize PostgreSQL 16 with streaming replication and asynchronous hot standby failover. The recovery point objective (RPO) for critical tier-1 transactional workloads is strictly 5 minutes, and the recovery time objective (RTO) is 15 minutes. In contrast, non-critical analytical databases operate with a relaxed recovery point objective (RPO) of 24 hours. The standard server operating system is Debian 12 with mandatory kernel hardening enabled across all worker nodes. Acme Global Systems Infrastructure Operations Handbook Version 2.4. Section 2. Backup and Disaster Recovery Procedures. Production database snapshots must be taken every 6 hours and retained for 30 calendar days in encrypted object storage. All database snapshots must be encrypted using customer-managed AWS KMS keys with annual key rotation mandated. In the event of a catastrophic regional failure, automatic DNS failover triggers within 120 seconds, routing traffic to eu-west hot standby. Staging and development environments do not receive automated failover and their snapshots are retained for only 7 calendar days. Disaster recovery recovery drills must be executed semi-annually with documented sign-off from the SRE Lead.",
+    "page_start": 1,
+    "page_end": 2,
+    "is_ocr": false,
+    "chunk_type": "body",
+    "metadata": {
+      "word_count": 202,
+      "chunk_index": 0
+    }
+  }
+]

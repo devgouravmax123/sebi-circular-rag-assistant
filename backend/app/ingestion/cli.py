@@ -224,6 +224,41 @@ def cmd_publish_index(args: argparse.Namespace) -> int:
     return 0 if res.success else 1
 
 
+def cmd_ingest_manifest(args: argparse.Namespace) -> int:
+    """Ingest documents declared in a collection manifest (Phase 1)."""
+    from app.ingestion.manifest_runner import ManifestIngestionRunner, ManifestValidationError, ManifestSecurityError
+    settings = get_settings(force_reload=True)
+    manifest_path = Path(args.manifest)
+
+    runner = ManifestIngestionRunner(
+        processed_dir=settings.processed_dir,
+        indexes_dir=settings.indexes_dir,
+    )
+
+    print(f"Executing manifest-driven ingestion for '{manifest_path}' (publish_index={not args.no_publish})...")
+    try:
+        report = runner.run_manifest(
+            manifest_path=manifest_path,
+            publish_index=not args.no_publish,
+            dry_run_publish=args.dry_run_publish,
+        )
+    except (ManifestValidationError, ManifestSecurityError, FileNotFoundError) as e:
+        print(f"Manifest Ingestion Error: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        logger.exception("Unexpected error during manifest ingestion")
+        print(f"Unexpected Ingestion Error: {e}", file=sys.stderr)
+        return 1
+
+    print(json.dumps(report.model_dump(), indent=2, default=str))
+    # Return 0 if at least one document succeeded or was duplicate and index published (if requested)
+    if report.error_count > 0 and report.success_count == 0 and report.duplicate_count == 0:
+        return 1
+    if not args.no_publish and not report.index_published:
+        return 1
+    return 0
+
+
 def cmd_inspect_index(args: argparse.Namespace) -> int:
     """Inspect active search index snapshot and pending un-indexed documents."""
     from app.retrieval.publisher import IndexPublisher
@@ -381,6 +416,13 @@ def main() -> int:
     p_pub = subparsers.add_parser("publish-index", help="Build, validate, and activate search index snapshot.")
     p_pub.add_argument("--dry-run", action="store_true", help="Validate candidate build without activating.")
     p_pub.set_defaults(func=cmd_publish_index)
+
+    # ingest-manifest (Phase 1)
+    p_mani = subparsers.add_parser("ingest-manifest", help="Ingest documents declared in a collection manifest (Phase 1).")
+    p_mani.add_argument("--manifest", required=True, help="Path to collection manifest JSON file.")
+    p_mani.add_argument("--no-publish", action="store_true", help="Skip index snapshot publication after ingestion.")
+    p_mani.add_argument("--dry-run-publish", action="store_true", help="Execute dry-run index publication.")
+    p_mani.set_defaults(func=cmd_ingest_manifest)
 
     # inspect-index
     p_idx = subparsers.add_parser("inspect-index", help="Inspect active search index snapshot status.")

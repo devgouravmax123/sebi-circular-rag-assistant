@@ -40,8 +40,23 @@ data/indexes/snapshots/snap_20261011_104512_23a014/*
 !data/indexes/snapshots/snap_20261011_104512_23a014/chunks.json
 !data/indexes/snapshots/snap_20261011_104512_23a014/documents.json
 !data/indexes/snapshots/snap_20261011_104512_23a014/manifest.json
+
+# Whitelist curated general_synthetic active pointer and runtime snapshot assets
+!data/indexes/general_synthetic/
+data/indexes/general_synthetic/*
+!data/indexes/general_synthetic/active_snapshot.json
+!data/indexes/general_synthetic/snapshots/
+data/indexes/general_synthetic/snapshots/*
+!data/indexes/general_synthetic/snapshots/snap_20261022_062310_395f75/
+data/indexes/general_synthetic/snapshots/snap_20261022_062310_395f75/*
+!data/indexes/general_synthetic/snapshots/snap_20261022_062310_395f75/chunks.json
+!data/indexes/general_synthetic/snapshots/snap_20261022_062310_395f75/documents.json
+!data/indexes/general_synthetic/snapshots/snap_20261022_062310_395f75/manifest.json
+
 data/indexes/.publish.lock
 data/indexes/snapshots/*/.publish.lock
+data/indexes/*/.publish.lock
+data/indexes/*/snapshots/*/.publish.lock
 *.faiss
 *.index
 

@@ -2,204 +2,169 @@
 
 ## 1. High-Level Architecture Overview
 
-The **SEBI Regulatory Intelligence Platform** is structured as a modular, hosted system separating offline document ingestion, hybrid persistence, dynamic relationship management, and online query orchestration.
+The platform uses a modular, layered architecture separating offline document ingestion, atomic search index publication, hybrid retrieval, and evidence-grounded answer synthesis.
 
 ```text
 ====================================================================================================
                                       OFFLINE / INGESTION TIER
 ====================================================================================================
 
- Official PDF Sources
- (SEBI, future regulators)
-         |
-         v
+ Official Source PDFs (data/raw/*.pdf)
+          |
+          v
  +------------------------------------------------------------------------------------------------+
- | Dynamic Document Ingestion Engine (Phase 8B)                                                   |
- | - Pluggable Regulator Connectors (SEBI; future RBI)                                            |
- | - PDF Download & SHA-256 Checksum Deduplication                                                |
- | - Text Extraction (PyMuPDF) & Table Handling (pdfplumber)                                      |
- | - Deterministic Chunking (350 tokens, 40 overlap) with Page Boundaries                          |
+ | Ingestion Pipeline (extractor.py & chunker.py)                                                 |
+ | - PyMuPDF Text Extraction & Extraction Quality Auditing (OK, SPARSE, EMPTY)                    |
+ | - SHA-256 Checksum Verification & Deduplication                                                |
+ | - Deterministic Sliding-Window Chunking (350 words, 40 overlap)                                 |
+ | - Dual Page Provenance: 1-indexed PDF page & printed document page number                      |
+ | - Stable Chunk ID Generation: {document_id}_p{page_start}_{chunk_idx}                          |
  +------------------------------------------------------------------------------------------------+
-         |                                                 |
-         v                                                 v
- Document & Chunk Records                          Extracted Edge Candidates
-         |                                                 |
-         |                                                 v
-         |                                 +----------------------------------------------+
-         |                                 | Regulatory Relationship Manager (Phase 8D)   |
-         |                                 | - Preamble & Citation Parser                 |
-         |                                 | - Human-in-the-Loop (HITL) Review Interface  |
-         |                                 | - Verbatim Evidence Ledger & Audit Log       |
-         |                                 +----------------------------------------------+
-         |                                                 |
-         +------------------------+------------------------+
-                                  |
-                                  v
+          |
+          v
+ Processed Artifacts (data/processed/{doc_id}/[document|pages|chunks|manifest].json)
+          |
+          v
+ +------------------------------------------------------------------------------------------------+
+ | Index Publication Pipeline (IndexPipeline & SnapshotPublicationService)                       |
+ | - BM25 Inverted Token Matrix Builder (bm25_index.pkl)                                          |
+ | - BAAI/bge-small-en-v1.5 Dense Vector Embeddings (dense_index.npy / dense_index.faiss)          |
+ | - Chunk Metadata Catalog (chunk_catalog.json)                                                  |
+ | - Atomic Snapshot Swap to data/indexes/snapshots/{snapshot_id}/                                |
+ +------------------------------------------------------------------------------------------------+
+          |
+          v
 ====================================================================================================
-                                  DUAL PERSISTENCE TIER (Phase 8A Implemented)
-====================================================================================================
- +------------------------------------------------------------------------------------------------+
- | Repository Abstraction Layer (StorageRepositoryFactory)                                        |
- | - FileStorageRepositoryFactory (Default: data/processed/ JSON, NumPy dense_index.npy)           |
- | - PostgresStorageRepositoryFactory (Activated when DATABASE_URL is set)                        |
- +------------------------------------------------------------------------------------------------+
- | PostgreSQL + pgvector (Phase 8A Implemented)                                                   |
- | - `regulators` & `regulatory_domains` (Taxonomic registration)                                 |
- | - `regulatory_documents` & `document_versions` (Logical vs immutable physical versions)       |
- | - `provisions` (Clause/section code, title, PDF/printed page mapping)                          |
- | - `chunks` & `chunk_embeddings` (Text slices, 384-dim pgvector with exact <=> cosine search)   |
- | - `regulatory_edges` (Directed relationships, review status, verified edge protection)        |
- | - `ingestion_jobs` (Lifecycle status: pending, running, completed, failed)                     |
- +------------------------------------------------------------------------------------------------+
- | Redis Cache & Worker Broker (Phase 8F Planned)                                                 |
- | - Celery Background Task Queue for Ingestion & Embedding Generation                            |
- | - Query Cache & Rate Limiting                                                                  |
- +------------------------------------------------------------------------------------------------+
-                                  ^
-                                  |
-====================================================================================================
-                                  ONLINE QUERY ORCHESTRATION TIER
+                               ONLINE QUERY ORCHESTRATION TIER
 ====================================================================================================
 
  React + TypeScript Client
-         |
-         | POST /api/v1/query { question, as_of, regulator, domain }
-         v
+          |
+          | POST /api/v1/query { query, top_k, include_superseded }
+          v
  +------------------------------------------------------------------------------------------------+
- | FastAPI Query Controller                                                                       |
- | - Request Validation (Pydantic QueryRequest) & Rate Limit Check                                |
+ | FastAPI Query Controller (api/v1/query.py)                                                     |
+ | - Pydantic Request Validation & Rate Limiter Check (InMemoryRateLimiter)                       |
  +------------------------------------------------------------------------------------------------+
-         |
-         v
+          |
+          v
  +------------------------------------------------------------------------------------------------+
- | Hybrid Retrieval Engine (BM25 Lexical + Dense Vector + RRF)                                    |
- | - Pilot: in-memory BAAI/bge-small-en-v1.5 embeddings & NumPy cosine similarity                 |
- | - Target (Phase 8A): pgvector cosine similarity search                                         |
- | - BM25 lexical keyword search (exact circular IDs, sections, terms)                           |
- | - Reciprocal Rank Fusion (k=60) combining ranked lists                                         |
+ | Hybrid Retrieval Service (retrieval/service.py)                                                |
+ | - Atomic Hot-Reload Check against active_snapshot.json (reload_if_stale)                       |
+ | - Lexical Channel: BM25Okapi scoring                                                           |
+ | - Dense Channel: BAAI/bge-small-en-v1.5 normalized cosine similarity                           |
+ | - Reciprocal Rank Fusion (k=60) combining candidate pools into top_k candidates               |
  +------------------------------------------------------------------------------------------------+
-         |
-         v
+          |
+          v
  +------------------------------------------------------------------------------------------------+
- | Temporal Status Resolver (`status_as_of`)                                                      |
- | - Directed Graph Traversal (Newer -> RELATIONSHIP -> Older)                                    |
- | - Multi-hop supersession resolution preserving unaffected provisions                           |
- | - Status classification: in_force | amended | partially_superseded | superseded | unknown     |
+ | Grounding & Relevance Engine (grounding/relevance.py)                                          |
+ | - Specificity-Aware Reranker: prioritizes specific query token coverage                        |
+ | - Candidate Relevance Gate: filters out topical drift and generic boilerplate                  |
  +------------------------------------------------------------------------------------------------+
-         |
-         v
+          |
+          v
  +------------------------------------------------------------------------------------------------+
- | Provision-Level Relevance Filter & Prioritizer                                                 |
- | - Domain guardrails (e.g. promoting operative clarifications for Qualified REs)                |
- | - Stale provision suppression based on resolved temporal status                                |
+ | Temporal & Relationship Resolver (grounding/graph_resolver.py)                                 |
+ | - Traverses directed relationship edges: Newer -> AMENDS/RESCINDS -> Older                     |
+ | - Resolves legal status as of requested as_of date                                             |
+ | - Provision-Scoped Validity: unaffected clauses in target circulars remain valid               |
  +------------------------------------------------------------------------------------------------+
-         |
-         v
+          |
+          v
  +------------------------------------------------------------------------------------------------+
- | Grounding & Answer Safety Gate (`AnswerSafetyGate`)                                            |
- | - Mechanical citation ID verification against retrieved chunks                                 |
- | - Verbatim substring quotation checks (prevents extractive hallucination)                      |
- | - Evidence sufficiency check & domain refusal rubric evaluation                                |
+ | Answer Safety Gate (grounding/safety_gate.py)                                                  |
+ | - Evaluates Refusal Rubric: insufficient evidence, conflict, out-of-domain, temporal ambiguity  |
+ | - Verbatim Substring Matching & Extractive Fallback                                            |
  +------------------------------------------------------------------------------------------------+
-         |
-         v
+          |
+          v
  +------------------------------------------------------------------------------------------------+
- | Generation & Fallback Layer (Phase 8E)                                                         |
- | - Evidence-constrained Hosted LLM Adapter (Gemini / Groq / Ollama / Bedrock)                   |
- | - Fail-Closed Extractive Fallback (returns verified excerpts if synthesis fails)               |
+ | Synthesis Layer (synthesis/service.py)                                                         |
+ | - External LLM Provider Adapter (Groq / Gemini / Mock)                                         |
+ | - Citation Validator (validator.py): mechanically verifies cited chunks in retrieved context   |
+ | - Fail-Closed Fallback: reverts to verified excerpts if synthesis verification fails          |
  +------------------------------------------------------------------------------------------------+
-         |
-         v
- Return QueryResponse { answer, citations, status_notes, confidence, latency_ms }
+          |
+          v
+ Return QueryResponse (verified answer, claim citations, dual-page excerpts, disposition)
 ```
 
 ---
 
-## 2. Component Breakdown & Implementation Status
+## 2. Component Breakdown & Verification Status
 
-| Component | Architecture Role | Implementation Status | Implementation Notes |
+| Subsystem / Component | Architectural Role | Current Status | Verification Notes |
 | :--- | :--- | :--- | :--- |
-| **API Entry Point** | FastAPI server handling query and administrative routes | `IMPLEMENTED AND TESTED` | `backend/app/main.py`, `backend/app/api/endpoints.py`. Implements `POST /api/v1/query`, `GET /health`, `GET /ready` (149 passing tests). |
-| **Hybrid Retriever** | Dual-channel retrieval with Reciprocal Rank Fusion | `IMPLEMENTED AND TESTED` | `backend/app/retrieval/service.py`, `rrf.py`. In-memory BM25 + BAAI/bge-small-en-v1.5 NumPy cosine similarity with RRF ($k=60$) and pre-fusion metadata filtering across active snapshots. |
-| **Temporal Graph** | Directed NetworkX graph evaluating circular currency | `IMPLEMENTED AND TESTED` | `backend/app/grounding/resolver.py`, `backend/app/schemas/graph.py`. Strict `Newer -> RELATIONSHIP -> Older` directionality (9 verified edges). |
-| **Relevance Filter** | Provision-specific prioritization and demotion guardrails | `IMPLEMENTED AND TESTED` | `backend/app/grounding/relevance.py`. Scoped clarification prioritization for compliance queries. |
-| **Grounding Gate** | Verbatim provenance validation and refusal generator | `IMPLEMENTED AND TESTED` | `backend/app/grounding/safety_gate.py`. Fail-closed validation against retrieved chunk substrings. |
-| **CSCRF Baseline** | 5-circular pilot corpus with verified audit ledger | `IMPLEMENTED AND TESTED` | 168 chunks in `data/processed/`, 9 verified edges in `data/processed/cscrf_graph.json`. |
-| **React Frontend** | Client UI for query exploration and citation inspection | `IMPLEMENTED AND TESTED` | `frontend/src/`. Interactive question form, as-of date picker, citation cards, and refusal panels. |
-| **PostgreSQL Tier** | Production relational and vector persistence | `IMPLEMENTED AND TESTED` | Phase 8A: Dual-engine architecture supporting default file mode and production PostgreSQL + pgvector adapter with exact `<=>` cosine search, 8 normalized tables, Alembic migrations, and idempotent corpus importer (203 total passing tests). |
-| **Dynamic Ingestion** | Snapshot publication and asynchronous worker | `IMPLEMENTED AND TESTED` | Phase 8B: Admin endpoints and worker pipeline for registering new circulars and publishing reproducible search index snapshots (`IndexPublisher`). |
-| **Multi-Domain Index**| Cross-domain retrieval with pre-fusion metadata filters | `IMPLEMENTED AND TESTED` | Phase 8C: Generalized retrieval across published SEBI domains (e.g. CSCRF, LODR) with pre-fusion filtering, version-aware searchability, and provenance propagation. |
-| **Dynamic Graph Mgr** | Graph persistence, candidate extraction, HITL audit | `PLANNED` | Phase 8D: Proposed administrative UI and database-backed edge ledger for relationship curation. |
-| **Hosted LLM Adapter**| Provider-agnostic generation with fail-closed fallback| `PLANNED` | Phase 8E: Proposed hosted LLM generation strictly bounded by retrieved context, with extractive fallback. |
-| **Deployment Stack** | Docker Compose, Redis task queue, and cloud hosting | `PLANNED` | Phase 8F: Proposed containerization, rate limiting, and object storage integration for hosted SEBI platform. |
-| **Multi-Regulator Pilot** | Pluggable connector pilot for secondary regulator (RBI) | `PLANNED` | Phase 8G: Proposed future expansion strictly following hosted SEBI deployment validation. |
+| **API Entry Point** | FastAPI server (`main.py`, `query.py`, `admin.py`) | `IMPLEMENTED AND VERIFIED` | Provides `/health`, `/ready`, `/api/v1/query`, and `/api/v1/admin/indexes/publish`. Tested across 445 backend tests. |
+| **Hybrid Retriever** | Dual-channel retrieval with Reciprocal Rank Fusion | `IMPLEMENTED AND VERIFIED` | `retrieval/service.py` & `rrf.py`. BM25Okapi + `BAAI/bge-small-en-v1.5` embeddings with RRF ($k=60$). |
+| **Atomic Index Publisher** | Snapshot builder and atomic symlink/pointer swapper | `IMPLEMENTED AND VERIFIED` | `retrieval/index_pipeline.py`. Builds staging snapshot and updates `active_snapshot.json` atomically. |
+| **Relevance & Specificity Reranker** | Query token coverage reranking and candidate filtering | `IMPLEMENTED AND VERIFIED` | `grounding/relevance.py`. Specificity reranker prioritizes specific query tokens; preserves RRF tie-breaker. |
+| **Temporal Graph Resolver** | Directed graph traversal and supersession engine | `IMPLEMENTED AND VERIFIED (CSCRF)` | `grounding/graph_resolver.py`. Evaluates `AMENDS`, `RESCINDS`, and `REFERENCES` edges for SEBI CSCRF. |
+| **Answer Safety Gate** | Mechanical provenance checks and 5-point refusal rubric | `IMPLEMENTED AND VERIFIED` | `grounding/safety_gate.py` & `validator.py`. Enforces fail-closed citation verification and extractive fallback. |
+| **Grounded LLM Adapter** | Evidence-constrained generation with fallback | `PARTIALLY IMPLEMENTED` | `synthesis/groq_provider.py` and `gemini_provider.py` implemented. Falls back closed to extractive excerpts. |
+| **In-Memory Rate Limiter** | Client IP fixed-window sliding rate limiter | `IMPLEMENTED AND VERIFIED` | `core/rate_limiter.py`. Enforces burst and per-minute query limits without external database dependencies. |
+| **Relational Persistence (Postgres)** | Normalized SQL models and Alembic migrations | `IMPLEMENTED, VERIFICATION INCOMPLETE` | `persistence/models.py`. Validated in unit parity tests, but NOT active runtime default (which is file snapshot). |
+| **Manifest-Driven Ingestion** | Local data-driven document ingestion | `PLANNED (Phase 1)` | Replaces static Python dictionary `corpus_registry.py` with declarative JSON manifests. |
+| **Collection-Aware Isolation** | Collection scoping across retrieval and synthesis | `PLANNED (Phase 2)` | Explicit `collection_id` scoping to guarantee zero cross-collection evidence leakage. |
+| **Pluggable Relationship Policies** | Modular policies (supersession vs. passthrough) | `PLANNED (Phase 3)` | Allows general document collections to operate without mandatory regulatory supersession graphs. |
+| **Distributed Broker / Cache (Redis)** | Asynchronous task queue and distributed cache | `DEFERRED / REQUIRES APPROVAL` | Deferred. Current in-memory limiter and synchronous pipeline meet zero-cost requirements. |
 
 ---
 
 ## 3. Data Flow & Request Lifecycle (`POST /api/v1/query`)
 
 1. **Request Intake & Schema Validation:**
-   - The client posts a query with optional parameters:
-     ```json
-     {
-       "question": "What are the ISO 27001 requirements for Qualified REs under CSCRF?",
-       "as_of": "2026-01-01",
-       "regulator": "SEBI",
-       "domain": "CSCRF"
-     }
-     ```
-   - FastAPI validates string length, date syntax, and domain tokens via `QueryRequest`.
-2. **Hybrid Candidate Retrieval:**
-   - The query is tokenized for lexical search (BM25) and embedded via `BAAI/bge-small-en-v1.5` for dense search (using NumPy cosine similarity in current pilot; pgvector in target architecture).
-   - Top-$k$ candidates from both channels are fused using Reciprocal Rank Fusion ($k=60$):
+   - Client sends `QueryRequest` (query, top_k, optional filters).
+   - FastAPI validates string length (2–500 chars), date syntax, and regulator code.
+2. **Rate Limit Verification:**
+   - `InMemoryRateLimiter` checks IP request count against configured window (`RATE_LIMIT_QUERY_PER_MINUTE`). Exceeded limits return HTTP 429.
+3. **Index Hot-Reload Check:**
+   - `RetrievalService.reload_if_stale()` compares the memory snapshot pointer with `data/indexes/active_snapshot.json`. If a new snapshot was published, it reloads in memory without interrupting active requests.
+4. **Hybrid Candidate Retrieval:**
+   - BM25 scores the corpus lexically; `BAAI/bge-small-en-v1.5` embeds the query and computes cosine similarity against normalized dense vectors.
+   - Top candidates are fused using Reciprocal Rank Fusion ($k=60$):
      $$\text{RRF Score}(d) = \sum_{m \in \{\text{BM25}, \text{Dense}\}} \frac{1}{60 + \text{rank}_m(d)}$$
-3. **Temporal Status Resolution:**
-   - The graph resolver examines each candidate's `document_id` and provisions against the verified edge graph.
-   - Traversal identifies modifying edges issued prior to or on the `as_of` date.
-   - Status notes are attached: `in_force`, `amended`, `partially_superseded`, or `superseded`.
-4. **Provision Relevance Filtering & Ordering:**
-   - Domain-specific guardrails in `relevance.py` evaluate whether an operative clarification (e.g., Circular 2025/119 for Qualified REs) supersedes or clarifies a base clause (Circular 2024/113).
-   - Relevant amending passages are prioritized while preserving historical base context.
-5. **Grounding Verification & Refusal Evaluation:**
-   - The candidate set is evaluated against the Refusal Rubric:
-     - If no relevant candidates meet similarity thresholds $\rightarrow$ `refuse: true` (`insufficient_evidence`).
-     - If conflicting unresolvable provisions exist $\rightarrow$ `refuse: true` (`conflicting_evidence`).
-     - If outside the indexed corpus $\rightarrow$ `refuse: true` (`out_of_domain`).
-6. **Synthesis / Fallback Generation:**
-   - In the current pilot (`IMPLEMENTED`), the `AnswerSafetyGate` generates an extractive grounded answer from the top-ranked verified passage.
-   - In Phase 8E (`PLANNED`), a hosted LLM synthesizes an evidence-bounded answer. The synthesis is mechanically checked for verbatim chunk support; if verification fails, the system seamlessly falls back to extractive excerpts.
-7. **Response Packaging:**
-   - The API constructs a `QueryResponse` including the answer, verified citations, status notes, confidence score, and latency metrics.
+5. **Relevance Filtering & Specificity-Aware Reranking:**
+   - Filters out passages lacking query keyword overlap or topical relevance.
+   - Candidates are reranked by specific query token coverage descending, with RRF score as tie-breaker.
+6. **Temporal Status Resolution:**
+   - For collections with active relationship graphs, `ConservativeGraphResolver` evaluates edges active on or before `as_of_date`.
+   - Modifying edges tag passages as `in_force`, `amended`, `partially_superseded`, or `superseded`. Unaffected provisions retain base validity.
+7. **Grounding & Refusal Evaluation:**
+   - `AnswerSafetyGate` evaluates the Refusal Rubric: if candidates fall below threshold, conflict without resolution, or fall out-of-domain, it returns `disposition: CONTROLLED_ABSTENTION`.
+8. **Answer Synthesis & Verification:**
+   - If evidence is sufficient, `SynthesisService` prompts the configured provider (Groq/Gemini/Mock) with evidence chunks.
+   - `CitationValidator` mechanically verifies that all claim assertions and `[chunk_id]` tags map to retrieved context.
+   - If citation validation fails or the provider times out, the system fails closed to verified extractive excerpts or structured refusal.
+9. **Response Serialization:**
+   - The API returns `QueryResponse` with the synthesized answer, structured citations, dual-page excerpts, and narrative disposition.
 
 ---
 
-## 4. Key Architectural Safeguards
+## 4. Key Architectural Invariants & Safeguards
 
-1. **Provenance Invariance:** Every chunk retains immutable provenance: `source_url`, `pdf_path`, `sha256`, 1-indexed PDF page, and printed page number.
-2. **Directed Graph Invariant:** Graph edges are strictly directed `Newer -> RELATIONSHIP -> Older`. Self-loops (`source == target`) are blocked at the schema level.
-3. **Provision-Level Scoping:** Supersession edges define `affected_provisions`. An amendment to Clause 6 never invalidates Clauses 1–5 of the parent document.
-4. **No Date-Based Legal Currency:** Circular currency is never inferred solely from publication chronology. Only verified relationship edges modify document legal standing.
-5. **Server-Side Secret Isolation:** All API credentials, database strings, and provider keys reside strictly on the server in `.env` variables and are never shipped to the frontend.
+1. **Immutable Source Provenance:** Every chunk retains its source PDF path, SHA-256 hash, 1-indexed PDF page, and printed page string.
+2. **Strict Directed Graph Invariant:** For regulatory collections, edges enforce $\text{source (newer)} \xrightarrow{\text{RELATIONSHIP}} \text{target (older)}$. Self-loops (`source == target`) are blocked.
+3. **No Chronological Legal Inference:** Newer publication dates never imply supersession without an explicit, verified relationship edge.
+4. **Provision-Level Scoping:** Amendments define `affected_provisions`. Amending Clause 6 never invalidates Clauses 1–5 of the base circular.
+5. **Mandatory Collection Isolation (Phase 2 Invariant):** Queries scoped to `collection_id` $A$ must NEVER retrieve, evaluate, cite, or leak chunks from collection $B$. Cross-collection leakage is treated as a critical architectural failure.
+6. **Zero-Cost Local Default:** The entire pipeline executes locally from files and memory snapshots at zero infrastructure cost.
 
 ---
 
-## 5. Search Index Publication & Synchronization Lifecycle (Phase 8B.6 Implemented)
+## 5. Search Index Snapshot & Publication Lifecycle (`IMPLEMENTED AND VERIFIED`)
 
-To guarantee that newly ingested regulatory documents are not reported as searchable until fully validated, search index publication operates as a decoupled, atomic snapshotting system:
+To prevent incomplete or unvalidated index builds from corrupting query serving, index publication operates as an atomic snapshot system (`backend/app/retrieval/index_pipeline.py`):
 
-1. **Candidate Staging:**
-   - The candidate index artifacts (`chunks.json`, `bm25_index.json`, `dense_vectors.npy`, and `manifest.json`) are compiled inside an isolated staging directory: `snapshots/_staging_<id>/`.
-2. **Strict Validation Gates:**
-   - Dimensionality check (384-dim normalized float32 vectors).
-   - Finite numeric validation (zero NaN / ±Infinity values allowed).
-   - Chunk ID uniqueness and bijective mapping between chunks and vector matrix rows.
-   - SHA-256 corpus fingerprinting and artifact checksum verification.
+1. **Candidate Staging:** Index artifacts (`chunks.json`, `bm25_index.pkl`, `dense_index.npy`, `manifest.json`) are written into an isolated staging folder: `data/indexes/snapshots/_staging_<id>/`.
+2. **Validation Gates:**
+   - Dimensionality check: dense vectors must be 384-dimensional normalized float32.
+   - Numeric validity: zero NaN, null, or infinite values permitted.
+   - Bijective mapping: exact 1-to-1 correspondence between `chunks.json` entries and matrix rows.
+   - SHA-256 fingerprinting: catalog checksum matches manifest.
 3. **Atomic Activation:**
-   - Upon passing all gates, the staging directory is finalized to `snapshots/<snapshot_id>/`.
-   - The active pointer `active_snapshot.json` is atomically updated via a temporary file replacement pattern (`active_snapshot.json.tmp` -> replace `active_snapshot.json`).
-   - Legacy fallback `dense_index.npy` is updated to guarantee backwards compatibility with older evaluation runners.
-4. **Zero-Downtime Query Engine Hot-Reload:**
-   - `RetrievalService.reload_if_stale()` verifies whether the active pointer timestamp has advanced.
-   - Online query requests are never interrupted: existing requests conclude against the prior snapshot in memory, while subsequent requests bind to the newly activated snapshot.
-5. **Searchability Contract:**
-   - Admin endpoints (`/api/v1/admin/jobs/{job_id}/status`) report `searchable: false` and `publication_status: "not_published"` or `"pending_publication"` until the document ID is verified inside the active snapshot's manifest.
+   - The validated staging directory is renamed to `data/indexes/snapshots/<snapshot_id>/`.
+   - `active_snapshot.json.tmp` is written and atomically renamed to `data/indexes/active_snapshot.json`.
+4. **Hot Reloading:**
+   - `RetrievalService.reload_if_stale()` detects snapshot pointer changes on incoming queries and re-binds indexes in memory with zero application downtime.

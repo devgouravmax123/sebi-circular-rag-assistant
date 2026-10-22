@@ -140,34 +140,9 @@ class GeminiSynthesisProvider(SynthesisProvider):
         self._custom_client = http_client
 
     def _build_user_prompt(self, payload: SynthesisInput) -> str:
-        """Constructs bounded prompt containing query, evidence passages, and metadata."""
-        lines: List[str] = [
-            f"USER QUERY: {payload.query}\n",
-            "VERIFIED REGULATORY PASSAGES SUPPLIED FROM CORPUS:",
-        ]
-
-        if not payload.evidence_items:
-            lines.append("[No evidence passages provided]")
-        else:
-            for idx, item in enumerate(payload.evidence_items, start=1):
-                circ = item.circular_number or item.document_id
-                page_info = f"Page {item.page_start}" if item.page_start else "Page unlisted"
-                lines.append(f"\n--- EXCERPT #{idx} [Chunk ID: {item.chunk_id}] ---")
-                lines.append(f"Source Circular: {circ} | {page_info} | Status: {item.regulatory_status}")
-                if item.title:
-                    lines.append(f"Title: {item.title}")
-                lines.append(f"Passage Content:\n{item.text}")
-
-        if payload.regulatory_warnings:
-            lines.append("\nAPPLICABLE REGULATORY CAVEATS / SCOPE LIMITATIONS:")
-            for w in payload.regulatory_warnings:
-                lines.append(f"- {w}")
-
-        lines.append(
-            "\nTASK: Provide a synthesized response adhering strictly to the above facts and rules. "
-            "Output pure JSON matching the specified schema."
-        )
-        return "\n".join(lines)
+        """Constructs policy-aware bounded prompt containing query, evidence passages, and metadata."""
+        from app.synthesis.prompt_builder import build_user_prompt
+        return build_user_prompt(payload)
 
     def synthesize(self, payload: SynthesisInput) -> SynthesisOutput:
         """
@@ -183,8 +158,20 @@ class GeminiSynthesisProvider(SynthesisProvider):
                 failure_reason="Zero evidence items supplied to synthesis provider.",
             )
 
-        # 2. Build request payload
-        user_text = self._build_user_prompt(payload)
+        # 2. Build request payload using policy-aware instructions and prompt
+        from app.synthesis.prompt_builder import build_system_instruction, InvalidGroundingPolicyError
+        try:
+            system_text = build_system_instruction(payload.policy_type)
+            user_text = self._build_user_prompt(payload)
+        except InvalidGroundingPolicyError as e:
+            logger.error("Gemini synthesis aborted due to invalid grounding policy: %s", str(e))
+            return SynthesisOutput(
+                status=SynthesisStatus.ABSTAINED,
+                answer="Controlled Abstention: Synthesis aborted due to invalid or unverified collection policy.",
+                claims=[],
+                unresolved_subquestions=[],
+                failure_reason=f"Policy fail-closed: {str(e)}",
+            )
         request_body = {
             "contents": [
                 {
@@ -193,7 +180,7 @@ class GeminiSynthesisProvider(SynthesisProvider):
                 }
             ],
             "systemInstruction": {
-                "parts": [{"text": SYSTEM_INSTRUCTION_TEXT}]
+                "parts": [{"text": system_text}]
             },
             "generationConfig": {
                 "responseMimeType": "application/json",

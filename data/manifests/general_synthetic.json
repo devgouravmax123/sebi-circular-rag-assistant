@@ -1,0 +1,52 @@
+{
+  "collection_id": "general_synthetic",
+  "name": "Acme Global Technical and Organizational Documents",
+  "description": "Synthetic multi-domain technical, operational, and product documentation for GENERAL_STATIC evaluation.",
+  "regulator": null,
+  "domain": "ACME_TECH",
+  "enforce_regulatory_graph": false,
+  "policy": {
+    "policy_type": "general_static",
+    "enforce_regulatory_graph": false,
+    "enforce_verbatim_citation": true,
+    "enforce_retrieval_binding": true
+  },
+  "documents": [
+    {
+      "document_id": "acme_infra_handbook",
+      "title": "Acme Global Systems Infrastructure and Operations Handbook",
+      "pdf_path": "data/raw/synthetic_general/acme_infra_handbook.pdf",
+      "circular_number": null,
+      "department": "Global Infrastructure & SRE",
+      "issue_date": "2024-03-15",
+      "effective_date": "2024-04-01",
+      "document_type": "technical_standard",
+      "source_url": "https://internal.acme.example/docs/infra_handbook_v2.4.pdf",
+      "expected_sha256": "92b4000fae4037c17bf2b57d5f16f92123c4ef3698cf09a36a14ff619a6c2a84"
+    },
+    {
+      "document_id": "acme_security_policy",
+      "title": "Acme Corporation Information Security and Access Control Policy",
+      "pdf_path": "data/raw/synthetic_general/acme_security_policy.pdf",
+      "circular_number": null,
+      "department": "Corporate Information Security Office",
+      "issue_date": "2024-01-10",
+      "effective_date": "2024-01-15",
+      "document_type": "internal_policy",
+      "source_url": "https://internal.acme.example/docs/security_policy_v4.1.pdf",
+      "expected_sha256": "7d079e496c1fae0911c87b386c1ee25eeed741f9d9d5ec64c1444bc1245793a0"
+    },
+    {
+      "document_id": "acme_product_spec",
+      "title": "Acme Enterprise Data Mesh Product Specification",
+      "pdf_path": "data/raw/synthetic_general/acme_product_spec.pdf",
+      "circular_number": null,
+      "department": "Data Platform Product Engineering",
+      "issue_date": "2024-05-20",
+      "effective_date": "2024-06-01",
+      "document_type": "product_specification",
+      "source_url": "https://internal.acme.example/docs/data_mesh_spec_v1.0.pdf",
+      "expected_sha256": "ab91a4393bcc2821d017d8dc7805ee244964b7e46243264c14190fd4b1f0e9f8"
+    }
+  ]
+}

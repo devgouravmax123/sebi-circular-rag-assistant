@@ -23,7 +23,6 @@ from typing import Optional, Dict, Any, Tuple, List
 import uuid
 
 import numpy as np
-from sqlalchemy.exc import DBAPIError
 
 from app.schemas.document import DocumentRecord, PageContent, ChunkRecord
 from app.schemas.ingestion_job import (
@@ -87,7 +86,7 @@ def sanitize_error_message(msg: str, max_length: int = 1000) -> str:
     if not msg:
         return ""
     # Truncate and strip
-    sanitized = str(msg).strip()
+    sanitized = msg.strip()
     if len(sanitized) > max_length:
         sanitized = sanitized[:max_length] + " [truncated]"
     return sanitized
@@ -331,7 +330,7 @@ class IngestionOrchestrator:
                 self.doc_repo.save_document(doc_record)
                 self.chunk_repo.save_chunks(chunks)
                 self.chunk_repo.save_embeddings(embeddings_dict, model_name=DEFAULT_MODEL_NAME)
-            except (ConnectionStorageError, DBAPIError) as e:
+            except ConnectionStorageError as e:
                 raise RetryableIngestionError(f"Storage connection error during persistence: {e}") from e
             except PersistenceError as e:
                 raise RetryableIngestionError(f"Persistence operation failed: {e}") from e

@@ -68,6 +68,7 @@ class ValidatedExcerptItem(BaseModel):
     status_reason: str = Field(..., description="Explicit rationale for regulatory status")
     applicable_edge_ids: List[str] = Field(default_factory=list, description="Graph edge IDs influencing this passage")
     acting_document_ids: List[str] = Field(default_factory=list, description="Newer circulars acting on this passage")
+    collection_id: Optional[str] = Field(default=None, description="Authoritative collection identifier for provenance")
 
 
 class SafetyGateResponse(BaseModel):

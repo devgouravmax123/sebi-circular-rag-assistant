@@ -1,0 +1,442 @@
+{
+  "dataset_version": "2.0.0-broader",
+  "collection_id": "general_synthetic",
+  "description": "Broader diagnostic evaluation benchmark with 32 distinct queries across 7 target categories, designed to evaluate retrieval, relevance filtering, claim-evidence binding, and safe abstention against the synthetic general-document corpus.",
+  "total_queries": 32,
+  "queries": [
+    {
+      "query_id": "broad_q01_paraphrase_mfa_requirement",
+      "category": "paraphrase",
+      "question": "What kind of multi-factor authentication tokens are mandatory for staff and contractor sign-in at Acme?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_security_policy"],
+      "expected_chunks": ["acme_security_policy_p1_0"],
+      "expected_pages": [1],
+      "rationale": "Directly answered by 'All Acme personnel and service contractors must authenticate using hardware security key FIDO2 multi-factor authentication (MFA).'",
+      "key_facts_to_preserve": [
+        "hardware security key FIDO2 multi-factor authentication (MFA)",
+        "personnel and service contractors"
+      ]
+    },
+    {
+      "query_id": "broad_q02_paraphrase_mtls_validity",
+      "category": "paraphrase",
+      "question": "How many hours remain before automated service account OAuth2 mTLS certificates become invalid?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_security_policy"],
+      "expected_chunks": ["acme_security_policy_p1_0"],
+      "expected_pages": [1],
+      "rationale": "Directly answered by 'short-lived OAuth2 mTLS certificates expiring every 12 hours.'",
+      "key_facts_to_preserve": [
+        "expiring every 12 hours",
+        "OAuth2 mTLS certificates"
+      ]
+    },
+    {
+      "query_id": "broad_q03_paraphrase_access_review_cadence",
+      "category": "paraphrase",
+      "question": "How regularly must departmental heads inspect role privileges and staff access permissions?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_security_policy"],
+      "expected_chunks": ["acme_security_policy_p1_0"],
+      "expected_pages": [2],
+      "rationale": "Directly answered by 'personnel access credentials and role assignments must undergo quarterly access review by designated department leads.'",
+      "key_facts_to_preserve": [
+        "quarterly access review",
+        "designated department leads"
+      ]
+    },
+    {
+      "query_id": "broad_q04_paraphrase_k8s_clusters",
+      "category": "paraphrase",
+      "question": "Across which geographical cloud zones are Acme production Kubernetes deployments spread?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_infra_handbook"],
+      "expected_chunks": ["acme_infra_handbook_p1_0"],
+      "expected_pages": [1],
+      "rationale": "Directly answered by 'multi-region Kubernetes clusters across primary-us-east and secondary-eu-west regions.'",
+      "key_facts_to_preserve": [
+        "multi-region Kubernetes clusters",
+        "primary-us-east and secondary-eu-west regions"
+      ]
+    },
+    {
+      "query_id": "broad_q05_paraphrase_dr_drill_cadence",
+      "category": "paraphrase",
+      "question": "How often are disaster recovery simulations conducted and who signs off on their completion?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_infra_handbook"],
+      "expected_chunks": ["acme_infra_handbook_p1_0"],
+      "expected_pages": [2],
+      "rationale": "Directly answered by 'Disaster recovery recovery drills must be executed semi-annually with documented sign-off from the SRE Lead.'",
+      "key_facts_to_preserve": [
+        "semi-annually",
+        "documented sign-off from the SRE Lead"
+      ]
+    },
+    {
+      "query_id": "broad_q06_multifact_deprovisioning_and_contractor_expiry",
+      "category": "multifact_conditional",
+      "question": "How rapidly are terminated staff revoked from Active Directory, and how long do third-party contractor credentials survive without CISO approval?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_security_policy"],
+      "expected_chunks": ["acme_security_policy_p1_0"],
+      "expected_pages": [2],
+      "rationale": "Requires two distinct policy timelines from Section 2: staff revocation within 60 seconds and contractor expiry after 30 days unless approved by CISO.",
+      "key_facts_to_preserve": [
+        "within 60 seconds",
+        "expire automatically after 30 days unless approved in writing by CISO"
+      ]
+    },
+    {
+      "query_id": "broad_q07_multifact_database_engine_and_rpo_rto",
+      "category": "multifact_conditional",
+      "question": "What database technology backs Acme transactional systems, and what are the corresponding RPO and RTO thresholds?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_infra_handbook"],
+      "expected_chunks": ["acme_infra_handbook_p1_0"],
+      "expected_pages": [1],
+      "rationale": "Combines database engine (PostgreSQL 16) with tier-1 RPO (5 minutes) and RTO (15 minutes) from Section 1.",
+      "key_facts_to_preserve": [
+        "PostgreSQL 16",
+        "RPO strictly 5 minutes",
+        "RTO is 15 minutes"
+      ]
+    },
+    {
+      "query_id": "broad_q08_multifact_telemetry_protocols_and_limits",
+      "category": "multifact_conditional",
+      "question": "Which network protocols does the Data Mesh ingestion endpoint accept, and what are its standard tenant throughput and burst caps?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_product_spec"],
+      "expected_chunks": ["acme_product_spec_p1_0"],
+      "expected_pages": [1],
+      "rationale": "Combines ingestion endpoints (gRPC and HTTPS) with standard rate (10000 events/sec) and burst allowance (15000 events/sec up to 60s).",
+      "key_facts_to_preserve": [
+        "gRPC and HTTPS endpoints",
+        "10000 events per second per tenant",
+        "burst up to 15000 events per second for 60 seconds"
+      ]
+    },
+    {
+      "query_id": "broad_q09_conditional_kms_key_rotation",
+      "category": "multifact_conditional",
+      "question": "What encryption mechanism is required for production database snapshots, and what rotation frequency applies to customer-managed KMS keys?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_infra_handbook"],
+      "expected_chunks": ["acme_infra_handbook_p1_0"],
+      "expected_pages": [2],
+      "rationale": "Combines snapshot encryption (customer-managed AWS KMS keys) and mandated annual key rotation.",
+      "key_facts_to_preserve": [
+        "customer-managed AWS KMS keys",
+        "annual key rotation mandated"
+      ]
+    },
+    {
+      "query_id": "broad_q10_conditional_uncompressed_telemetry_tiering",
+      "category": "multifact_conditional",
+      "question": "Under what condition may Data Mesh uncompressed event streams be kept for longer than 48 hours?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_product_spec"],
+      "expected_chunks": ["acme_product_spec_p1_0"],
+      "expected_pages": [2],
+      "rationale": "Policy establishes an absolute prohibition: 'Under no circumstances does the Data Mesh retain uncompressed event streams for longer than 48 hours without tiering.'",
+      "key_facts_to_preserve": [
+        "under no circumstances retain uncompressed event streams for longer than 48 hours without tiering"
+      ]
+    },
+    {
+      "query_id": "broad_q11_ambiguity_snapshot_retention_scope",
+      "category": "ambiguity_scope",
+      "question": "Does the 365-day cold archive retention policy apply to PostgreSQL database backup snapshots?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_product_spec", "acme_infra_handbook"],
+      "expected_chunks": ["acme_product_spec_p1_0", "acme_infra_handbook_p1_0"],
+      "expected_pages": [2],
+      "rationale": "Clarifies scope: database snapshots are managed independently of the telemetry mesh and adhere to 30-day storage limits, not 365 days.",
+      "key_facts_to_preserve": [
+        "database snapshots are managed independently",
+        "adhere to 30-day storage limits, not 365 days"
+      ]
+    },
+    {
+      "query_id": "broad_q12_ambiguity_staging_failover_scope",
+      "category": "ambiguity_scope",
+      "question": "Are staging and development environments configured for automated regional DNS failover during outages?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_infra_handbook"],
+      "expected_chunks": ["acme_infra_handbook_p1_0"],
+      "expected_pages": [2],
+      "rationale": "Directly scoped in Section 2: staging and development environments do not receive automated failover and retain snapshots for only 7 days.",
+      "key_facts_to_preserve": [
+        "staging and development environments do not receive automated failover",
+        "retained for only 7 calendar days"
+      ]
+    },
+    {
+      "query_id": "broad_q13_ambiguity_service_account_password_exception",
+      "category": "ambiguity_scope",
+      "question": "Can service accounts use complex 16-character static passwords if approved by department leads?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_security_policy"],
+      "expected_chunks": ["acme_security_policy_p1_0"],
+      "expected_pages": [1],
+      "rationale": "Directly scoped: service accounts are strictly prohibited from using static passwords regardless of complexity and must use 12-hour OAuth2 mTLS certificates.",
+      "key_facts_to_preserve": [
+        "strictly prohibited from using static passwords",
+        "must authenticate exclusively via short-lived OAuth2 mTLS certificates"
+      ]
+    },
+    {
+      "query_id": "broad_q14_ambiguity_custom_telemetry_retention_license",
+      "category": "ambiguity_scope",
+      "question": "What is required for tenant organizations requesting Data Mesh telemetry storage beyond 365 days?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_product_spec"],
+      "expected_chunks": ["acme_product_spec_p1_0"],
+      "expected_pages": [2],
+      "rationale": "Narrowly scoped: tenants requesting custom retention periods exceeding 365 days must purchase enterprise archive licenses.",
+      "key_facts_to_preserve": [
+        "purchase enterprise archive licenses"
+      ]
+    },
+    {
+      "query_id": "broad_q15_unsupported_employee_bonus_structure",
+      "category": "unsupported",
+      "question": "What percentage annual performance bonus is awarded to Acme SRE leads upon completing semi-annual DR drills?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "rationale": "Corpus mentions DR drills and SRE leads, but employee compensation and bonus percentages do not exist.",
+      "key_facts_to_preserve": [
+        "compensation and bonus structure is not established in the corpus"
+      ]
+    },
+    {
+      "query_id": "broad_q16_unsupported_hardware_security_key_vendor",
+      "category": "unsupported",
+      "question": "Which specific hardware token vendor (e.g., YubiKey 5C NFC or Google Titan) does Acme procure for FIDO2 MFA?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "rationale": "Policy specifies hardware security key FIDO2 MFA, but does not name any procurement hardware vendor or brand.",
+      "key_facts_to_preserve": [
+        "specific hardware key vendor or brand is not mentioned in the policy"
+      ]
+    },
+    {
+      "query_id": "broad_q17_unsupported_k8s_cni_plugin",
+      "category": "unsupported",
+      "question": "Which Kubernetes CNI network overlay plugin (Cilium, Calico, or Flannel) is deployed on worker nodes?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "rationale": "Handbook specifies multi-region clusters and Debian 12, but does not establish the Kubernetes CNI plugin.",
+      "key_facts_to_preserve": [
+        "Kubernetes CNI plugin is not specified in the infrastructure handbook"
+      ]
+    },
+    {
+      "query_id": "broad_q18_unsupported_dlq_notification_pagerduty",
+      "category": "unsupported",
+      "question": "Does Data Mesh dead-letter queue routing trigger a high-urgency PagerDuty alert to on-call engineers?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "rationale": "Product spec states DLQ events are routed for manual inspection within 24 hours, but PagerDuty or alerting systems are not mentioned.",
+      "key_facts_to_preserve": [
+        "PagerDuty alerting integration is not established in the specification"
+      ]
+    },
+    {
+      "query_id": "broad_q19_unsupported_contractor_background_check",
+      "category": "unsupported",
+      "question": "What criminal background screening standard must third-party contractors satisfy prior to credential issuance?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "rationale": "Policy mentions contractor credentials and 30-day expiry, but contains no background screening or hiring provisions.",
+      "key_facts_to_preserve": [
+        "contractor background screening is not documented in the security policy"
+      ]
+    },
+    {
+      "query_id": "broad_q20_unsupported_postgres_connection_pooler",
+      "category": "unsupported",
+      "question": "Does Acme deploy PgBouncer or Pgpool-II in front of production PostgreSQL 16 instances?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "rationale": "Infrastructure handbook mentions streaming replication and hot standby, but does not establish connection pooling software.",
+      "key_facts_to_preserve": [
+        "connection pooler software is not mentioned in the infrastructure handbook"
+      ]
+    },
+    {
+      "query_id": "broad_q21_numeric_temporal_service_key_rotation",
+      "category": "numeric_temporal_fidelity",
+      "question": "What is the exact maximum number of days cryptographic service keys and TLS certificates may remain active before mandatory rotation?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_security_policy"],
+      "expected_chunks": ["acme_security_policy_p1_0"],
+      "expected_pages": [2],
+      "rationale": "Tests exact temporal quantity: 'at least every 90 days without exception.'",
+      "key_facts_to_preserve": [
+        "rotated at least every 90 days without exception"
+      ]
+    },
+    {
+      "query_id": "broad_q22_numeric_temporal_dns_failover_seconds",
+      "category": "numeric_temporal_fidelity",
+      "question": "How many seconds does automatic DNS failover take during a catastrophic regional failure?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_infra_handbook"],
+      "expected_chunks": ["acme_infra_handbook_p1_0"],
+      "expected_pages": [2],
+      "rationale": "Tests numeric latency metric: 'automatic DNS failover triggers within 120 seconds.'",
+      "key_facts_to_preserve": [
+        "triggers within 120 seconds"
+      ]
+    },
+    {
+      "query_id": "broad_q23_numeric_temporal_payload_rejection_limit",
+      "category": "numeric_temporal_fidelity",
+      "question": "What exact payload size threshold in megabytes causes the Data Mesh ingestion endpoint to return HTTP 413?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_product_spec"],
+      "expected_chunks": ["acme_product_spec_p1_0"],
+      "expected_pages": [1],
+      "rationale": "Tests numeric limit and status code: 'Payload sizes exceeding 2 megabytes are rejected immediately with HTTP 413 Payload Too Large.'",
+      "key_facts_to_preserve": [
+        "exceeding 2 megabytes",
+        "HTTP 413 Payload Too Large"
+      ]
+    },
+    {
+      "query_id": "broad_q24_numeric_temporal_hot_storage_days",
+      "category": "numeric_temporal_fidelity",
+      "question": "For how many days is standard tenant telemetry retained in hot memory-cached storage prior to parquet tiering?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_product_spec"],
+      "expected_chunks": ["acme_product_spec_p1_0"],
+      "expected_pages": [2],
+      "rationale": "Tests exact duration: 'retained in hot memory-cached storage for 7 days before automated tiering to cold parquet archives for 365 days.'",
+      "key_facts_to_preserve": [
+        "hot memory-cached storage for 7 days",
+        "cold parquet archives for 365 days"
+      ]
+    },
+    {
+      "query_id": "broad_q25_collection_isolation_sebi_qualified_re",
+      "category": "collection_isolation",
+      "question": "Does Acme Corporation qualify as a Qualified RE under SEBI CSCRF circular 2024/113?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "rationale": "Cross-collection boundary check: Qualified RE is a SEBI regulatory construct; querying the general_synthetic collection must not return SEBI circulars.",
+      "key_facts_to_preserve": [
+        "SEBI regulatory classifications do not exist in the general synthetic collection"
+      ]
+    },
+    {
+      "query_id": "broad_q26_collection_isolation_iso_certification_mandate",
+      "category": "collection_isolation",
+      "question": "Within what timeline must Acme obtain ISO 27001 certification under circular 2025/119?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "rationale": "Ensures SEBI circular provisions and ISO 27001 mandates do not bleed into the general synthetic collection.",
+      "key_facts_to_preserve": [
+        "SEBI circulars are isolated from the general collection"
+      ]
+    },
+    {
+      "query_id": "broad_q27_collection_isolation_soc_reporting_difference",
+      "category": "collection_isolation",
+      "question": "Must failed account lockout trials at Acme be reported directly to SEBI within 6 hours?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "rationale": "Policy requires notifying internal SOC, not SEBI; prevents cross-collection regulatory grafting.",
+      "key_facts_to_preserve": [
+        "lockouts notify the internal Security Operations Center (SOC), not SEBI"
+      ]
+    },
+    {
+      "query_id": "broad_q28_adversarial_overlap_password_complexity_vs_dlq",
+      "category": "adversarial_lexical_overlap",
+      "question": "What dead-letter queue inspection timeframe applies to passwords with fewer than 16 characters?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "rationale": "Adversarial blend: combines password length (security policy) with dead-letter queue manual inspection (product spec). No such combined rule exists.",
+      "key_facts_to_preserve": [
+        "no dead-letter queue applies to user password validation"
+      ]
+    },
+    {
+      "query_id": "broad_q29_adversarial_overlap_debian_tiering",
+      "category": "adversarial_lexical_overlap",
+      "question": "How are Debian 12 operating system worker nodes tiered into cold parquet archives after 365 days?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "rationale": "Adversarial blend: combines Debian 12 worker nodes (infra handbook) with telemetry parquet tiering (product spec). Non-sensical inference must be rejected.",
+      "key_facts_to_preserve": [
+        "server operating systems are not tiered into telemetry parquet archives"
+      ]
+    },
+    {
+      "query_id": "broad_q30_adversarial_overlap_low_lexical_dr_recovery",
+      "category": "adversarial_lexical_overlap",
+      "question": "What is the certified allowable business downtime and permissible data loss margin for mission-critical core systems during severe outages?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_infra_handbook"],
+      "expected_chunks": ["acme_infra_handbook_p1_0"],
+      "expected_pages": [1],
+      "rationale": "Low literal lexical overlap: uses synonyms 'allowable business downtime' (RTO) and 'permissible data loss margin' (RPO) for tier-1 workloads (5m / 15m).",
+      "key_facts_to_preserve": [
+        "RPO for critical tier-1 transactional workloads is strictly 5 minutes",
+        "RTO is 15 minutes"
+      ]
+    },
+    {
+      "query_id": "broad_q31_adversarial_overlap_low_lexical_revocation",
+      "category": "adversarial_lexical_overlap",
+      "question": "How quickly must network directories eliminate system permissions for separated staff members?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_security_policy"],
+      "expected_chunks": ["acme_security_policy_p1_0"],
+      "expected_pages": [2],
+      "rationale": "Low literal lexical overlap: uses synonyms 'separated staff members' (employee termination) and 'network directories eliminate system permissions' (revoke Active Directory within 60s).",
+      "key_facts_to_preserve": [
+        "automated access deprovisioning triggers immediately",
+        "revoke all Active Directory and cloud IAM permissions within 60 seconds"
+      ]
+    },
+    {
+      "query_id": "broad_q32_adversarial_overlap_ciso_dr_signoff_confusion",
+      "category": "adversarial_lexical_overlap",
+      "question": "Does the Chief Information Security Officer (CISO) personally sign off on semi-annual disaster recovery drills?",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_infra_handbook"],
+      "expected_chunks": ["acme_infra_handbook_p1_0"],
+      "expected_pages": [2],
+      "rationale": "Disambiguates role responsibilities: DR drills require sign-off from the SRE Lead, whereas the CISO approves contractor credential extensions in the security policy.",
+      "key_facts_to_preserve": [
+        "disaster recovery drills require sign-off from the SRE Lead, not the CISO"
+      ]
+    }
+  ]
+}

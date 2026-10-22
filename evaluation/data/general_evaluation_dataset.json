@@ -1,0 +1,289 @@
+{
+  "dataset_version": "1.0.0",
+  "collection_id": "general_synthetic",
+  "description": "General-document golden evaluation dataset covering technical infrastructure, organizational security policy, and product specifications without SEBI regulatory assumptions.",
+  "total_queries": 22,
+  "queries": [
+    {
+      "query_id": "gen_q01_password_length",
+      "question": "What is the minimum password length requirement and character complexity for Acme user accounts?",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_security_policy"],
+      "expected_chunks": ["acme_security_policy_p1_0"],
+      "expected_pages": [1],
+      "key_facts_to_preserve": [
+        "minimum 16 characters in length",
+        "uppercase, lowercase, numeric, and special symbol characters"
+      ]
+    },
+    {
+      "query_id": "gen_q02_service_account_auth",
+      "question": "How are service accounts required to authenticate, and are static passwords permitted?",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_security_policy"],
+      "expected_chunks": ["acme_security_policy_p1_0"],
+      "expected_pages": [1],
+      "key_facts_to_preserve": [
+        "strictly prohibited from using static passwords",
+        "short-lived OAuth2 mTLS certificates expiring every 12 hours"
+      ]
+    },
+    {
+      "query_id": "gen_q03_lockout_threshold",
+      "question": "What happens after consecutive failed login trials at Acme?",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_security_policy"],
+      "expected_chunks": ["acme_security_policy_p1_0"],
+      "expected_pages": [1],
+      "key_facts_to_preserve": [
+        "exceeding 5 consecutive trials",
+        "automated 30-minute account lockout",
+        "notify the Security Operations Center (SOC)"
+      ]
+    },
+    {
+      "query_id": "gen_q04_crypto_key_rotation",
+      "question": "How frequently must cryptographic service keys and TLS certificates be rotated?",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_security_policy"],
+      "expected_chunks": ["acme_security_policy_p1_0"],
+      "expected_pages": [2],
+      "key_facts_to_preserve": [
+        "at least every 90 days without exception"
+      ]
+    },
+    {
+      "query_id": "gen_q05_employee_termination_deprovisioning",
+      "question": "Within what timeframe must all Active Directory and cloud IAM permissions be revoked upon employee termination?",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_security_policy"],
+      "expected_chunks": ["acme_security_policy_p1_0"],
+      "expected_pages": [2],
+      "key_facts_to_preserve": [
+        "automated access deprovisioning triggers immediately",
+        "within 60 seconds"
+      ]
+    },
+    {
+      "query_id": "gen_q06_contractor_credential_lifespan",
+      "question": "When do third-party contractor credentials expire, and who can authorize an extension?",
+      "category": "conditional",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_security_policy"],
+      "expected_chunks": ["acme_security_policy_p1_0"],
+      "expected_pages": [2],
+      "key_facts_to_preserve": [
+        "expire automatically after 30 days",
+        "extension approved in writing by Chief Information Security Officer (CISO)"
+      ]
+    },
+    {
+      "query_id": "gen_q07_db_version_and_replication",
+      "question": "What database engine, version, and replication mechanism does Acme use for production workloads?",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_infra_handbook"],
+      "expected_chunks": ["acme_infra_handbook_p1_0"],
+      "expected_pages": [1],
+      "key_facts_to_preserve": [
+        "PostgreSQL 16",
+        "streaming replication",
+        "asynchronous hot standby failover"
+      ]
+    },
+    {
+      "query_id": "gen_q08_rpo_rto_tier1",
+      "question": "What are the recovery point objective and recovery time objective for critical tier-1 transactional workloads?",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_infra_handbook"],
+      "expected_chunks": ["acme_infra_handbook_p1_0"],
+      "expected_pages": [1],
+      "key_facts_to_preserve": [
+        "recovery point objective (RPO) is strictly 5 minutes",
+        "recovery time objective (RTO) is 15 minutes"
+      ]
+    },
+    {
+      "query_id": "gen_q09_rpo_analytical",
+      "question": "What is the recovery point objective for non-critical analytical databases?",
+      "category": "conditional",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_infra_handbook"],
+      "expected_chunks": ["acme_infra_handbook_p1_0"],
+      "expected_pages": [1],
+      "key_facts_to_preserve": [
+        "non-critical analytical databases operate with an RPO of 24 hours"
+      ]
+    },
+    {
+      "query_id": "gen_q10_db_snapshot_frequency_retention",
+      "question": "How often are production database snapshots captured and for how many days are they retained?",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_infra_handbook"],
+      "expected_chunks": ["acme_infra_handbook_p1_0"],
+      "expected_pages": [2],
+      "key_facts_to_preserve": [
+        "every 6 hours",
+        "retained for 30 calendar days in encrypted object storage"
+      ]
+    },
+    {
+      "query_id": "gen_q11_staging_snapshot_retention",
+      "question": "How long are staging and development environment snapshots retained, and do they get automated failover?",
+      "category": "conditional",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_infra_handbook"],
+      "expected_chunks": ["acme_infra_handbook_p1_0"],
+      "expected_pages": [2],
+      "key_facts_to_preserve": [
+        "retained for only 7 calendar days",
+        "do not receive automated failover"
+      ]
+    },
+    {
+      "query_id": "gen_q12_dns_failover_latency",
+      "question": "In a regional failure, how quickly does automatic DNS failover trigger, and where does traffic route?",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_infra_handbook"],
+      "expected_chunks": ["acme_infra_handbook_p1_0"],
+      "expected_pages": [2],
+      "key_facts_to_preserve": [
+        "triggers within 120 seconds",
+        "routing traffic to eu-west hot standby"
+      ]
+    },
+    {
+      "query_id": "gen_q13_data_mesh_ingestion_rate",
+      "question": "What is the standard ingestion rate limit and burst allowance for the Acme Enterprise Data Mesh?",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_product_spec"],
+      "expected_chunks": ["acme_product_spec_p1_0"],
+      "expected_pages": [1],
+      "key_facts_to_preserve": [
+        "standard ingestion rate limit is 10000 events per second per tenant",
+        "burst allowance up to 15000 events per second for a maximum duration of 60 seconds"
+      ]
+    },
+    {
+      "query_id": "gen_q14_payload_limit_and_error",
+      "question": "What is the maximum allowed payload size for Data Mesh ingestion, and what HTTP error is returned if exceeded?",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_product_spec"],
+      "expected_chunks": ["acme_product_spec_p1_0"],
+      "expected_pages": [1],
+      "key_facts_to_preserve": [
+        "payload sizes exceeding 2 megabytes are rejected",
+        "HTTP 413 Payload Too Large"
+      ]
+    },
+    {
+      "query_id": "gen_q15_missing_tenant_dlq",
+      "question": "What happens to telemetry events that arrive with missing tenant headers in the Data Mesh?",
+      "category": "conditional",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_product_spec"],
+      "expected_chunks": ["acme_product_spec_p1_0"],
+      "expected_pages": [1],
+      "key_facts_to_preserve": [
+        "routed directly to the dead-letter queue (DLQ)",
+        "for manual inspection within 24 hours"
+      ]
+    },
+    {
+      "query_id": "gen_q16_telemetry_hot_cold_tiers",
+      "question": "What are the hot caching and cold archive retention durations for standard Data Mesh telemetry?",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_product_spec"],
+      "expected_chunks": ["acme_product_spec_p1_0"],
+      "expected_pages": [2],
+      "key_facts_to_preserve": [
+        "hot memory-cached storage for 7 days",
+        "cold parquet archives for 365 days"
+      ]
+    },
+    {
+      "query_id": "gen_q17_snapshot_vs_mesh_retention_disambiguation",
+      "question": "Do database backup snapshots adhere to the Data Mesh 365-day cold archive retention policy?",
+      "category": "conflicting_evidence",
+      "expected_outcome": "answerable",
+      "expected_documents": ["acme_product_spec", "acme_infra_handbook"],
+      "expected_chunks": ["acme_product_spec_p1_0", "acme_infra_handbook_p1_0"],
+      "expected_pages": [2],
+      "key_facts_to_preserve": [
+        "database snapshots are managed independently of the telemetry mesh",
+        "snapshots adhere to 30-day storage limits, not 365 days"
+      ]
+    },
+    {
+      "query_id": "gen_q18_unanswerable_salary_bands",
+      "question": "What are the executive compensation and software engineering salary bands at Acme Global?",
+      "category": "unanswerable",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "key_facts_to_preserve": [
+        "compensation and salary information is not established in the corpus"
+      ]
+    },
+    {
+      "query_id": "gen_q19_unanswerable_cscrf_circular",
+      "question": "Which SEBI circular mandates CSCRF compliance reporting timelines for Acme?",
+      "category": "unanswerable",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "key_facts_to_preserve": [
+        "no SEBI circulars or Indian financial regulatory mandates exist in this collection"
+      ]
+    },
+    {
+      "query_id": "gen_q20_unanswerable_azure_blob_storage",
+      "question": "What Azure Blob Storage tier does Acme use for multi-cloud database failover?",
+      "category": "unanswerable",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "key_facts_to_preserve": [
+        "corpus specifies AWS KMS and object storage, Azure Blob is not mentioned"
+      ]
+    },
+    {
+      "query_id": "gen_q21_unsupported_inference_legal_force",
+      "question": "Is the Acme Information Security Policy legally enforceable under federal criminal statutes?",
+      "category": "unsupported_inference",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "key_facts_to_preserve": [
+        "document is an internal organizational policy and does not assert federal legal force"
+      ]
+    },
+    {
+      "query_id": "gen_q22_unanswerable_wifi_ssid",
+      "question": "What is the guest Wi-Fi WPA3 pre-shared key for the Acme headquarters office?",
+      "category": "unanswerable",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_chunks": [],
+      "expected_pages": [],
+      "key_facts_to_preserve": [
+        "Wi-Fi credentials are not present in the provided excerpts"
+      ]
+    }
+  ]
+}

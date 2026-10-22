@@ -289,6 +289,7 @@ def test_10_provider_failure_modes_handled_safely(sample_evidence):
         ],
         disposition=AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS,
         regulatory_warnings=[],
+        policy_type="sebi_cscrf_strict",
     )
     assert res_timeout.status == SynthesisStatus.PROVIDER_FAILED
     assert res_timeout.failure_reason is not None
@@ -312,6 +313,7 @@ def test_10_provider_failure_modes_handled_safely(sample_evidence):
         ],
         disposition=AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS,
         regulatory_warnings=[],
+        policy_type="sebi_cscrf_strict",
     )
     assert res_unavail.status == SynthesisStatus.PROVIDER_FAILED
     assert res_unavail.failure_reason is not None
@@ -335,6 +337,7 @@ def test_10_provider_failure_modes_handled_safely(sample_evidence):
         ],
         disposition=AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS,
         regulatory_warnings=[],
+        policy_type="sebi_cscrf_strict",
     )
     assert res_malformed.status == SynthesisStatus.PROVIDER_FAILED
     assert res_malformed.failure_reason is not None

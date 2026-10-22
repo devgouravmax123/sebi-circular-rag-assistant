@@ -68,6 +68,7 @@ def multi_domain_env(tmp_path, monkeypatch):
         extraction_status="extracted",
         regulator="SEBI",
         domain="LODR",
+        collection_id="sebi_cscrf",
     )
     doc_repo.save_document(lodr_doc)
 

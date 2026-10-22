@@ -16,7 +16,7 @@ import logging
 import random
 import re
 import time
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Set
 import httpx
 
 from app.schemas.synthesis import (
@@ -128,6 +128,63 @@ def _sanitize_error_message(msg: str, secret: Optional[str]) -> str:
     return sanitized
 
 
+def _is_daily_quota_exhausted(response: httpx.Response) -> bool:
+    """
+    Distinguish confirmed daily quota exhaustion (e.g. TPD / RPD / quota exceeded)
+    from transient rate limits (e.g. RPM / TPM / 503 high demand).
+    """
+    if response.status_code != 429:
+        return False
+
+    err_code = ""
+    err_msg = ""
+    try:
+        err_obj = response.json().get("error", {})
+        err_code = str(err_obj.get("code") or err_obj.get("type") or "").strip().lower()
+        err_msg = str(err_obj.get("message") or "").strip().lower()
+    except Exception:
+        err_msg = response.text[:300].strip().lower()
+
+    if err_code in ("daily_quota_exceeded", "insufficient_quota", "quota_exceeded"):
+        return True
+
+    # Check for daily token or request limit patterns (e.g., TPD, RPD, "day", "daily", "quota")
+    # vs transient per-minute / per-second limits (RPM, TPM, RPS)
+    daily_keywords = ("tpd", "rpd", "tokens per day", "requests per day", "daily limit", "daily quota", "quota exhausted")
+    if any(kw in err_msg for kw in daily_keywords):
+        return True
+
+    # If message explicitly says "quota exceeded" or "insufficient quota"
+    if "insufficient_quota" in err_msg or "quota exceeded" in err_msg:
+        return True
+
+    return False
+
+
+def _clean_prompt_passage_text(text: str) -> str:
+    """
+    Cleans narrowly defined, verified PDF running-header artifacts from the rendered prompt copy.
+    Does NOT mutate original chunk/evidence text.
+    Matched pattern: CSCRF (optionally Annexure-A..K) Page <num> of <num> Version <num>.<num>
+    Whitespace directly surrounding removal is normalized so text on both sides is separated by one space,
+    without reformatting tables or changing other substantive text.
+    """
+    if not text:
+        return ""
+    pattern = r"[ \t]*\bCSCRF(?:\s+Annexure-[A-K])?\s+Page\s+\d+\s+of\s+\d+\s+Version\s+\d+\.\d+\b[ \t]*"
+
+    def _replace_match(match: re.Match) -> str:
+        start, end = match.span()
+        # If match is at the very beginning of text or immediately after a newline, or at the end
+        has_left = start > 0 and text[start - 1] not in ("\n", "\r")
+        has_right = end < len(text) and text[end] not in ("\n", "\r")
+        if has_left and has_right:
+            return " "
+        return ""
+
+    return re.sub(pattern, _replace_match, text).strip()
+
+
 class GroqSynthesisProvider(SynthesisProvider):
     """
     Synthesis provider implementation utilizing Groq's OpenAI-compatible Chat Completions API.
@@ -149,34 +206,9 @@ class GroqSynthesisProvider(SynthesisProvider):
         self._custom_client = http_client
 
     def _build_user_prompt(self, payload: SynthesisInput) -> str:
-        """Constructs bounded prompt containing query, evidence passages, and metadata."""
-        lines: List[str] = [
-            f"USER QUERY: {payload.query}\n",
-            "VERIFIED REGULATORY PASSAGES SUPPLIED FROM CORPUS:",
-        ]
-
-        if not payload.evidence_items:
-            lines.append("[No evidence passages provided]")
-        else:
-            for idx, item in enumerate(payload.evidence_items, start=1):
-                circ = item.circular_number or item.document_id
-                page_info = f"Page {item.page_start}" if item.page_start else "Page unlisted"
-                lines.append(f"\n--- EXCERPT #{idx} [Chunk ID: {item.chunk_id}] ---")
-                lines.append(f"Source Circular: {circ} | {page_info} | Status: {item.regulatory_status}")
-                if item.title:
-                    lines.append(f"Title: {item.title}")
-                lines.append(f"Passage Content:\n{item.text}")
-
-        if payload.regulatory_warnings:
-            lines.append("\nAPPLICABLE REGULATORY CAVEATS / SCOPE LIMITATIONS:")
-            for w in payload.regulatory_warnings:
-                lines.append(f"- {w}")
-
-        lines.append(
-            "\nTASK: Provide a synthesized response adhering strictly to the above facts and rules. "
-            "Output pure JSON matching the specified schema."
-        )
-        return "\n".join(lines)
+        """Constructs policy-aware bounded prompt containing query, evidence passages, and metadata."""
+        from app.synthesis.prompt_builder import build_user_prompt
+        return build_user_prompt(payload)
 
     def synthesize(self, payload: SynthesisInput) -> SynthesisOutput:
         """
@@ -192,12 +224,24 @@ class GroqSynthesisProvider(SynthesisProvider):
                 failure_reason="Zero evidence items supplied to synthesis provider.",
             )
 
-        # 2. Build request payload
-        user_text = self._build_user_prompt(payload)
+        # 2. Build request payload using policy-aware instructions and prompt
+        from app.synthesis.prompt_builder import build_system_instruction, InvalidGroundingPolicyError
+        try:
+            system_text = build_system_instruction(payload.policy_type)
+            user_text = self._build_user_prompt(payload)
+        except InvalidGroundingPolicyError as e:
+            logger.error("Groq synthesis aborted due to invalid grounding policy: %s", str(e))
+            return SynthesisOutput(
+                status=SynthesisStatus.ABSTAINED,
+                answer="Controlled Abstention: Synthesis aborted due to invalid or unverified collection policy.",
+                claims=[],
+                unresolved_subquestions=[],
+                failure_reason=f"Policy fail-closed: {str(e)}",
+            )
         request_body = {
             "model": self._model,
             "messages": [
-                {"role": "system", "content": GROQ_SYSTEM_INSTRUCTION_TEXT},
+                {"role": "system", "content": system_text},
                 {"role": "user", "content": user_text},
             ],
             "response_format": {
@@ -205,7 +249,7 @@ class GroqSynthesisProvider(SynthesisProvider):
                 "json_schema": GROQ_SYNTHESIS_JSON_SCHEMA,
             },
             "temperature": 0.1,
-            "max_completion_tokens": 4096,
+            "max_completion_tokens": 768,
         }
 
         # For reasoning-capable models (e.g. openai/gpt-oss-*, qwen/*), configure reasoning_format
@@ -279,6 +323,15 @@ class GroqSynthesisProvider(SynthesisProvider):
                 raise SynthesisUnavailableError("Internal error communicating with Groq API.") from None
 
             # Handle transient HTTP status codes (429 rate limit, 503 high demand)
+            # Fail fast if 429 indicates confirmed daily quota exhaustion (e.g. TPD / RPD / quota exceeded)
+            if response.status_code == 429 and _is_daily_quota_exhausted(response):
+                logger.warning(
+                    "Groq API daily quota exhausted on attempt %d/%d; failing fast without retrying.",
+                    attempt + 1,
+                    max_retries + 1,
+                )
+                break
+
             if response.status_code in (429, 503) and attempt < max_retries:
                 retry_after_val: Optional[float] = None
                 raw_retry_after = response.headers.get("retry-after")
@@ -460,8 +513,51 @@ class GroqSynthesisProvider(SynthesisProvider):
                         )
                     )
 
+        # 9. Extract and log usage metrics safely
+        usage_data = resp_json.get("usage")
+        prompt_tokens: Optional[int] = None
+        completion_tokens: Optional[int] = None
+        total_tokens: Optional[int] = None
+        cached_tokens: Optional[int] = None
+
+        if isinstance(usage_data, dict):
+            try:
+                raw_pt = usage_data.get("prompt_tokens")
+                prompt_tokens = int(raw_pt) if raw_pt is not None else None
+            except (ValueError, TypeError):
+                prompt_tokens = None
+
+            try:
+                raw_ct = usage_data.get("completion_tokens")
+                completion_tokens = int(raw_ct) if raw_ct is not None else None
+            except (ValueError, TypeError):
+                completion_tokens = None
+
+            try:
+                raw_tt = usage_data.get("total_tokens")
+                total_tokens = int(raw_tt) if raw_tt is not None else None
+            except (ValueError, TypeError):
+                total_tokens = None
+
+            # Groq / OpenAI prompt_tokens_details may contain cached_tokens
+            pt_details = usage_data.get("prompt_tokens_details")
+            if isinstance(pt_details, dict):
+                try:
+                    raw_cached = pt_details.get("cached_tokens")
+                    cached_tokens = int(raw_cached) if raw_cached is not None else None
+                except (ValueError, TypeError):
+                    cached_tokens = None
+            elif "cached_tokens" in usage_data:
+                try:
+                    raw_cached = usage_data.get("cached_tokens")
+                    cached_tokens = int(raw_cached) if raw_cached is not None else None
+                except (ValueError, TypeError):
+                    cached_tokens = None
+
         logger.info(
-            "Groq API generation succeeded: model=%s, attempt=%d/%d, elapsed=%.2fs, status=%s, claims=%d, unresolved_subquestions=%d",
+            "Groq API generation succeeded: model=%s, attempt=%d/%d, elapsed=%.2fs, status=%s, "
+            "claims=%d, unresolved_subquestions=%d, prompt_tokens=%s, completion_tokens=%s, "
+            "total_tokens=%s, cached_tokens=%s",
             self._model,
             total_attempts,
             max_retries + 1,
@@ -469,6 +565,10 @@ class GroqSynthesisProvider(SynthesisProvider):
             status_enum.value,
             len(claims_list),
             len(unresolved_list),
+            prompt_tokens if prompt_tokens is not None else "N/A",
+            completion_tokens if completion_tokens is not None else "N/A",
+            total_tokens if total_tokens is not None else "N/A",
+            cached_tokens if cached_tokens is not None else "N/A",
         )
 
         return SynthesisOutput(

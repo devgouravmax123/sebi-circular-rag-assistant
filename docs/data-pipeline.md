@@ -1,95 +1,152 @@
 # Data Pipeline & Ingestion Architecture
 
-## 1. Scope & Ingestion Lifecycle
+## 1. Overview & Ingestion Lifecycle
 
-The **SEBI Regulatory Intelligence Platform** uses a deterministic, multi-stage ingestion pipeline to transform unstructured official regulatory PDFs into structured, provenance-annotated, and searchable records.
+The platform uses a deterministic, multi-stage ingestion pipeline to transform unstructured official regulatory PDFs into structured, provenance-annotated, and searchable text chunks.
 
-### Ingestion Lifecycle Stages
 ```text
-  [Official PDF]
-        |
-        v
-  1. Registration & Checksum Deduplication (SHA-256)
-        |
-        v
-  2. Document Parsing & Layout Analysis (PyMuPDF / pdfplumber)
-        |
-        v
-  3. Provenance-Preserving Chunking & Boundary Tagging
-        |
-        v
-  4. Vector Embedding & Lexical Inversion (pgvector / BM25)
-        |
-        v
-  5. Relationship Extraction & Evidence Audit (Newer -> AMENDS/RESCINDS -> Older)
-        |
-        v
-  [Published to Search Indexes & Relational Persistence Tier]
+  [Official PDF File]
+         |
+         v
+  1. Registration & Path Security Validation (traversal & extension checks)
+         |
+         v
+  2. SHA-256 Checksum Computation & Deduplication
+         |
+         v
+  3. Text Extraction & Quality Auditing (PyMuPDF: OK, SPARSE, EMPTY)
+         |
+         v
+  4. Provenance-Preserving Sliding-Window Chunking (350 words, 40 overlap)
+         |
+         v
+  5. Processed JSON Artifact Persistence (document, pages, chunks, manifest)
+         |
+         v
+  6. Hybrid Index Build (BM25 token matrix & BGE-Small dense vectors)
+         |
+         v
+  7. Atomic Index Snapshot Publication (data/indexes/snapshots/{snapshot_id}/)
 ```
 
-The existing 5-document Cybersecurity and Cyber Resilience Framework (CSCRF) corpus (`sebi_cscrf_2024_113`, `2025_045`, `2025_060`, `2025_096`, `2025_119`), comprising 168 chunks and 9 verified graph edges, represents the validated **initial pilot and permanent regression suite**. The architecture is structured for dynamic registration of additional circulars across SEBI domains, with future extensibility to secondary official regulators.
+The 5-document SEBI CSCRF circular corpus (`sebi_cscrf_2024_113`, `2025_045`, `2025_060`, `2025_096`, `2025_119`), comprising 168 chunks and 9 verified graph edges, represents the validated **initial reference collection and permanent regression anchor**.
 
 ---
 
-## 2. Ingestion Connectors & Source Integrity
+## 2. Ingestion Connectors & Source Integrity Rules (`IMPLEMENTED AND VERIFIED`)
 
-### Official Regulatory Sources
-- **SEBI:** Official SEBI circulars repository (`https://www.sebi.gov.in/legal/circulars/...`).
-- **Future Regulators (Phase 8G):** Reserve Bank of India (`rbi.org.in`), IRDAI (`irdai.gov.in`).
-
-### Source Integrity Rules
-1. **Immutable Cryptographic Hash:** Every downloaded PDF is hashed with SHA-256 upon arrival. Duplicate hashes trigger immediate deduplication.
-2. **Dual-Page Provenance:** Every chunk and evidence quote tracks both the physical 1-indexed PDF page (`pdf_page: 3`) and the document's printed page string (`printed_page: "Page 3 of 8"`).
-3. **No Inference of Missing Attributes:** If an official document omits an explicit effective date, the field remains `null` or `unknown`. An issue date is never silently substituted as the effective date.
-4. **Extraction Quality Auditing:** Pages with sparse text layers, unreadable fonts, or excessive artifacts are flagged (`extraction_status: "flagged_ocr"` or `"low_density"`).
-
----
-
-## 3. Relational Database Schema Design (Phase 8A Implemented)
-
-In Phase 8A, flat JSON and NumPy file stores are complemented by a production-ready relational PostgreSQL schema with `pgvector` managed via Alembic (`0001_initial_persistence_foundation`). The persistence model cleanly separates logical documents from immutable physical versions:
-
-### Implemented Tables (`backend/app/persistence/models.py`)
-
-1. **`regulators`**: Master registry of regulatory authorities (`regulator_code` PK, e.g. `'SEBI'`, `'RBI'`, `name`, `jurisdiction`).
-2. **`regulatory_domains`**: Regulatory frameworks/domains (`domain_code` PK, e.g. `'CSCRF'`, `'LODR'`, `regulator_code` FK).
-3. **`regulatory_documents`**: Logical regulatory documents (`document_id` PK, e.g. `'sebi_cscrf_2024_113'`, `regulator_code` FK, `domain_code` FK, `circular_number`, `title`, `issue_date`, `effective_date`, `source_url`, `status`).
-4. **`document_versions`**: Immutable document extractions/revisions (`version_id` PK, `document_id` FK, `version_number`, `sha256` unique per version, `total_pages`, `extracted_at`, `is_active`). Re-ingestion with a changed PDF checksum creates an immutable new version without overwriting historical records.
-5. **`provisions`**: Clause-level anchors (`provision_id` PK, `document_id` FK, `section_code`, `title`, `pdf_page`, `printed_page`).
-6. **`chunks`**: Text slices with dual-page provenance (`chunk_id` PK, `version_id` FK, `chunk_index`, `text`, `pdf_page_start`, `pdf_page_end`, `printed_page_start`, `printed_page_end`, `is_ocr`).
-7. **`chunk_embeddings`**: Dense vectors (`chunk_id` PK/FK, `embedding` vector(384), `model_name`, `dimension`). Exact cosine distance queries utilize pgvector's `<=>` operator.
-8. **`regulatory_edges`**: Directed legal relationships (`edge_id` PK, `source_document_id` FK, `target_document_id` FK, `relationship_type` [`AMENDS`, `RESCINDS`, `REFERENCES`], `scope` [`full`, `partial`], `affected_provisions` JSONB, `evidence_text`, `evidence_pdf_page`, `evidence_printed_page`, `review_status` [`verified`, `needs_review`, `rejected`], `confidence`). Check constraint enforces `source_document_id != target_document_id`.
-9. **`ingestion_jobs`**: Asynchronous batch and job tracking (`job_id` PK, `document_id` FK, `status`, `error_message`, `started_at`, `completed_at`).
-
-### Idempotent Corpus Importer CLI (`backend/app/persistence/importer.py`)
-
-The pilot CSCRF corpus is transferred to PostgreSQL via a transactional, idempotent importer:
-- **Command:** `python backend/app/persistence/cli_importer.py --database-url <URL> --all-or-nothing`
-- **Dry-Run Mode:** `python backend/app/persistence/cli_importer.py --dry-run` performs full offline validation of manifest JSONs, chunk boundaries, embedding shapes, and graph cycles without modifying the database.
-- **Edge Protection:** Previously verified edges (`review_status = 'verified'`) are strictly preserved during subsequent imports.
-- **Transactional Rollback:** The `--all-or-nothing` flag ensures atomic rollbacks on any schema or data integrity error.
+1. **Immutable Cryptographic Hash:** Every PDF is hashed with SHA-256 upon arrival. If an active document with an identical hash exists, duplicate re-ingestion is short-circuited.
+2. **Dual-Page Provenance:** Every chunk tracks both its physical 1-indexed PDF page (`page_start: 3`) and the document's printed page identifier (`printed_page_start: "Page 3 of 8"`).
+3. **Extraction Quality Auditing:** Every extracted page is classified by text density:
+   - `OK`: Extracted character count $\ge 200$.
+   - `SPARSE`: $1 \le \text{characters} < 200$ (flagged for review).
+   - `EMPTY`: Zero characters extracted (flagged as unreadable or image-only).
+4. **No Inference of Missing Attributes:** Missing publication or effective dates remain `null`. An issue date is never silently substituted as an effective date.
+5. **Path Traversal Protection:** All file paths are strictly resolved relative to approved project data roots. Attempts to access parent directories (`../`) or absolute paths outside the data root are rejected.
 
 ---
 
-## 4. Chunking Strategy & Determinism
+## 3. Phase 1: Manifest-Driven Local Ingestion Design
 
-1. **Target Chunk Size:** Bounded chunks (approximately 350 tokens / 1,500 characters) preserving paragraph and section integrity.
-2. **Boundary Sensitivity:** Chunks prefer natural paragraph and provision boundaries over rigid character offsets.
-3. **Table Isolation:** Tabular data (such as compliance glide path schedules) is preserved in distinct table chunks to prevent structural flattening.
-4. **Header Enrichment:** Chunks are prefixed with their document title and section headers to ensure dense vector representation captures semantic context.
+In **Phase 1**, static Python registries (`backend/app/ingestion/corpus_registry.py`) are replaced with declarative JSON/YAML manifests stored in `data/manifests/`. This allows adding new documents or collections without modifying application source code.
+
+### 3.1. Proposed Manifest Schema (`data/manifests/{collection_id}.json`)
+```json
+{
+  "collection_id": "sebi_cscrf",
+  "name": "SEBI Cybersecurity and Cyber Resilience Framework",
+  "description": "Official master circulars and technical revisions for CSCRF compliance.",
+  "regulator": "SEBI",
+  "domain": "CSCRF",
+  "enforce_regulatory_graph": true,
+  "documents": [
+    {
+      "document_id": "sebi_cscrf_2024_113",
+      "title": "Cybersecurity and Cyber Resilience Framework (CSCRF) for SEBI Regulated Entities",
+      "pdf_path": "data/raw/CSCRF_2024_113.pdf",
+      "circular_number": "SEBI/HO/ITD/ITD-PoD-1/P/CIR/2024/113",
+      "issue_date": "2024-08-20",
+      "effective_date": "2025-01-01",
+      "document_type": "master_framework",
+      "source_url": "https://www.sebi.gov.in/legal/circulars/aug-2024/cybersecurity-and-cyber-resilience-framework-cscrf-for-sebi-regulated-entities-res-_85973.html"
+    },
+    {
+      "document_id": "sebi_cscrf_2025_045",
+      "title": "Extension of compliance timelines for CSCRF",
+      "pdf_path": "data/raw/CSCRF_2025_045.pdf",
+      "circular_number": "SEBI/HO/ITD-1/ITD_CSC_EXT/P/CIR/2025/45",
+      "issue_date": "2025-03-28",
+      "effective_date": "2025-03-28",
+      "document_type": "extension_circular",
+      "source_url": "https://www.sebi.gov.in/legal/circulars/mar-2025/extension-of-compliance-timelines-for-cscrf_93155.html"
+    }
+  ]
+}
+```
+
+### 3.2. Manifest Validation Contract
+1. **Schema Validation:** Mandatory fields (`collection_id`, `document_id`, `title`, `pdf_path`) must be non-empty strings.
+2. **Path Containment:** `pdf_path` must resolve strictly within the project's authorized raw data root (`data/raw/`). Path traversal (`../`) is blocked.
+3. **Duplicate Prevention:** Document IDs within a manifest (and across active manifests) must be globally unique.
+4. **Graceful Failure:** If a single PDF in a manifest is unreadable or malformed, the ingestion run logs the error to an execution report, leaves existing indexed documents untouched, and fails safely.
+5. **Zero Database Requirement:** Manifest-driven ingestion writes processed JSON files to `data/processed/{doc_id}/` and triggers index publication to generate snapshot files locally without requiring a database connection.
+
+### 3.3. CLI Ingestion Execution & Path Resolution
+The ingestion CLI module resides at `backend/app/ingestion/cli.py`. Because the application package root is `backend/app/`, invoking `python -m app.ingestion.cli` requires setting the Python module search path.
+
+#### Supported CLI Ingestion Commands
+- **Option 1 (From repository root in PowerShell):**
+  ```powershell
+  $env:PYTHONPATH="backend"; .\.venv\Scripts\python.exe -m app.ingestion.cli ingest-manifest --manifest data/manifests/sebi_cscrf.json
+  ```
+- **Option 2 (From `backend/` directory in PowerShell):**
+  ```powershell
+  cd backend
+  ..\.venv\Scripts\python.exe -m app.ingestion.cli ingest-manifest --manifest ../data/manifests/sebi_cscrf.json
+  ```
+
+#### Path Resolution Distinction
+- **Manifest Argument Path (`--manifest <path>`):** Resolved relative to the **current working directory** from which the command is executed.
+- **Document PDF Paths (`pdf_path` inside manifest):** Resolved relative to the **repository root** (e.g., `"data/raw/CSCRF_2024_113.pdf"` resolves to `<repo_root>/data/raw/CSCRF_2024_113.pdf`), ensuring manifest definitions remain portable regardless of execution directory.
 
 ---
 
-## 5. Regulatory Relationship Direction & Status Resolution
+## 4. Chunking Strategy & Determinism (`IMPLEMENTED AND VERIFIED`)
 
-### Direction Standard
-All graph edges are strictly directed as:
-$$\text{source\_document\_id (acting / newer)} \xrightarrow{\text{RELATIONSHIP}} \text{target\_document\_id (affected / older)}$$
+- **Word-Level Sliding Window:** Default chunk size is **350 words** with an overlap of **40 words** (`backend/app/ingestion/chunker.py:TextChunker`).
+- **Stable Chunk Identifiers:** Chunk IDs are deterministically generated as:
+  $$\text{chunk\_id} = \{\text{document\_id}\}\_\text{p}\{\text{page\_start}\}\_\{\text{chunk\_idx}\}$$
+  Example: `sebi_cscrf_2024_113_p66_56`.
+- **Dual-Page Annotation:** If a chunk spans across page boundaries (e.g. from page 66 to 67), both `page_start` and `page_end` are recorded alongside the corresponding printed page numbers.
+- **Section & Header Retention:** Paragraph breaks and section headings are retained in chunk text to preserve semantic clarity for embedding models.
 
-### Supported Edge Types
-- `AMENDS`: Modifies specific clauses or terms of an earlier document. Triggers supersession logic (`is_supersession_inducing = True`).
-- `RESCINDS`: Repeals an earlier circular in whole or in part. Triggers supersession logic (`is_supersession_inducing = True`).
-- `REFERENCES`: Cites an earlier circular for statutory context, definitions, or preambles. Does **not** induce supersession (`is_supersession_inducing = False`).
+---
 
-### Provision-Level Scoping Rule
-When `scope = 'partial'`, only the specific clauses listed in `affected_provisions` (e.g. `["Clause 6.11"]`) are marked as amended or superseded. The remainder of the target circular continues in full legal effect.
+## 5. Regulatory Relationships & Temporal Resolution
+
+### 5.1. Direction Standard
+For collections enforcing regulatory relationships, edges are strictly directed:
+$$\text{source\_document\_id (acting / newer circular)} \xrightarrow{\text{RELATIONSHIP}} \text{target\_document\_id (affected / older circular)}$$
+
+### 5.2. Edge Types & Supersession Semantics
+- `AMENDS`: Modifies specific clauses or requirements of an earlier circular (`is_supersession_inducing = True`).
+- `RESCINDS`: Repeals an earlier circular in whole or in part (`is_supersession_inducing = True`).
+- `REFERENCES`: Informational background citation or statutory preamble (`is_supersession_inducing = False`). Does not alter legal currency.
+
+### 5.3. Provision Scoping Rule
+When an edge specifies `scope = "partial"`, only the specific clauses listed in `affected_provisions` (e.g. `["Section 2.1", "Clause 6.11"]`) are marked as amended or superseded. The remainder of the target document continues in full legal effect.
+
+---
+
+## 6. Persistence Tier: Local Default vs. Relational Option
+
+### Active Production Default: Local Snapshot Files (`IMPLEMENTED AND VERIFIED`)
+The active runtime stores and serves indexes entirely from local files:
+- `data/processed/{doc_id}/`: Stores `document.json`, `pages.json`, `chunks.json`, `manifest.json`.
+- `data/indexes/snapshots/{snapshot_id}/`: Stores `chunks.json`, `bm25_index.pkl`, `dense_index.npy`, and `manifest.json`.
+- Memory Footprint: $< 100\text{ MB}$ RAM for pilot corpus; sub-10ms retrieval latency; zero cloud database cost.
+
+### Relational Database Option (`IMPLEMENTED, VERIFICATION INCOMPLETE - Phase 3 Conditional`)
+SQLAlchemy models (`backend/app/persistence/models.py`) and Alembic migration `0001_initial_persistence_foundation` define tables for `regulators`, `regulatory_domains`, `regulatory_documents`, `document_versions`, `provisions`, `chunks`, `chunk_embeddings`, `regulatory_edges`, and `ingestion_jobs`.
+- **Status:** Validated in isolated persistence tests (`test_persistence_parity.py`), but **not** the active runtime default.
+- **Phase 3 Evolution:** Relational persistence is deferred to Phase 3 and made conditional on demonstrated operational need (e.g., concurrent multi-user write requirements or durable query audit logging). Vector storage remains in local snapshot files.

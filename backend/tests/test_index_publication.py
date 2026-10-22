@@ -348,6 +348,7 @@ def test_9_sixth_document_dynamic_inclusion_and_retrieval(pub_env):
         sha256="deadbeef1234567890abcdef1234567890abcdef1234567890abcdef12345678",
         pdf_path="raw_documents/test_audit.pdf",
         total_pages=1,
+        collection_id="sebi_cscrf",
     )
     doc_repo.save_document(doc_record)
 
@@ -358,6 +359,7 @@ def test_9_sixth_document_dynamic_inclusion_and_retrieval(pub_env):
         page_start=1,
         page_end=1,
         metadata={"provisions": ["Clause 8B.6"]},
+        collection_id="sebi_cscrf",
     )
     chunk_repo.save_chunks([sixth_chunk])
 

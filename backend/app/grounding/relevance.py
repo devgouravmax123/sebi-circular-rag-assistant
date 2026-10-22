@@ -45,8 +45,30 @@ STOP_WORDS = {
     "the", "for", "are", "is", "with", "from", "how", "have", "has", "had", "been",
     "and", "but", "any", "all", "into", "out", "per", "can", "may", "circular",
     "cir", "mandatory", "must", "stored", "locations", "prevent", "tampering",
-    "was", "were", "announced", "today", "now", "current",
+    "was", "were", "announced", "today", "now", "current", "them",
 }
+
+# Explicit, bounded grammatical inflection mappings for safe relevance matching
+EXTEND_INFLECTION_FORMS = {
+    "extend", "extends", "extended", "extending", "extension", "extensions",
+}
+EXPIRE_INFLECTION_FORMS = {
+    "expire", "expires", "expired", "expiring", "expiry", "expiration", "expirations",
+}
+
+
+def normalize_inflection(token: str) -> str:
+    """
+    Normalizes specific, bounded grammatical inflection variants to their canonical root forms
+    (e.g., 'extension' -> 'extend', 'expiry' -> 'expire').
+    Preserves all other words without aggressive stemming or prefix matching.
+    """
+    t = token.lower().strip()
+    if t in EXTEND_INFLECTION_FORMS:
+        return "extend"
+    if t in EXPIRE_INFLECTION_FORMS:
+        return "expire"
+    return t
 
 SYNONYM_EXPANSIONS = {
     "deadline": ["deadline", "deadlines", "timeline", "timelines"],
@@ -123,8 +145,8 @@ def extract_specific_query_tokens(query: str) -> List[str]:
 
 def check_token_match(token: str, text_lower: str) -> bool:
     """
-    Checks if a token, its zero-stripped number variant, or its synonyms appear in text_lower
-    with word boundaries.
+    Checks if a token, its zero-stripped number variant, its synonyms, or its
+    bounded inflection variants appear in text_lower with word boundaries.
     """
     if re.search(r"\b" + re.escape(token) + r"\b", text_lower) is not None:
         return True
@@ -135,6 +157,16 @@ def check_token_match(token: str, text_lower: str) -> bool:
     if token in SYNONYM_EXPANSIONS:
         for syn in SYNONYM_EXPANSIONS[token]:
             if re.search(r"\b" + re.escape(syn) + r"\b", text_lower) is not None:
+                return True
+    # Bounded inflection variants
+    norm = normalize_inflection(token)
+    if norm == "extend":
+        for form in EXTEND_INFLECTION_FORMS:
+            if re.search(r"\b" + re.escape(form) + r"\b", text_lower) is not None:
+                return True
+    elif norm == "expire":
+        for form in EXPIRE_INFLECTION_FORMS:
+            if re.search(r"\b" + re.escape(form) + r"\b", text_lower) is not None:
                 return True
     return False
 

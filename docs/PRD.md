@@ -2,110 +2,121 @@
 
 ## 1. Executive Summary & Product Vision
 
-The **SEBI Regulatory Intelligence Platform** is a hosted, extensible intelligence platform designed to discover, ingest, search, understand, and track official regulatory documents.
+The **Document Regulatory & Intelligence Platform** is an evidence-grounded, collection-aware question-answering system designed to discover, ingest, search, and understand official regulatory frameworks and structured documentation collections.
 
-While initially validated on a high-stakes Cybersecurity and Cyber Resilience Framework (CSCRF) baseline for the Securities and Exchange Board of India (SEBI), the platform's architectural core is explicitly designed for horizontal extensibility across broader SEBI regulatory domains and future official regulators (such as RBI, IRDAI, IFSCA, and PFRDA).
+The platform began as a focused, high-stakes pilot for the **Securities and Exchange Board of India (SEBI) Cybersecurity and Cyber Resilience Framework (CSCRF)** across five circulars. It is evolving into a **general-purpose, collection-aware document question-answering platform** capable of managing diverse document corpora (e.g., broader financial regulations, corporate policies, technical standards, research specifications) without requiring developers to hardcode new documents into Python application code.
 
-The distinguishing engineering feature is **supersession-aware temporal resolution** combined with **evidence-grounded retrieval and fail-closed answer verification**. Instead of treating regulatory corpora as static text collections, the platform models circular amendment chains, provision-scoped revocations, and time-dependent legal enforceability.
+### Core Distinguishing Principles
+1. **Evidence-Grounded Question Answering:** Every answer assertion is mechanically verified against authentic retrieved text excerpts with 1-indexed PDF and printed page provenance.
+2. **Fail-Closed Safety & Explicit Abstention:** When evidence is missing, conflicting, out-of-domain, or superseded, the system returns a structured refusal rather than fabricating compliance advice.
+3. **Supersession-Aware Temporal Resolution:** Where collections define regulatory relationships (such as SEBI circulars), amendment chains and clause-level modifications are resolved dynamically as of any requested date (`as_of`).
+4. **Strict Collection Isolation:** Queries scoped to a specific collection are guaranteed never to retrieve, evaluate, cite, or leak candidate passages from another collection.
+5. **Zero-Cost Local Reproducibility:** The entire platform remains fully operable, testable, and demonstrable in local development without mandatory paid APIs, hosted vector databases, or commercial subscriptions.
 
 ---
 
-## 2. Core Problem & Market Opportunity
+## 2. Problem Statement & Core Value
 
-Compliance officers, legal analysts, and financial institutions face severe operational friction when navigating Indian financial regulations:
+Legal analysts, compliance officers, risk managers, and auditors face operational friction when navigating dense regulatory corpora and technical documentation:
 
-1. **Circular Proliferation & Amendment Chaining:** Master frameworks are continually amended, clarified, and extended by subsequent circulars. A standard semantic RAG pipeline frequently retrieves out-of-date circulars, presenting obsolete compliance deadlines or revoked mandates as current law.
-2. **Provision-Level Granularity:** Circulars rarely supersede prior frameworks in whole; rather, specific paragraphs, tables, or clauses are modified while the remainder of the base circular remains strictly in force.
+1. **Circular Proliferation & Amendment Chaining:** Master frameworks are frequently amended, extended, or partially superseded by subsequent circulars. Naive semantic search retrieves out-of-date circulars, presenting obsolete compliance deadlines or revoked mandates as active law.
+2. **Provision-Level Granularity:** New circulars rarely repeal master frameworks in whole; instead, specific clauses, tables, or applicability thresholds are modified while the remainder of the base circular remains strictly in force.
 3. **Temporal Ambiguity:** Compliance obligations vary depending on the historical date in question, especially during phased transition periods (glide paths).
-4. **LLM Hallucination & Citation Fraud:** Off-the-shelf generative AI frequently invents circular numbers, dates, or legal mandates. In regulatory compliance, an ungrounded answer is worse than no answer.
+4. **LLM Hallucination & Citation Inaccuracy:** Standard generative AI frequently invents circular numbers, dates, or legal mandates. In regulatory compliance, an ungrounded answer is far worse than no answer.
+5. **Rigid Corpus Architecture:** Hardcoding document IDs, token expansions, and graph edges in application source code prevents compliance teams from adding new circulars or managing non-regulatory documentation collections.
 
 ---
 
-## 3. Product Goals & Scope
+## 3. Product Goals & Architectural Scope
 
 ### 3.1. Primary Goals
-- **Official Source Provenance:** Every response, excerpt, and citation must trace directly to an official regulator PDF, with dual page numbers (PDF page and printed page) and cryptographic document hashes (SHA-256).
-- **Temporal Status Resolution:** Accurate evaluation of document and provision currency as of any requested date (`as_of`), distinguishing `in_force`, `amended`, `partially_superseded`, `superseded`, and `unknown`.
-- **Provision-Scoped Graph Modeling:** Directed graph edges (`Newer -> RELATIONSHIP -> Older`) that restrict legal modifications to exact affected clauses (`affected_provisions`).
+- **Official Source Provenance:** Every response, excerpt, and citation traces directly to an official source PDF, with dual page numbers (PDF page and printed page) and cryptographic document hashes (SHA-256).
+- **Collection Awareness & Boundary Isolation:** Support multiple independently managed collections (e.g. `sebi_cscrf`, `sebi_lodr`, `internal_policies`), guaranteeing that retrieval and synthesis never leak cross-collection evidence.
+- **Data-Driven Ingestion:** Ingest new documents and collections via declarative manifests without modifying application code.
+- **Pluggable Relationship Policies:** Provide supersession-aware temporal resolution for regulatory corpora while supporting collections that have no amendment relationships via a passthrough policy.
 - **Fail-Closed Grounding:** Verifiable claim attribution with automated fallback to verbatim extracted excerpts or explicit abstention (`refuse: true`) when evidence is inconclusive or contradictory.
-- **Extensible Multi-Domain Architecture:** Seamless ingestion of new circular domains without code changes, supported by relational metadata registries and pluggable source connectors.
+- **Permanent Regression Anchoring:** The validated 5-document SEBI CSCRF corpus, its 9 verified edges, and 32 golden benchmark queries serve as a permanent regression anchor across all platform evolutions.
 
-### 3.2. Scope Evolution & Staging
-1. **Pilot Baseline (Regression Anchor):** The 5-document SEBI CSCRF corpus (`sebi_cscrf_2024_113`, `2025_045`, `2025_060`, `2025_096`, `2025_119`). This baseline is permanently retained as an automated regression test suite.
-2. **Immediate Scope (SEBI Broadening & Operational Validation):** Controlled ingestion of major SEBI regulatory domains (LODR, ICDR, Mutual Funds, Intermediaries, Portfolio Managers) and full hosted deployment validation on SEBI regulations.
-3. **Future Extensibility (Multi-Regulator Expansion):** Pluggable ingestion connectors for secondary official Indian financial regulators (Reserve Bank of India - RBI, IRDAI) following operational validation of the hosted SEBI platform.
+### 3.2. Scope Staging (Phases 0–4)
+1. **Phase 0 — Documentation & Baseline:** Reconcile documentation with verified codebase state; define shared roadmap, architectural invariants, and approval boundaries.
+2. **Phase 1 — Manifest-Driven Ingestion:** Introduce declarative JSON/YAML manifests (`data/manifests/*.json`) for local, zero-cost document ingestion without editing Python files.
+3. **Phase 2 — Collection-Aware Retrieval & Isolation:** Introduce `collection_id` across API contracts and retrieval filters; enforce collection-scoped index partitioning and zero cross-collection evidence leakage.
+4. **Phase 3 — Generalized Relationships & Conditional Metadata Persistence:** Support pluggable relationship policies (supersession vs. passthrough); evaluate relational database adoption for metadata/audit history conditional on demonstrated need.
+5. **Phase 4 — Broader Evaluation, Reliability & Deployment:** Expand benchmarks across multi-collection workloads, test failure recovery, and align zero-cost production hosting.
 
-### 3.3. Non-Goals & Responsible Disclaimers
+### 3.3. Non-Goals & Disclaimers
 - **Not Legal Advice:** The platform provides information discovery and regulatory intelligence; it does not replace professional legal counsel or formal compliance audits.
-- **No Unbounded Coverage Promises:** The platform makes no claim of indexing 100% of historical circulars; source coverage, cutoff dates, and sync status must always be transparently declared.
 - **No Autonomous Legal Interpretation:** The system extracts, synthesizes, and attributes text based on explicit evidence; it does not adjudicate legal disputes or speculate on unstated regulatory intent.
 - **No Hallucinated Fallback:** The system will never fabricate an answer to avoid showing an abstention.
+- **No Mandatory Paid Infrastructure:** The platform will not require paid vector databases, paid API subscriptions, or mandatory hosted cloud infrastructure to operate.
 
 ---
 
 ## 4. User Personas & Core Journeys
 
-| Persona | Primary Goal | Critical Need |
-| :--- | :--- | :--- |
-| **Compliance Officer** | Verify current applicable mandates for their specific entity category (e.g., Qualified RE vs. MII). | Must see current amended requirements and effective deadlines, not superseded initial drafts. |
-| **Legal / Policy Analyst** | Trace regulatory evolution over time across circular amendment chains. | Needs historical `as_of` date querying and clear side-by-side citations of amending clauses. |
-| **Internal Auditor** | Verify statutory basis of compliance controls against official circular text. | Requires exact page-level citations, direct PDF links, and cryptographic document hashes. |
-| **Platform Administrator** | Ingest new circulars and verify relationship extractions without redeploying code. | Needs dynamic ingestion APIs, automated relationship proposal parsing, and audit logs. |
+| Persona | Primary Goal | Critical Need | Supported Phase |
+| :--- | :--- | :--- | :--- |
+| **Compliance Officer** | Verify current applicable mandates for their specific entity category (e.g. Qualified RE vs. MII). | Must see current amended requirements and effective deadlines, not superseded initial drafts. | Implemented for SEBI CSCRF; Generalized in Phase 2. |
+| **Legal / Policy Analyst** | Trace regulatory evolution over time across circular amendment chains. | Needs historical `as_of` date querying and clear side-by-side citations of amending clauses. | Implemented for SEBI CSCRF; Pluggable in Phase 3. |
+| **Internal Auditor** | Verify statutory basis of compliance controls against official circular text. | Requires exact page-level citations, direct PDF links, and cryptographic document hashes. | Implemented and Verified. |
+| **Platform Administrator** | Ingest new circulars or entire document collections without redeploying code. | Needs declarative manifest ingestion, automated validation, and repeatable indexing. | Phase 1 (Local Manifest) & Phase 3 (Admin API). |
 
 ---
 
 ## 5. Functional Requirements (FR)
 
-### Ingestion & Document Management
-- **FR-1 Dynamic Document Registration:** Register official documents via API/CLI specifying metadata, source URL, and PDF file.
-- **FR-2 Provenance & Integrity:** Automatically compute SHA-256 hash, record retrieval timestamp, extract text/tables, and log page-level extraction quality.
-- **FR-3 Deterministic Chunking:** Split document text into bounded chunks with persistent chunk IDs, page ranges, and section headers.
+### Collection & Document Ingestion
+- **FR-1 Manifest-Driven Registration (Phase 1):** Ingest documents from declarative manifests (`data/manifests/{collection_id}.json`) specifying document ID, title, relative PDF path, optional dates, and source metadata without editing Python code.
+- **FR-2 Provenance & Integrity (Implemented and Verified):** Automatically compute SHA-256 hash, record retrieval timestamp, extract text/tables via PyMuPDF, and log page-level extraction quality (`OK`, `SPARSE`, `EMPTY`).
+- **FR-3 Deterministic Chunking (Implemented and Verified):** Split document text into bounded chunks with persistent chunk IDs (`{doc_id}_p{page_start}_{chunk_idx}`), dual-page provenance (PDF page and printed page), and word-count boundaries (350 words, 40 overlap).
+- **FR-4 Malformed PDF & Path Traversal Protection (Phase 1):** Validate that PDF paths resolve within approved corpus roots and reject path traversal attempts (`../`), unreadable files, or malformed payloads with clean error reporting.
 
-### Regulatory Graph & Temporal Resolution
-- **FR-4 Directed Relationship Modeling:** Enforce directed edges (`source_document_id -> RELATIONSHIP -> target_document_id`) supporting `AMENDS`, `RESCINDS`, and `REFERENCES`.
-- **FR-5 Provision Scoping:** Enforce `affected_provisions` for partial modifications so unaffected provisions retain their base validity.
-- **FR-6 Temporal Currency Engine:** Compute `status_as_of(document_id, date, provision)` traversing multi-hop amendment chains up to the query date.
+### Collection Scoping & Retrieval
+- **FR-5 Collection-Scoped Querying (Phase 2):** Accept `collection_id` as a required parameter on query contracts. Reject unknown or ambiguous collections with HTTP 404 or 422.
+- **FR-6 Mandatory Collection Isolation (Phase 2):** Enforce strict collection filtering during lexical search, dense vector retrieval, RRF candidate fusion, reranking, and context injection. Under no circumstances may chunks from collection $B$ appear in results for collection $A$.
+- **FR-7 Hybrid Retrieval (Implemented and Verified):** Combine BM25 lexical ranking and dense vector similarity (`BAAI/bge-small-en-v1.5`) using Reciprocal Rank Fusion ($k=60$) over atomic index snapshots.
 
-### Search, Retrieval & Relevance
-- **FR-7 Hybrid Retrieval:** Combine BM25 lexical ranking and dense vector similarity using Reciprocal Rank Fusion (RRF). Current pilot utilizes BAAI/bge-small-en-v1.5 and NumPy cosine similarity; production target utilizes pgvector.
-- **FR-8 Provision-Level Relevance Safeguards:** Apply domain-specific relevance filters (such as prioritizing clarified provisions over base provisions for qualified entities).
-- **FR-9 Cross-Domain Partitioning:** Support filtering by regulatory domain (e.g., CSCRF, LODR) and regulator (SEBI, RBI).
+### Regulatory Relationships & Temporal Resolution
+- **FR-8 Directed Relationship Modeling (Implemented for CSCRF):** Enforce directed edges (`source_document_id -> RELATIONSHIP -> target_document_id`) supporting `AMENDS`, `RESCINDS`, and `REFERENCES`.
+- **FR-9 Provision Scoping (Implemented for CSCRF):** Enforce `affected_provisions` for partial modifications so unaffected provisions retain their base validity.
+- **FR-10 Pluggable Policy Selection (Phase 3):** Support collections enforcing regulatory supersession via `RegulatorySupersessionPolicy`, while supporting non-regulatory collections (manuals, whitepapers) via `PassthroughPolicy` without forcing `UNRESOLVED` warnings or spurious abstentions.
 
-### Grounding, Synthesis & Safety
-- **FR-10 Evidence-Constrained Synthesis:** Hosted LLM adapter generating answers strictly grounded in retrieved chunks with citations.
-- **FR-11 Citation Verification:** Mechanically verify that every citation ID and claim matches retrieved chunk text.
-- **FR-12 Fail-Closed Extractive Fallback:** If LLM synthesis cannot be validated or provider quotas fail, fall back to verbatim extracted excerpts or return a structured refusal.
-- **FR-13 Explicit Refusal Rubric:** Return `refuse: true` when evidence is missing, contradictory, out of domain, or superseded.
+### Grounding, Synthesis & Safety Gate
+- **FR-11 Fail-Closed Grounding & Citation Validation (Implemented and Verified):** Mechanically verify that every cited chunk ID and asserted claim matches retrieved candidate passages.
+- **FR-12 Structured Refusal Rubric (Implemented and Verified):** Return `refuse: true` / `disposition: CONTROLLED_ABSTENTION` when evidence is missing (`insufficient_evidence`), citations fail (`citation_verification_failed`), provisions conflict (`conflicting_evidence`), questions are out-of-domain (`out_of_domain`), or temporal dates are ambiguous (`temporal_uncertainty`).
+- **FR-13 Extractive Fallback (Implemented and Verified):** If hosted LLM synthesis fails, times out, or generates ungrounded claims, fall back seamlessly to verified verbatim extracted excerpts or controlled abstention.
 
 ---
 
 ## 6. Implementation Status Matrix
 
-| Subsystem / Feature | Current Implementation Status | Validation Notes |
+The features below have been audited against the repository codebase as of **October 21, 2026** (supported by 445 passing tests, 9 skipped, 0 failed in `backend/tests/` via pytest):
+
+| Subsystem / Feature | Implementation Status | Code Evidence & Technical Notes |
 | :--- | :--- | :--- |
-| CSCRF 5-Circular Baseline Corpus | `IMPLEMENTED AND TESTED` | 5 PDFs, 168 chunks, 9 verified graph edges, 149 passing tests. |
-| Deterministic PDF Parser & Chunker | `IMPLEMENTED AND TESTED` | PyMuPDF text & page extraction with SHA-256 validation. |
-| In-Memory Hybrid Search (BM25 + BGE-Small + RRF) | `IMPLEMENTED AND TESTED` | Reciprocal Rank Fusion of BM25 and NumPy cosine similarity on BAAI/bge-small-en-v1.5 embeddings. |
-| NetworkX Supersession Graph Store | `IMPLEMENTED AND TESTED` | Directed traversal and `status_as_of` calculation. |
-| Targeted Provision Relevance Filter | `IMPLEMENTED AND TESTED` | Guardrail in `relevance.py` prioritizing operative clarifications. |
-| AnswerSafetyGate & Refusal Rubric | `IMPLEMENTED AND TESTED` | Mechanical chunk presence checking, verbatim substring validation, and domain refusal handling. |
-| FastAPI REST API (`/api/v1/query`, `/health`, `/ready`) | `IMPLEMENTED AND TESTED` | Fully typed Pydantic contracts and error handlers (149 passing tests). |
-| React + TypeScript User Interface | `IMPLEMENTED AND TESTED` | Interactive query, date picker, expandable citation cards. |
-| Retrieval Regression Suite (32 Golden Queries) | `IMPLEMENTED AND TESTED` | Measures Recall@k, MRR, and provision accuracy (28 answerable, 4 unanswerable). |
-| Relational Persistence (PostgreSQL + pgvector) | `PLANNED` | Phase 8A: Document, chunk, vector, and edge tables. |
-| Dynamic Ingestion Admin API & Worker Queue | `PLANNED` | Phase 8B: Ingestion service, Celery worker, checksum deduplication. |
-| Generalized Multi-Domain Retrieval Engine | `PLANNED` | Phase 8C: Cross-domain query routing and index partitioning across SEBI regulations. |
-| Dynamic Regulatory Relationship Manager | `PLANNED` | Phase 8D: Relational edge store, candidate extraction, HITL review. |
-| Evidence-Constrained Hosted LLM Synthesis | `PLANNED` | Phase 8E: Provider-agnostic adapter with fail-closed extractive fallback. |
-| Hosted SEBI Deployment & Operational Hardening | `PLANNED` | Phase 8F: Docker Compose, Redis queue/cache, S3 storage, operational validation. |
-| Secondary Regulator Pilot (e.g., RBI / IRDAI) | `PLANNED` | Phase 8G: Extension milestone following operational SEBI deployment. |
-| Automated Legal Interpretation / Speculation | `DEFERRED` | Out of scope. The platform will never provide automated legal rulings. |
+| **CSCRF 5-Circular Baseline Corpus** | `IMPLEMENTED AND VERIFIED` | 5 PDFs in `data/raw/`, 168 chunks in `data/processed/`, 9 verified edges in `docs/cscrf-relationship-audit.md`. Permanent regression anchor. |
+| **Deterministic PDF Extractor & Chunker** | `IMPLEMENTED AND VERIFIED` | `backend/app/ingestion/extractor.py` (PyMuPDF) and `chunker.py` (sliding window 350 words, 40 overlap). Dual-page provenance and SHA-256 verified. |
+| **In-Memory Hybrid Search (BM25 + BGE-Small + RRF)** | `IMPLEMENTED AND VERIFIED` | `backend/app/retrieval/service.py` and `rrf.py`. BM25Okapi + NumPy cosine similarity on 384-dim normalized vectors from `BAAI/bge-small-en-v1.5`. |
+| **Snapshot Index Publication Engine** | `IMPLEMENTED AND VERIFIED` | `backend/app/retrieval/index_pipeline.py`. Atomic swap of `active_snapshot.json` with hot-reload in `RetrievalService.reload_if_stale()`. |
+| **Temporal Supersession Graph Resolver** | `IMPLEMENTED AND VERIFIED` | `backend/app/grounding/graph_resolver.py` and `backend/app/schemas/cscrf_graph_data.py`. Directed multi-hop traversal with provision-scoped amendments. |
+| **Specificity-Aware Relevance Filter** | `IMPLEMENTED AND VERIFIED` | `backend/app/grounding/relevance.py`. Specific query token coverage scoring and candidate filtering for compliance queries. |
+| **Answer Safety Gate & Refusal Rubric** | `IMPLEMENTED AND VERIFIED` | `backend/app/grounding/safety_gate.py` and `validator.py`. Mechanical claim verification, verbatim substring matching, and 5-point refusal rubric. |
+| **FastAPI REST API (`/query`, `/health`, `/ready`)** | `IMPLEMENTED AND VERIFIED` | `backend/app/main.py` and `backend/app/api/v1/query.py`. Fully typed Pydantic contracts with rate limiting and structured error handling. |
+| **In-Memory Rate Limiter** | `IMPLEMENTED AND VERIFIED` | `backend/app/core/rate_limiter.py`. Fixed-window sliding token limiter for zero-cost single-instance execution. |
+| **Grounded LLM Synthesis & Fallback** | `PARTIALLY IMPLEMENTED` | `backend/app/synthesis/groq_provider.py` and `gemini_provider.py` implemented with fail-closed extractive fallback. Verified in unit tests. |
+| **Dual-Engine Relational Persistence (PostgreSQL)** | `IMPLEMENTED, VERIFICATION INCOMPLETE` | `backend/app/persistence/` contains SQLAlchemy models and Alembic migrations. Verified in parity tests, but NOT active runtime default. |
+| **Manifest-Driven Ingestion Engine** | `PLANNED (Phase 1)` | Declarative JSON manifests replacing hardcoded `corpus_registry.py` without requiring database services. |
+| **Collection-Aware Retrieval & Isolation** | `PLANNED (Phase 2)` | Explicit `collection_id` scoping in query contracts and strict index partitioning to prevent cross-collection leakage. |
+| **Pluggable Relationship Policy Engine** | `PLANNED (Phase 3)` | Dynamic policy configuration separating regulatory supersession from passthrough collections. |
+| **Conditional Metadata Persistence (Neon DB)** | `PROPOSED / REQUIRES APPROVAL` | Relational persistence for dynamic multi-user ingestion, edge curation, and query audit ledgers (Phase 3). |
+| **Distributed Cache & Queue (Redis / Upstash)** | `DEFERRED / REQUIRES APPROVAL` | Celery background queues and distributed caching. Deferred while single-instance in-memory limiter suffices. |
 
 ---
 
 ## 7. Non-Functional & Security Requirements
 
-1. **Security & Secrets:** All provider API keys and database credentials reside strictly on the backend in environment variables. No client-side exposure.
-2. **Data Privacy:** Query text must not be shared with external model providers unless explicitly configured, and no personally identifiable user data is stored.
-3. **Deterministic Testing:** Local test execution must not depend on network access or paid cloud services.
-4. **Graceful Degradation:** Upstream infrastructure errors (LLM timeouts, network failures) must return clean HTTP error codes and must never be disguised as successful regulatory refusals.
+1. **Server-Side Secret Isolation:** All API credentials, admin keys, and optional provider keys reside strictly in backend environment variables (`.env`). No credentials are ever transmitted to the frontend or exposed in API errors.
+2. **Data Privacy & Minimal Logging:** Query texts are processed in memory and never persisted with personally identifiable information (PII). Model prompts are bounded by retrieved context.
+3. **Local Determinism & Zero-Cost Execution:** The entire platform must remain fully runnable, testable, and demonstrable on standard local workstations without requiring paid subscriptions, cloud accounts, or live internet connections.
+4. **Input Sanitization & Untrusted Text:** Extracted PDF content and user queries are treated as untrusted input. Prompt injection attempts inside retrieved evidence are isolated and prevented from overriding safety policies.
+5. **Graceful Infrastructure Degradation:** Upstream failures (e.g. LLM timeouts, network errors) return clean HTTP 5xx codes and are never disguised as successful regulatory refusals (`refuse: true`).

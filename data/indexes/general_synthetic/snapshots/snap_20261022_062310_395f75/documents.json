@@ -1,0 +1,50 @@
+{
+  "acme_infra_handbook": {
+    "document_id": "acme_infra_handbook",
+    "circular_number": null,
+    "title": "Acme Global Systems Infrastructure and Operations Handbook",
+    "department": "Global Infrastructure & SRE",
+    "issue_date": "2024-03-15",
+    "effective_date": "2024-04-01",
+    "source_url": "https://internal.acme.example/docs/infra_handbook_v2.4.pdf",
+    "retrieved_at": "2026-10-22T06:23:10.403212+00:00",
+    "sha256": "92b4000fae4037c17bf2b57d5f16f92123c4ef3698cf09a36a14ff619a6c2a84",
+    "pdf_path": "data/raw/synthetic_general/acme_infra_handbook.pdf",
+    "extraction_status": "extracted",
+    "regulator": "SEBI",
+    "domain": "ACME_TECH",
+    "collection_id": "general_synthetic"
+  },
+  "acme_product_spec": {
+    "document_id": "acme_product_spec",
+    "circular_number": null,
+    "title": "Acme Enterprise Data Mesh Product Specification",
+    "department": "Data Platform Product Engineering",
+    "issue_date": "2024-05-20",
+    "effective_date": "2024-06-01",
+    "source_url": "https://internal.acme.example/docs/data_mesh_spec_v1.0.pdf",
+    "retrieved_at": "2026-10-22T06:23:10.510038+00:00",
+    "sha256": "ab91a4393bcc2821d017d8dc7805ee244964b7e46243264c14190fd4b1f0e9f8",
+    "pdf_path": "data/raw/synthetic_general/acme_product_spec.pdf",
+    "extraction_status": "extracted",
+    "regulator": "SEBI",
+    "domain": "ACME_TECH",
+    "collection_id": "general_synthetic"
+  },
+  "acme_security_policy": {
+    "document_id": "acme_security_policy",
+    "circular_number": null,
+    "title": "Acme Corporation Information Security and Access Control Policy",
+    "department": "Corporate Information Security Office",
+    "issue_date": "2024-01-10",
+    "effective_date": "2024-01-15",
+    "source_url": "https://internal.acme.example/docs/security_policy_v4.1.pdf",
+    "retrieved_at": "2026-10-22T06:23:10.459441+00:00",
+    "sha256": "7d079e496c1fae0911c87b386c1ee25eeed741f9d9d5ec64c1444bc1245793a0",
+    "pdf_path": "data/raw/synthetic_general/acme_security_policy.pdf",
+    "extraction_status": "extracted",
+    "regulator": "SEBI",
+    "domain": "ACME_TECH",
+    "collection_id": "general_synthetic"
+  }
+}

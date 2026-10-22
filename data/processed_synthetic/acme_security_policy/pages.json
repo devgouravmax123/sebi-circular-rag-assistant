@@ -1,0 +1,16 @@
+[
+  {
+    "page_number": 1,
+    "text": "Acme Corporation Information Security and Access Control Policy Version 4.1.\nSection 1. Identity, Authentication, and Password Standards.\nAll Acme personnel and service contractors must authenticate using hardware security key FIDO2 multi-factor\nauthentication (MFA).\nUser passwords must be at least 16 characters in length containing uppercase, lowercase, numeric, and special\nsymbol characters.\nService accounts are strictly prohibited from using static passwords and must authenticate exclusively via\nshort-lived OAuth2 mTLS certificates expiring every 12 hours.\nFailed login attempts exceeding 5 consecutive trials trigger an automated 30-minute account lockout and notify\nthe Security Operations Center (SOC).",
+    "is_ocr": false,
+    "extraction_quality": "ok",
+    "char_count": 714
+  },
+  {
+    "page_number": 2,
+    "text": "Acme Corporation Information Security and Access Control Policy Version 4.1.\nSection 2. Cryptographic Key Management and Access Revocation.\nCryptographic service keys and TLS certificates must be rotated at least every 90 days without exception.\nIn contrast, personnel access credentials and role assignments must undergo quarterly access review by\ndesignated department leads.\nUpon employee termination, automated access deprovisioning triggers immediately and must revoke all Active\nDirectory and cloud IAM permissions within 60 seconds.\nThird-party contractor credentials expire automatically after 30 days unless an extension is approved in writing by\nthe Chief Information Security Officer (CISO).",
+    "is_ocr": false,
+    "extraction_quality": "ok",
+    "char_count": 702
+  }
+]

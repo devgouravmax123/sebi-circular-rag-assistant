@@ -85,6 +85,8 @@ class SynthesisService:
         disposition: AnswerDisposition,
         regulatory_warnings: List[str],
         domain: Optional[str] = None,
+        collection_id: Optional[str] = "sebi_cscrf",
+        policy_type: Optional[str] = None,
     ) -> SynthesisOutput:
         """
         Executes bounded, grounded synthesis over verified regulatory excerpts.
@@ -92,6 +94,8 @@ class SynthesisService:
         Rule:
         - If disposition is CONTROLLED_ABSTENTION or REJECTED_UNSAFE, or if zero excerpts exist,
           synthesis is NOT called; a safe abstention output is returned immediately.
+        - policy_type must be explicitly provided and valid (e.g. sebi_cscrf_strict, general_static).
+          Missing, empty, or unrecognized policy fails closed safely.
         """
         # 1. Safety Gate Pre-Check: Do NOT call provider if gate abstained or rejected
         if disposition in (AnswerDisposition.CONTROLLED_ABSTENTION, AnswerDisposition.REJECTED_UNSAFE) or not verified_excerpts:
@@ -108,12 +112,35 @@ class SynthesisService:
                 failure_reason="Safety gate abstained or zero verified excerpts available.",
             )
 
+        # 2. Policy-Resolution & Fail-Closed Validation
+        if not policy_type or not policy_type.strip():
+            logger.error("Synthesis rejected: missing or empty policy_type (fail-closed)")
+            return SynthesisOutput(
+                status=SynthesisStatus.ABSTAINED,
+                answer="Controlled Abstention: Synthesis policy could not be resolved from collection manifest.",
+                claims=[],
+                unresolved_subquestions=[],
+                failure_reason="Missing authoritative grounding policy_type.",
+            )
+
+        norm_policy = policy_type.strip().lower()
+        if norm_policy not in ("sebi_cscrf_strict", "general_static"):
+            logger.error("Synthesis rejected: unsupported policy_type '%s' (fail-closed)", policy_type)
+            return SynthesisOutput(
+                status=SynthesisStatus.ABSTAINED,
+                answer="Controlled Abstention: Unrecognized grounding policy type for target collection.",
+                claims=[],
+                unresolved_subquestions=[],
+                failure_reason=f"Unsupported grounding policy_type: '{policy_type}'.",
+            )
+
         settings = get_settings()
         max_chunks = settings.max_synthesis_evidence_chunks
 
-        # 2. Construct bounded SynthesisInput from verified excerpts
+        # 3. Construct bounded SynthesisInput from verified excerpts
         evidence_items: List[SynthesisEvidenceItem] = []
         for exc in verified_excerpts[:max_chunks]:
+            exc_coll_id = getattr(exc, "collection_id", None) or collection_id or "sebi_cscrf"
             evidence_items.append(
                 SynthesisEvidenceItem(
                     chunk_id=exc.source_chunk_id,
@@ -128,14 +155,17 @@ class SynthesisService:
                     status_reason=exc.status_reason,
                     mapped_provisions=[],
                     applicable_edge_ids=exc.applicable_edge_ids,
+                    collection_id=exc_coll_id,
                 )
             )
 
         provider_name = self._provider.__class__.__name__
         logger.info(
-            "Starting answer synthesis: provider=%s, evidence_chunks=%d",
+            "Starting answer synthesis: provider=%s, evidence_chunks=%d, collection=%s, policy=%s",
             provider_name,
             len(evidence_items),
+            collection_id,
+            norm_policy,
         )
 
         payload = SynthesisInput(
@@ -143,6 +173,8 @@ class SynthesisService:
             evidence_items=evidence_items,
             regulatory_warnings=regulatory_warnings,
             domain=domain,
+            collection_id=collection_id or "sebi_cscrf",
+            policy_type=norm_policy,
         )
 
         # 3. Call synthesis provider with error handling

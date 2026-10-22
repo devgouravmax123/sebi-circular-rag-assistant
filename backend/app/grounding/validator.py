@@ -40,8 +40,12 @@ class CitationValidator:
         graph_collection: Optional[GraphEdgeCollection] = None,
         corpus_chunks: Optional[Dict[str, ChunkRecord]] = None,
         corpus_documents: Optional[Dict[str, DocumentRecord]] = None,
+        collection_id: Optional[str] = None,
+        indexes_dir: Union[str, Path] = "data/indexes",
     ):
         self.processed_dir = Path(processed_dir)
+        self.indexes_dir = Path(indexes_dir)
+        self.collection_id = collection_id.strip() if collection_id else None
         self.graph = graph_collection if graph_collection is not None else create_verified_cscrf_graph()
         self.corpus_chunks: Dict[str, ChunkRecord] = corpus_chunks if corpus_chunks is not None else {}
         self.corpus_documents: Dict[str, DocumentRecord] = corpus_documents if corpus_documents is not None else {}
@@ -51,9 +55,68 @@ class CitationValidator:
 
     def _load_corpus(self) -> None:
         """
-        Loads all chunks and document metadata from processed directory into in-memory dictionaries.
-        Fails safely without crashing if directory is missing or partially populated.
+        Loads chunks and document metadata into in-memory dictionaries.
+        If collection_id is specified, attempts to load from active published snapshot for that collection.
+        If collection_id is None or 'sebi_cscrf' and snapshot is missing, falls back to processed_dir.
+        Fails safely and deterministically without crashing if directory is missing or partially populated.
         """
+        # 1. Attempt to load from active published snapshot if collection_id is specified
+        if self.collection_id:
+            # Check partition pointer: data/indexes/{collection_id}/active_snapshot.json
+            partition_dir = self.indexes_dir / self.collection_id
+            pointer_file = partition_dir / "active_snapshot.json"
+            if not pointer_file.exists() and self.collection_id == "sebi_cscrf":
+                pointer_file = self.indexes_dir / "active_snapshot.json"
+
+            if pointer_file.exists():
+                try:
+                    with open(pointer_file, "r", encoding="utf-8") as f:
+                        pointer_data = json.load(f)
+
+                    # Resolve snapshot directory: prefer explicit snapshot_dir, or resolve via snapshot_id
+                    if "snapshot_dir" in pointer_data:
+                        target_dir = Path(pointer_data["snapshot_dir"])
+                        if not target_dir.is_absolute():
+                            target_dir = self.indexes_dir / target_dir
+                    elif "snapshot_id" in pointer_data:
+                        snap_id = pointer_data["snapshot_id"]
+                        if self.collection_id == "sebi_cscrf" and not (partition_dir / "snapshots" / snap_id).exists():
+                            target_dir = self.indexes_dir / "snapshots" / snap_id
+                        else:
+                            target_dir = partition_dir / "snapshots" / snap_id
+                    else:
+                        target_dir = None
+
+                    if target_dir and target_dir.exists():
+                        chunks_file = target_dir / "chunks.json"
+                        docs_file = target_dir / "documents.json"
+                        if chunks_file.exists() and docs_file.exists():
+                            with open(chunks_file, "r", encoding="utf-8") as f:
+                                chunks_data = json.load(f)
+                                if isinstance(chunks_data, list):
+                                    for c in chunks_data:
+                                        chunk_rec = ChunkRecord(**c)
+                                        self.corpus_chunks[chunk_rec.chunk_id] = chunk_rec
+                                elif isinstance(chunks_data, dict):
+                                    for c in chunks_data.values():
+                                        chunk_rec = ChunkRecord(**c)
+                                        self.corpus_chunks[chunk_rec.chunk_id] = chunk_rec
+
+                            with open(docs_file, "r", encoding="utf-8") as f:
+                                docs_data = json.load(f)
+                                if isinstance(docs_data, list):
+                                    for d in docs_data:
+                                        doc_rec = DocumentRecord(**d)
+                                        self.corpus_documents[doc_rec.document_id] = doc_rec
+                                elif isinstance(docs_data, dict):
+                                    for d in docs_data.values():
+                                        doc_rec = DocumentRecord(**d)
+                                        self.corpus_documents[doc_rec.document_id] = doc_rec
+                            return
+                except Exception:
+                    pass
+
+        # 2. Legacy fallback to processed_dir (for sebi_cscrf or when no snapshot exists)
         if not self.processed_dir.exists():
             return
 
@@ -124,7 +187,31 @@ class CitationValidator:
         doc = self.corpus_documents.get(chunk.document_id)
         failure_reasons: List[str] = []
 
-        # 1. Parent document ID matching
+        # 1. Collection ID matching and isolation
+        target_collection = self.collection_id or getattr(chunk, "collection_id", None)
+        if citation.collection_id:
+            cited_coll_id = citation.collection_id.strip()
+            # If validator is scoped to a collection, citation must match
+            if self.collection_id and cited_coll_id != self.collection_id:
+                failure_reasons.append(
+                    f"Collection ID mismatch: citation specifies '{cited_coll_id}', "
+                    f"but validator is scoped to collection '{self.collection_id}'."
+                )
+            # If chunk has collection identity, citation must match chunk's collection
+            elif chunk.collection_id and cited_coll_id != chunk.collection_id:
+                failure_reasons.append(
+                    f"Collection ID mismatch: citation specifies '{cited_coll_id}', "
+                    f"but registered chunk belongs to collection '{chunk.collection_id}'."
+                )
+
+        # Ensure chunk itself matches validator collection scope if validator is scoped
+        if self.collection_id and chunk.collection_id and chunk.collection_id != self.collection_id:
+            failure_reasons.append(
+                f"Cross-collection reference: referenced chunk '{chunk_id}' belongs to collection "
+                f"'{chunk.collection_id}', but validator is scoped to '{self.collection_id}'."
+            )
+
+        # 2. Parent document ID matching
         if citation.document_id:
             cited_doc_id = citation.document_id.strip()
             if cited_doc_id != chunk.document_id:
@@ -133,8 +220,16 @@ class CitationValidator:
                     f"but registered chunk belongs to parent '{chunk.document_id}'."
                 )
 
-        # 2. Metadata consistency (circular_number, issue_date)
+        # 3. Metadata consistency (title, circular_number, issue_date)
         if doc:
+            if citation.title and doc.title:
+                c_title_norm = re.sub(r"[\s\-_/]+", " ", citation.title.strip().lower())
+                d_title_norm = re.sub(r"[\s\-_/]+", " ", doc.title.strip().lower())
+                if c_title_norm != d_title_norm and citation.title.strip() != doc.title.strip():
+                    failure_reasons.append(
+                        f"Document title mismatch: citation specifies '{citation.title}', "
+                        f"registered document has '{doc.title}'."
+                    )
             if citation.circular_number and doc.circular_number:
                 # Compare normalized circular numbers
                 c_norm = re.sub(r"[\s\-_/]+", "", citation.circular_number.lower())
@@ -151,7 +246,7 @@ class CitationValidator:
                         f"registered document has '{doc.issue_date}'."
                     )
 
-        # 3. Page range containment
+        # 4. Page range containment
         chunk_p_start = chunk.page_start
         chunk_p_end = chunk.page_end
 
@@ -179,7 +274,7 @@ class CitationValidator:
                     f"Inverted page range: page_start ({citation.page_start}) > page_end ({citation.page_end})."
                 )
 
-        # 4. Quotation exact substring validation
+        # 5. Quotation exact substring validation
         if citation.quote:
             quote_clean = citation.quote.strip()
             # Normalize internal whitespace for robust comparison if exact raw match fails
@@ -194,7 +289,9 @@ class CitationValidator:
 
         # Classify status
         if failure_reasons:
-            if any("Document ID mismatch" in r for r in failure_reasons):
+            if any("Collection ID mismatch" in r or "Cross-collection" in r for r in failure_reasons):
+                status = CitationStatus.INVALID_COLLECTION_MISMATCH
+            elif any("Document ID mismatch" in r for r in failure_reasons):
                 status = CitationStatus.INVALID_DOC_ID_MISMATCH
             elif any("Quotation" in r for r in failure_reasons):
                 status = CitationStatus.INVALID_QUOTATION
@@ -207,12 +304,16 @@ class CitationValidator:
             status = CitationStatus.VALID
             is_valid = True
 
+        resolved_coll = chunk.collection_id or (doc.collection_id if doc else None) or self.collection_id
         return CitationValidationResult(
             citation=citation,
             status=status,
             is_valid=is_valid,
             failure_reasons=failure_reasons,
+            authoritative_collection_id=resolved_coll,
             authoritative_document_id=chunk.document_id,
+            authoritative_title=doc.title if doc else None,
+            authoritative_source_url=doc.source_url if doc else None,
             authoritative_circular_number=doc.circular_number if doc else None,
             authoritative_issue_date=doc.issue_date if doc else None,
             authoritative_page_start=chunk.page_start,

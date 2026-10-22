@@ -249,6 +249,13 @@ class IngestionService:
                     page_count=len(pages),
                 )
 
+            # Resolve collection identity safely
+            from app.schemas.document import resolve_collection_identity
+            coll_id = resolve_collection_identity(doc_id, metadata_input.get("collection_id"))
+            if coll_id:
+                for chunk in chunks:
+                    chunk.collection_id = coll_id
+
             # 5. Build and validate DocumentRecord
             try:
                 doc_record = DocumentRecord(
@@ -262,6 +269,9 @@ class IngestionService:
                     sha256=sha256_hash,
                     pdf_path=str(path),
                     extraction_status="extracted",
+                    regulator=metadata_input.get("regulator", "SEBI"),
+                    domain=metadata_input.get("domain", "CSCRF"),
+                    collection_id=coll_id,
                 )
             except Exception as e:
                 return IngestionResult(

@@ -23,6 +23,9 @@ from app.core.rate_limiter import get_query_rate_limiter
 from app.grounding.classifier import QueryIntent, classify_query_intent
 from app.grounding.relevance import filter_relevant_candidates, RelevanceDecisionCode
 from app.core.config import Settings, get_settings
+from app.ingestion.collection_registry import CollectionRegistry, UnknownCollectionError
+from app.schemas.manifest import CollectionStatus, GroundingPolicyDeclaration, GroundingPolicyType
+from app.schemas.document import resolve_collection_identity
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,21 @@ router = APIRouter(prefix="/api/v1", tags=["query"])
 # Service singletons (lazy-loaded or dependency-injected)
 _retrieval_service: Optional[RetrievalService] = None
 _safety_gate: Optional[AnswerSafetyGate] = None
+_collection_registry: Optional[CollectionRegistry] = None
+
+
+def get_collection_registry(settings: Settings = Depends(get_settings)) -> CollectionRegistry:
+    """Dependency provider for the shared CollectionRegistry instance."""
+    global _collection_registry
+    if (
+        _collection_registry is None
+        or str(_collection_registry.indexes_dir) != settings.indexes_dir
+    ):
+        _collection_registry = CollectionRegistry(
+            manifests_dir="data/manifests",
+            indexes_dir=settings.indexes_dir,
+        )
+    return _collection_registry
 
 
 def get_retrieval_service(settings: Settings = Depends(get_settings)) -> RetrievalService:
@@ -103,26 +121,35 @@ def build_response_narrative(
     domain: Optional[str] = None,
     candidate_count: Optional[int] = None,
     abstention_reason: Optional[str] = None,
+    collection_name: Optional[str] = None,
+    policy: Optional[GroundingPolicyDeclaration] = None,
 ) -> str:
     """
     Constructs a deterministic, accurate summary narrative matching the exact visible returned excerpts.
+    Respects collection identity and grounding policy type.
     """
-    corpus_label = f"SEBI {domain} corpus" if domain else "SEBI regulatory corpus"
+    is_general_static = policy is not None and policy.policy_type == GroundingPolicyType.GENERAL_STATIC
+    if collection_name:
+        corpus_label = collection_name
+    elif domain:
+        corpus_label = f"SEBI {domain} corpus"
+    else:
+        corpus_label = "SEBI regulatory corpus"
 
     if disposition == AnswerDisposition.CONTROLLED_ABSTENTION:
         if intent == QueryIntent.OUT_OF_SCOPE_OR_UNESTABLISHED:
-            return f"Controlled Abstention: The query is outside the demonstrated regulatory scope of the {corpus_label}."
+            return f"Controlled Abstention: The query is outside the demonstrated scope of {corpus_label}."
         if len(historical_superseded_excerpts) > 0 and not verified_excerpts:
             return (
-                f"Controlled Abstention: All relevant excerpts in the {corpus_label} for this current-compliance query "
+                f"Controlled Abstention: All relevant excerpts in {corpus_label} for this current-compliance query "
                 "are SUPERSEDED by subsequent circulars."
             )
         if candidate_count is not None and candidate_count > 0 and not verified_excerpts:
             return (
-                f"Controlled Abstention: Candidate passages were retrieved from the {corpus_label}, "
-                "but failed server-side regulatory safety and quotation verification."
+                f"Controlled Abstention: Candidate passages were retrieved from {corpus_label}, "
+                "but failed server-side safety and quotation verification."
             )
-        return f"Controlled Abstention: Zero candidate passages found in the {corpus_label} for this query."
+        return f"Controlled Abstention: Zero candidate passages found in {corpus_label} for this query."
 
     if disposition == AnswerDisposition.REJECTED_UNSAFE:
         return "Draft payload rejected: malformed structure, unexpected fields, or duplicate excerpt IDs."
@@ -130,6 +157,9 @@ def build_response_narrative(
     # For verified/qualified responses:
     v_count = len(verified_excerpts)
     s_count = len(historical_superseded_excerpts)
+
+    if is_general_static:
+        return f"Verified Excerpts: {v_count} excerpt(s) verified against authoritative {corpus_label}."
 
     if disposition == AnswerDisposition.VERIFIED_HISTORICAL_EXCERPTS:
         if include_superseded and s_count > 0:
@@ -180,6 +210,7 @@ async def query_cscrf(
     retrieval_service: Optional[RetrievalService] = Depends(get_retrieval_service),
     safety_gate: Optional[AnswerSafetyGate] = Depends(get_safety_gate),
     synthesis_service: Optional[SynthesisService] = Depends(get_synthesis_service),
+    collection_registry: Optional[CollectionRegistry] = Depends(get_collection_registry),
 ) -> QueryResponse:
     # Phase 10.1.20: Enforce in-memory sliding-window rate limit on public query endpoint
     limiter = get_query_rate_limiter()
@@ -191,6 +222,55 @@ async def query_cscrf(
         safety_gate = get_safety_gate()
     if synthesis_service is None or not hasattr(synthesis_service, "synthesize_answer"):
         synthesis_service = get_synthesis_service()
+    if collection_registry is None or not hasattr(collection_registry, "has_collection"):
+        collection_registry = get_collection_registry()
+
+    # Phase 2.2B.1: Validate and resolve collection identity against CollectionRegistry
+    requested_cid = request.collection_id.strip() if request.collection_id else "sebi_cscrf"
+    if not collection_registry.has_collection(requested_cid):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Collection '{requested_cid}' is not registered.",
+        )
+
+    coll_status = collection_registry.get_collection_status(requested_cid)
+    if coll_status == CollectionStatus.DISABLED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Collection '{requested_cid}' is disabled.",
+        )
+    if coll_status == CollectionStatus.UNPUBLISHED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Collection '{requested_cid}' is unpublished; no active published index snapshot was found.",
+        )
+
+    resolved_cid = requested_cid
+    try:
+        collection_manifest = collection_registry.get_collection(resolved_cid)
+        collection_name = collection_manifest.name if collection_manifest else resolved_cid
+    except Exception:
+        collection_manifest = None
+        collection_name = resolved_cid
+
+    # Phase 2.2B.2: Authoritatively resolve collection's grounding policy from validated manifest
+    try:
+        grounding_policy = collection_registry.get_grounding_policy(resolved_cid)
+    except Exception as e:
+        logger.error(f"Failed to resolve grounding policy for collection '{resolved_cid}': {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Collection '{resolved_cid}' has an invalid or unresolvable grounding policy.",
+        )
+
+    if grounding_policy is None or grounding_policy.policy_type not in (
+        GroundingPolicyType.SEBI_CSCRF_STRICT,
+        GroundingPolicyType.GENERAL_STATIC,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Collection '{resolved_cid}' declares an unsupported or invalid grounding policy.",
+        )
 
     query = request.query.strip()
     top_k = request.top_k
@@ -207,7 +287,7 @@ async def query_cscrf(
             end_date=request.end_date,
         )
 
-    # 1. Execute server-side hybrid retrieval with pre-fusion filters
+    # 1. Execute server-side hybrid retrieval with collection dispatch
     try:
         retrieval_response = retrieval_service.search_hybrid(
             query=query,
@@ -215,6 +295,7 @@ async def query_cscrf(
             candidate_k=50,
             rrf_k=60,
             filters=filters,
+            collection_id=resolved_cid,
         )
     except Exception as e:
         logger.error(f"Retrieval execution failure for query length {len(query)}: {str(e)}")
@@ -226,10 +307,57 @@ async def query_cscrf(
     # 2. Filter candidates through relevance safeguards
     relevant_results, intent, assessments = filter_relevant_candidates(query, retrieval_response.results)
 
-    # Limit relevant results to requested top_k after intent-aware filtering and sorting
-    relevant_results = relevant_results[:top_k]
+    # Enforce strict collection ownership on retrieved candidates before evidence assembly
+    isolated_relevant_results = []
+    service_chunks = None
+    if hasattr(retrieval_service, "get_chunks"):
+        try:
+            res = retrieval_service.get_chunks(resolved_cid)
+            if isinstance(res, list):
+                service_chunks = res
+        except Exception:
+            service_chunks = None
+    if not isinstance(service_chunks, list):
+        service_chunks = getattr(retrieval_service, "chunks", None)
+    service_chunk_map = {c.chunk_id: c for c in service_chunks} if isinstance(service_chunks, list) else {}
 
-    corpus_label = f"SEBI {request.domain} corpus" if request.domain else "SEBI regulatory corpus"
+    service_docs = None
+    if hasattr(retrieval_service, "get_documents"):
+        try:
+            res = retrieval_service.get_documents(resolved_cid)
+            if isinstance(res, dict):
+                service_docs = res
+        except Exception:
+            service_docs = None
+    if not isinstance(service_docs, dict):
+        service_docs = getattr(retrieval_service, "documents", None)
+    service_docs = service_docs if isinstance(service_docs, dict) else {}
+
+    for r in relevant_results:
+        chunk_coll = getattr(r, "collection_id", None) or (r.metadata.get("collection_id") if hasattr(r, "metadata") and r.metadata else None)
+        resolved_chunk_coll = resolve_collection_identity(r.document_id, chunk_coll)
+        # Check against loaded collection state chunks and documents if available
+        if not resolved_chunk_coll and r.chunk_id in service_chunk_map:
+            sc = service_chunk_map[r.chunk_id]
+            resolved_chunk_coll = resolve_collection_identity(sc.document_id, getattr(sc, "collection_id", None))
+        if not resolved_chunk_coll and r.document_id in service_docs:
+            sd = service_docs[r.document_id]
+            resolved_chunk_coll = resolve_collection_identity(sd.document_id, getattr(sd, "collection_id", None))
+
+        if resolved_chunk_coll == resolved_cid:
+            isolated_relevant_results.append(r)
+        else:
+            logger.warning(
+                "Quarantining candidate chunk '%s' (doc '%s'): collection '%s' does not match requested collection '%s'.",
+                r.chunk_id,
+                r.document_id,
+                resolved_chunk_coll,
+                resolved_cid,
+            )
+
+    relevant_results = isolated_relevant_results[:top_k]
+
+    corpus_label = f"SEBI {request.domain} corpus" if request.domain else f"{collection_name} ({resolved_cid})"
 
     if intent == QueryIntent.OUT_OF_SCOPE_OR_UNESTABLISHED:
         return QueryResponse(
@@ -259,14 +387,14 @@ async def query_cscrf(
         ]
         if low_coverage_assessments:
             abstention_reason = (
-                f"Insufficient evidence: candidate passages in the {corpus_label} do not substantively cover the query topic."
+                f"Insufficient evidence: candidate passages in {corpus_label} do not substantively cover the query topic."
             )
             narrative = (
-                f"Controlled Abstention: Insufficient evidence found in the {corpus_label} to substantiate an answer for this query."
+                f"Controlled Abstention: Insufficient evidence found in {corpus_label} to substantiate an answer for this query."
             )
         else:
             abstention_reason = f"No relevant circular passages identified in the registered {corpus_label}."
-            narrative = f"Controlled Abstention: Zero candidate passages found in the {corpus_label} for this query."
+            narrative = f"Controlled Abstention: Zero candidate passages found in {corpus_label} for this query."
 
         return QueryResponse(
             query=query,
@@ -301,11 +429,12 @@ async def query_cscrf(
         excerpts=candidate_excerpts,
     )
 
-    # 4. Evaluate through AnswerSafetyGate
+    # 4. Evaluate through AnswerSafetyGate using validated manifest grounding policy
     try:
         gate_response: SafetyGateResponse = safety_gate.evaluate_draft(
             payload=draft_payload,
             retrieval_candidates=authorized_chunk_ids,
+            policy=grounding_policy,
         )
     except Exception as e:
         logger.error(f"Safety gate evaluation failure for query length {len(query)}: {str(e)}")
@@ -327,15 +456,41 @@ async def query_cscrf(
         domain=request.domain,
         candidate_count=gate_response.retrieval_candidate_count,
         abstention_reason=gate_response.abstention_reason,
+        collection_name=f"{collection_name} ({resolved_cid})",
+        policy=grounding_policy,
     )
 
-    # 7. Execute Grounded LLM Synthesis over verified excerpts (Phase 8E)
+    # Stamp resolved collection_id onto verified and superseded excerpts for provenance traceability
+    for exc in gate_response.verified_excerpts:
+        if hasattr(exc, "collection_id"):
+            exc.collection_id = resolved_cid
+    for exc in superseded_to_return:
+        if hasattr(exc, "collection_id"):
+            exc.collection_id = resolved_cid
+
+    # Phase 2.2B.7 Controlled GENERAL_STATIC Synthesis Enablement:
+    # Set pilot / collection notice appropriately
+    if grounding_policy.policy_type == GroundingPolicyType.GENERAL_STATIC:
+        pilot_notice = f"Static document collection: excerpts verified verbatim from {collection_name} ({resolved_cid})."
+    else:
+        pilot_notice = gate_response.pilot_corpus_scope_limitation
+
+    # 7. Execute Grounded Synthesis over verified excerpts with authoritative policy
+    # Allowed strictly for validated SEBI_CSCRF_STRICT and GENERAL_STATIC policies.
+    policy_str = (
+        grounding_policy.policy_type.value
+        if hasattr(grounding_policy.policy_type, "value")
+        else str(grounding_policy.policy_type)
+    )
+
     synthesis_result = synthesis_service.synthesize_answer(
         query=query,
         verified_excerpts=gate_response.verified_excerpts,
         disposition=gate_response.disposition,
         regulatory_warnings=gate_response.regulatory_warnings,
         domain=request.domain,
+        collection_id=resolved_cid,
+        policy_type=policy_str,
     )
 
     return QueryResponse(
@@ -348,7 +503,7 @@ async def query_cscrf(
         retrieval_candidate_count=gate_response.retrieval_candidate_count,
         abstention_reason=gate_response.abstention_reason,
         regulatory_warnings=gate_response.regulatory_warnings,
-        pilot_corpus_scope_limitation=gate_response.pilot_corpus_scope_limitation,
+        pilot_corpus_scope_limitation=pilot_notice,
         answer_text=synthesis_result.answer,
         synthesis_status=synthesis_result.status.value,
         claim_citations=synthesis_result.claims,

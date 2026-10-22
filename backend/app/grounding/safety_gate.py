@@ -22,6 +22,7 @@ from app.retrieval.service import RetrievalService
 from app.grounding.resolver import ConservativeGraphResolver
 from app.grounding.validator import CitationValidator
 from app.schemas.citation import CitationItem, CitationStatus
+from app.schemas.manifest import GroundingPolicyDeclaration, GroundingPolicyType
 from app.schemas.safety_gate import (
     AnswerDisposition,
     CandidateExcerptDraft,
@@ -73,11 +74,19 @@ class AnswerSafetyGate:
         self,
         payload: Union[ExcerptDraftPayload, Dict[str, Any]],
         retrieval_candidates: Optional[Union[List[RetrievalResult], List[ChunkRecord], Set[str]]] = None,
+        policy: Optional[GroundingPolicyDeclaration] = None,
     ) -> SafetyGateResponse:
         """
         Evaluates untrusted draft payload, performs retrieval-candidate binding,
         server-side quotation and status validation, and constructs a deterministic SafetyGateResponse.
+        Enforces policy-aware dispatch based on the collection's GroundingPolicyDeclaration.
         """
+        active_policy = policy or GroundingPolicyDeclaration(
+            policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT,
+            enforce_regulatory_graph=True,
+            enforce_verbatim_citation=True,
+            enforce_retrieval_binding=True,
+        )
         # 1. Parse and validate untrusted input payload structure
         if isinstance(payload, dict):
             try:
@@ -174,86 +183,149 @@ class AnswerSafetyGate:
         validation_errors: List[str] = []
         warnings: List[str] = []
 
+        is_general_static = (active_policy.policy_type == GroundingPolicyType.GENERAL_STATIC)
+        enforce_graph = active_policy.enforce_regulatory_graph and not is_general_static
+
         for draft in payload.excerpts:
             chunk_id = draft.source_chunk_id.strip()
             proposed_text = draft.proposed_excerpt_text
 
             # Check candidate authorization against server-side retrieval set
-            if authorized_chunk_ids is not None and chunk_id not in authorized_chunk_ids:
+            if active_policy.enforce_retrieval_binding and authorized_chunk_ids is not None and chunk_id not in authorized_chunk_ids:
                 validation_errors.append(
                     f"Candidate '{draft.excerpt_id}': Chunk '{chunk_id}' is not in authorized retrieval candidate set."
                 )
                 continue
 
-            # Check chunk existence in registered corpus
-            if chunk_id not in self.validator.corpus_chunks:
+            # Check chunk existence in registered corpus or retrieval service
+            chunk = self.validator.corpus_chunks.get(chunk_id)
+            doc = self.validator.corpus_documents.get(chunk.document_id) if chunk else None
+
+            # Fallback to retrieval service for collection chunks if not loaded in default validator
+            if chunk is None and self.retrieval_service is not None:
+                # First check across loaded collection states in retrieval_service
+                if hasattr(self.retrieval_service, "_collection_states"):
+                    for st in self.retrieval_service._collection_states.values():
+                        for sc in st.chunks:
+                            if sc.chunk_id == chunk_id:
+                                chunk = sc
+                                doc = st.documents.get(chunk.document_id)
+                                break
+                        if chunk:
+                            break
+
+                # If still not found, check default service chunks
+                if chunk is None:
+                    service_chunks = getattr(self.retrieval_service, "chunks", None)
+                    if service_chunks:
+                        for sc in service_chunks:
+                            if sc.chunk_id == chunk_id:
+                                chunk = sc
+                                break
+                    if chunk is not None:
+                        service_docs = getattr(self.retrieval_service, "documents", None) or {}
+                        doc = service_docs.get(chunk.document_id)
+
+            if chunk is None:
                 validation_errors.append(f"Candidate '{draft.excerpt_id}': Chunk '{chunk_id}' does not exist in corpus.")
                 continue
 
-            chunk = self.validator.corpus_chunks[chunk_id]
-            doc = self.validator.corpus_documents.get(chunk.document_id)
-
             # Strict quotation validation using CitationValidator rules (verbatim substring match)
-            cit = CitationItem(
-                chunk_id=chunk_id,
-                quote=proposed_text,
-            )
-            c_res = self.validator.validate_citation(cit)
-            if not c_res.is_valid:
-                validation_errors.append(
-                    f"Candidate '{draft.excerpt_id}': Proposed text is not a verbatim substring of chunk '{chunk_id}'."
+            if active_policy.enforce_verbatim_citation:
+                cit = CitationItem(
+                    chunk_id=chunk_id,
+                    quote=proposed_text,
                 )
-                continue
+                # Temporarily ensure chunk is in validator for verbatim check
+                added_temp = False
+                if chunk_id not in self.validator.corpus_chunks:
+                    self.validator.corpus_chunks[chunk_id] = chunk
+                    added_temp = True
 
-            # Resolve conservative regulatory status via graph resolver
-            temp_result = RetrievalResult(
-                chunk_id=chunk.chunk_id,
-                document_id=chunk.document_id,
-                title=doc.title if doc else None,
-                circular_number=doc.circular_number if doc else None,
-                issue_date=doc.issue_date if doc else None,
-                page_start=chunk.page_start,
-                page_end=chunk.page_end,
-                text=chunk.text,
-                score=1.0,
-                rank=1,
-                is_ocr=chunk.is_ocr,
-            )
-            grounded_item = self.resolver.resolve_item(temp_result)
+                try:
+                    c_res = self.validator.validate_citation(cit)
+                finally:
+                    if added_temp:
+                        self.validator.corpus_chunks.pop(chunk_id, None)
 
-            validated_item = ValidatedExcerptItem(
-                excerpt_id=draft.excerpt_id,
-                source_chunk_id=chunk.chunk_id,
-                document_id=chunk.document_id,
-                circular_number=doc.circular_number if doc else None,
-                title=doc.title if doc else None,
-                issue_date=doc.issue_date if doc else None,
-                page_start=chunk.page_start,
-                page_end=chunk.page_end,
-                excerpt_text=proposed_text.strip(),
-                regulatory_status=grounded_item.regulatory_status,
-                status_reason=grounded_item.status_reason,
-                applicable_edge_ids=grounded_item.applicable_edge_ids,
-                acting_document_ids=grounded_item.acting_document_ids,
-            )
+                if not c_res.is_valid:
+                    validation_errors.append(
+                        f"Candidate '{draft.excerpt_id}': Proposed text is not a verbatim substring of chunk '{chunk_id}'."
+                    )
+                    continue
 
-            if grounded_item.regulatory_status == RegulatoryStatus.UNRESOLVED:
-                warnings.append(
-                    f"Excerpt '{draft.excerpt_id}' from {chunk.document_id} has UNRESOLVED status; "
-                    f"it represents historical baseline circular text whose active legal currency is not established beyond the pilot."
+            # Policy dispatch: resolve regulatory status
+            if enforce_graph:
+                # SEBI CSCRF Strict graph resolution
+                temp_result = RetrievalResult(
+                    chunk_id=chunk.chunk_id,
+                    document_id=chunk.document_id,
+                    title=doc.title if doc else None,
+                    circular_number=doc.circular_number if doc else None,
+                    issue_date=doc.issue_date if doc else None,
+                    page_start=chunk.page_start,
+                    page_end=chunk.page_end,
+                    text=chunk.text,
+                    score=1.0,
+                    rank=1,
+                    is_ocr=chunk.is_ocr,
                 )
-                verified_items.append(validated_item)
-            elif grounded_item.regulatory_status == RegulatoryStatus.SUPERSEDED:
-                warnings.append(
-                    f"Excerpt '{draft.excerpt_id}' from {chunk.document_id} is SUPERSEDED by newer circulars in the corpus."
+                grounded_item = self.resolver.resolve_item(temp_result)
+
+                validated_item = ValidatedExcerptItem(
+                    excerpt_id=draft.excerpt_id,
+                    source_chunk_id=chunk.chunk_id,
+                    document_id=chunk.document_id,
+                    circular_number=doc.circular_number if doc else None,
+                    title=doc.title if doc else None,
+                    issue_date=doc.issue_date if doc else None,
+                    page_start=chunk.page_start,
+                    page_end=chunk.page_end,
+                    excerpt_text=proposed_text.strip(),
+                    regulatory_status=grounded_item.regulatory_status,
+                    status_reason=grounded_item.status_reason,
+                    applicable_edge_ids=grounded_item.applicable_edge_ids,
+                    acting_document_ids=grounded_item.acting_document_ids,
                 )
-                superseded_items.append(validated_item)
-            elif grounded_item.regulatory_status == RegulatoryStatus.PARTIALLY_AMENDED:
-                warnings.append(
-                    f"Excerpt '{draft.excerpt_id}' from {chunk.document_id} belongs to a provision subject to partial amendment."
-                )
-                verified_items.append(validated_item)
+
+                if grounded_item.regulatory_status == RegulatoryStatus.UNRESOLVED:
+                    warnings.append(
+                        f"Excerpt '{draft.excerpt_id}' from {chunk.document_id} has UNRESOLVED status; "
+                        f"it represents historical baseline circular text whose active legal currency is not established beyond the pilot."
+                    )
+                    verified_items.append(validated_item)
+                elif grounded_item.regulatory_status == RegulatoryStatus.SUPERSEDED:
+                    warnings.append(
+                        f"Excerpt '{draft.excerpt_id}' from {chunk.document_id} is SUPERSEDED by newer circulars in the corpus."
+                    )
+                    superseded_items.append(validated_item)
+                elif grounded_item.regulatory_status == RegulatoryStatus.PARTIALLY_AMENDED:
+                    warnings.append(
+                        f"Excerpt '{draft.excerpt_id}' from {chunk.document_id} belongs to a provision subject to partial amendment."
+                    )
+                    verified_items.append(validated_item)
+                else:
+                    verified_items.append(validated_item)
             else:
+                # GENERAL_STATIC: General document collection with no SEBI graph or temporal-supersession.
+                # Section 3: Do not automatically label general document excerpts as ACTIVE_CURRENT merely
+                # because their quotations match the source. Verified quotation establishes textual provenance;
+                # it does not establish active legal currency.
+                validated_item = ValidatedExcerptItem(
+                    excerpt_id=draft.excerpt_id,
+                    source_chunk_id=chunk.chunk_id,
+                    document_id=chunk.document_id,
+                    circular_number=getattr(doc, "circular_number", None) if doc else None,
+                    title=getattr(doc, "title", None) if doc else None,
+                    issue_date=getattr(doc, "issue_date", None) if doc else None,
+                    page_start=chunk.page_start,
+                    page_end=chunk.page_end,
+                    excerpt_text=proposed_text.strip(),
+                    regulatory_status=RegulatoryStatus.INFORMATIONAL,
+                    status_reason="Static document excerpt verified verbatim from registered collection; textual provenance established without legal currency evaluation.",
+                    applicable_edge_ids=[],
+                    acting_document_ids=[],
+                )
                 verified_items.append(validated_item)
 
         # Deduplicate warnings
@@ -278,7 +350,21 @@ class AnswerSafetyGate:
                 regulatory_warnings=unique_warnings,
             )
 
-        # Handle queries asking about current status / obligations
+        if is_general_static:
+            # Under GENERAL_STATIC policy, return verified historical excerpts without SEBI supersession separation
+            return SafetyGateResponse(
+                query=query,
+                disposition=AnswerDisposition.VERIFIED_HISTORICAL_EXCERPTS,
+                verified_excerpts=verified_items,
+                historical_superseded_excerpts=[],
+                summary_narrative=f"Verified Excerpts: {len(verified_items)} excerpt(s) verified verbatim from registered document collection.",
+                technical_validation_passed=True,
+                retrieval_candidate_count=candidate_count,
+                abstention_reason=None,
+                regulatory_warnings=unique_warnings,
+            )
+
+        # Handle queries asking about current status / obligations (SEBI-specific)
         asks_current = is_current_status_query(query)
 
         # If all surviving excerpts are superseded

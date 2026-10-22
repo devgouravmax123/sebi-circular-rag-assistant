@@ -555,7 +555,7 @@ def main():
     parser.add_argument("--indexes_dir", type=str, default="data/indexes", help="Path to indexes")
     parser.add_argument("--k", type=int, default=10, help="Raw chunk retrieval budget K")
     parser.add_argument("--rrf_k", type=int, default=60, help="RRF smoothing constant k")
-    parser.add_argument("--candidate_k", type=int, default=20, help="Candidate pool size for RRF component retrieval")
+    parser.add_argument("--candidate_k", type=int, default=50, help="Candidate pool size for RRF component retrieval")
     parser.add_argument("--bm25_threshold", type=float, default=5.0, help="BM25 max score abstention threshold")
     parser.add_argument("--dense_threshold", type=float, default=0.55, help="Dense max cosine score abstention threshold")
     parser.add_argument("--rrf_threshold", type=float, default=0.025, help="RRF max fused score abstention threshold")

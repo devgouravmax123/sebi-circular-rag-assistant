@@ -24,7 +24,14 @@ from app.schemas.safety_gate import AnswerDisposition
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    from app.api.v1.query import get_synthesis_service as api_get_synthesis_service
+    from app.synthesis.service import SynthesisService
+    from app.synthesis.mock_provider import MockSynthesisProvider
+
+    app.dependency_overrides[api_get_synthesis_service] = lambda: SynthesisService(provider=MockSynthesisProvider())
+    test_client = TestClient(app)
+    yield test_client
+    app.dependency_overrides.pop(api_get_synthesis_service, None)
 
 
 def test_1_default_retrieval_mode_is_hybrid():

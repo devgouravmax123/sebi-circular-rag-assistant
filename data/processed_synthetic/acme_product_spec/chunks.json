@@ -1,0 +1,16 @@
+[
+  {
+    "chunk_id": "acme_product_spec_p1_0",
+    "document_id": "acme_product_spec",
+    "collection_id": "general_synthetic",
+    "text": "Acme Enterprise Data Mesh Product Specification Version 1.0. Section 1. Ingestion Pipelines and Rate Limits. The Data Mesh ingestion API processes incoming telemetry events via gRPC and HTTPS endpoints. The standard ingestion rate limit is 10000 events per second per tenant organization, with burst allowance up to 15000 events per second for a maximum duration of 60 seconds. Payload sizes exceeding 2 megabytes are rejected immediately with HTTP 413 Payload Too Large. Telemetry events with missing tenant headers are routed directly to the dead-letter queue (DLQ) for manual inspection within 24 hours. Acme Enterprise Data Mesh Product Specification Version 1.0. Section 2. Data Retention, Quotas, and Storage Tiers. Standard tenant telemetry is retained in hot memory-cached storage for 7 days before automated tiering to cold parquet archives for 365 days. However, database snapshots mentioned in infrastructure handbooks are managed independently of the telemetry mesh and adhere to 30-day storage limits. Under no circumstances does the Data Mesh retain uncompressed event streams for longer than 48 hours without tiering. Tenants requesting custom retention periods exceeding 365 days must purchase enterprise archive licenses.",
+    "page_start": 1,
+    "page_end": 2,
+    "is_ocr": false,
+    "chunk_type": "body",
+    "metadata": {
+      "word_count": 181,
+      "chunk_index": 0
+    }
+  }
+]

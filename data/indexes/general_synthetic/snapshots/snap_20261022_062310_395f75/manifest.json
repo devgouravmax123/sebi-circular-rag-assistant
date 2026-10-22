@@ -1,0 +1,33 @@
+{
+  "snapshot_id": "snap_20261022_062310_395f75",
+  "collection_id": "general_synthetic",
+  "created_at": "2026-10-22T06:23:10.533032Z",
+  "format_version": "1.0.0",
+  "embedding_model": "BAAI/bge-small-en-v1.5",
+  "embedding_dim": 384,
+  "total_documents": 3,
+  "total_chunks": 3,
+  "document_ids": [
+    "acme_infra_handbook",
+    "acme_product_spec",
+    "acme_security_policy"
+  ],
+  "document_versions": {
+    "acme_infra_handbook": "92b4000fae4037c17bf2b57d5f16f92123c4ef3698cf09a36a14ff619a6c2a84",
+    "acme_product_spec": "ab91a4393bcc2821d017d8dc7805ee244964b7e46243264c14190fd4b1f0e9f8",
+    "acme_security_policy": "7d079e496c1fae0911c87b386c1ee25eeed741f9d9d5ec64c1444bc1245793a0"
+  },
+  "chunk_ids": [
+    "acme_infra_handbook_p1_0",
+    "acme_product_spec_p1_0",
+    "acme_security_policy_p1_0"
+  ],
+  "corpus_fingerprint": "928a79baae49bce5370aa30fcb72386e4b72f2d615898876d4de5e774018d564",
+  "artifact_checksums": {
+    "chunks.json": "1319dfe2e45510440bd15dcdd5089e17e3b4a54bc3ba17bed33a5d398cf4db05",
+    "documents.json": "f242d25935e1c247310554d770ca157e49f978c5c1f7b99d478a2dcf083dd013",
+    "dense_index.npy": "6ebb61060796f83e637ea954f77ebbe9c6ef36bdca64676e9c54697432b3ee3d",
+    "dense_index_meta.json": "3e9b8a0b7f9e3801fcf74c07e65b063a6d55092e8a6cad64950eb40a5c523a6c"
+  },
+  "metadata": {}
+}

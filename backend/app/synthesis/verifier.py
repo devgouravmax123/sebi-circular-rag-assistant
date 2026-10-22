@@ -220,7 +220,15 @@ def sanitize_and_validate_synthesis_output(
 
             ev = evidence_by_chunk_id[cid]
 
-            # 2. Support relationship check
+            # 2. Collection isolation check
+            if input_payload.collection_id and ev.collection_id and ev.collection_id != input_payload.collection_id:
+                unsupported_claims_found = True
+                unsupported_reasons.append(
+                    f"Claim references foreign collection chunk '{cid}' (collection '{ev.collection_id}' != expected '{input_payload.collection_id}')"
+                )
+                continue
+
+            # 3. Support relationship check
             is_supported, overlap, missing = verify_claim_support(
                 claim_text=claim.claim_text,
                 chunk_text=ev.text,
@@ -236,7 +244,7 @@ def sanitize_and_validate_synthesis_output(
 
             valid_supporting_chunk_ids.append(cid)
 
-            # 3. Faithfully map provenance without inventing missing metadata
+            coll_id = getattr(ev, "collection_id", None)
             prov = CitationProvenance(
                 source_chunk_id=ev.chunk_id,
                 document_id=ev.document_id,
@@ -248,6 +256,7 @@ def sanitize_and_validate_synthesis_output(
                 page_end=ev.page_end,
                 provision_id=ev.mapped_provisions[0] if ev.mapped_provisions else None,
                 regulatory_status=ev.regulatory_status,
+                collection_id=coll_id,
             )
             resolved_citations.append(prov)
 

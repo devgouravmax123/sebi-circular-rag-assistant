@@ -45,6 +45,10 @@ class CitationProvenance(BaseModel):
         ...,
         description="Conservative regulatory status (e.g. UNRESOLVED, ACTIVE_CURRENT, SUPERSEDED)",
     )
+    collection_id: Optional[str] = Field(
+        default=None,
+        description="Authoritative collection identifier for provenance tracing",
+    )
 
 
 class ClaimCitation(BaseModel):
@@ -95,6 +99,10 @@ class SynthesisEvidenceItem(BaseModel):
     status_reason: str = Field(..., description="Explanation for assigned regulatory status")
     mapped_provisions: List[str] = Field(default_factory=list, description="Associated provision IDs")
     applicable_edge_ids: List[str] = Field(default_factory=list, description="Graph edge IDs influencing this passage")
+    collection_id: Optional[str] = Field(
+        default="sebi_cscrf",
+        description="Authoritative collection identifier for evidence chunk",
+    )
 
 
 class SynthesisInput(BaseModel):
@@ -114,6 +122,14 @@ class SynthesisInput(BaseModel):
         description="Warnings regarding UNRESOLVED status or scoped amendments",
     )
     domain: Optional[str] = Field(None, description="Regulatory framework domain (e.g. CSCRF)")
+    collection_id: Optional[str] = Field(
+        default="sebi_cscrf",
+        description="Target collection identifier for contextual traceability",
+    )
+    policy_type: Optional[str] = Field(
+        default="sebi_cscrf_strict",
+        description="Grounding policy type governing prompt formatting and grounding rules",
+    )
 
 
 class SynthesisOutput(BaseModel):

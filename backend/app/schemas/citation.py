@@ -13,6 +13,7 @@ class CitationStatus(str, Enum):
     VALID = "VALID"
     INVALID_CHUNK_NOT_FOUND = "INVALID_CHUNK_NOT_FOUND"
     INVALID_DOC_ID_MISMATCH = "INVALID_DOC_ID_MISMATCH"
+    INVALID_COLLECTION_MISMATCH = "INVALID_COLLECTION_MISMATCH"
     INVALID_PAGE_RANGE = "INVALID_PAGE_RANGE"
     INVALID_QUOTATION = "INVALID_QUOTATION"
     INVALID_METADATA_MISMATCH = "INVALID_METADATA_MISMATCH"
@@ -37,8 +38,10 @@ class CitationItem(BaseModel):
     """
     chunk_id: str = Field(..., description="Corpus chunk ID being cited")
     document_id: Optional[str] = Field(None, description="Reported parent document ID")
-    circular_number: Optional[str] = Field(None, description="Reported circular number")
-    issue_date: Optional[str] = Field(None, description="Reported circular issue date (YYYY-MM-DD)")
+    collection_id: Optional[str] = Field(None, description="Target collection identifier for collection-scoped verification")
+    title: Optional[str] = Field(None, description="Reported document title")
+    circular_number: Optional[str] = Field(None, description="Reported circular number (if applicable)")
+    issue_date: Optional[str] = Field(None, description="Reported circular or document issue date (YYYY-MM-DD)")
     page: Optional[int] = Field(None, ge=1, description="Specific page cited")
     page_start: Optional[int] = Field(None, ge=1, description="Reported start page")
     page_end: Optional[int] = Field(None, ge=1, description="Reported end page")
@@ -55,8 +58,11 @@ class CitationValidationResult(BaseModel):
     failure_reasons: List[str] = Field(default_factory=list, description="Detailed failure explanations")
 
     # Authoritative corpus data populated from registered corpus upon successful lookup
+    authoritative_collection_id: Optional[str] = Field(None, description="True collection ID from corpus")
     authoritative_document_id: Optional[str] = Field(None, description="True parent document ID from corpus")
-    authoritative_circular_number: Optional[str] = Field(None, description="True circular number from corpus")
+    authoritative_title: Optional[str] = Field(None, description="True document title from corpus")
+    authoritative_source_url: Optional[str] = Field(None, description="True source URL from corpus")
+    authoritative_circular_number: Optional[str] = Field(None, description="True circular number from corpus (if applicable)")
     authoritative_issue_date: Optional[str] = Field(None, description="True issue date from corpus")
     authoritative_page_start: Optional[int] = Field(None, description="True start page from corpus chunk")
     authoritative_page_end: Optional[int] = Field(None, description="True end page from corpus chunk")

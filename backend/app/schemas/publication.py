@@ -11,6 +11,7 @@ class SnapshotManifest(BaseModel):
     Immutable manifest metadata for an atomically published search index snapshot.
     """
     snapshot_id: str = Field(..., description="Unique snapshot identifier, e.g. snap_20261011_120000")
+    collection_id: str = Field(default="sebi_cscrf", description="Owning collection identifier")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     format_version: str = Field(default="1.0.0", description="Index format schema version")
     embedding_model: str = Field(default="BAAI/bge-small-en-v1.5")
@@ -34,6 +35,7 @@ class ActiveSnapshotPointer(BaseModel):
     Pointer stored in active_snapshot.json indicating the active snapshot.
     """
     snapshot_id: str
+    collection_id: str = Field(default="sebi_cscrf", description="Owning collection identifier")
     activated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     manifest_checksum: str
     total_documents: int

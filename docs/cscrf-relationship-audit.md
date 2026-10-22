@@ -1,4 +1,10 @@
-# Source-Backed Relationship Audit: SEBI CSCRF Corpus (Phase 3D.1 Validation)
+# Source-Backed Relationship Audit: SEBI CSCRF Corpus
+
+> [!NOTE]
+> **Authoritative SEBI CSCRF Regression Fixture:**
+> This document is the verified evidentiary ledger for the 9 regulatory relationships connecting the 5 circulars in the `sebi_cscrf` reference collection. Its relationships, verbatim quotations, and temporal analyses are permanent regression benchmarks.
+>
+> Generalization of the platform does **not** imply that other collections require supersession graphs or publication dates. Non-regulatory collections (e.g. technical manuals, organizational standards) operate without amendment graphs under a `PassthroughPolicy`.
 
 ## 1. Audit Overview & Methodology
 

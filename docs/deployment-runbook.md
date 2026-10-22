@@ -1,184 +1,128 @@
-# OCI Always Free Deployment and Operational Runbook
+# Deployment & Operations Runbook
 
-This runbook documents the deployment, firewall, offline model-cache preparation, operational maintenance, and recovery procedures for hosting the **SEBI Regulatory Q&A Assistant** on Oracle Cloud Infrastructure (OCI) Always Free tier at an operating target of **₹0/month**.
+## 1. Hosting Architecture Options & Cost Boundaries
 
----
-
-## 1. Preconditions and Cost Warnings
+This runbook documents the deployment, firewall, offline model-cache preparation, operational maintenance, and recovery procedures for hosting the platform at a target operating cost of **₹0/month**.
 
 > [!WARNING]
-> **Zero-Cost Billing Disclaimer:**
-> OCI budget alerts are notification tools only; they are **NOT** hard spending cutoffs. If an account is converted to Pay-As-You-Go and provisions resources beyond Always Free quotas, billing occurs immediately.
+> **Deployment Architecture Reconciled & Approval Boundaries:**
+> Two primary hosting architectures exist in the project documentation and evaluation records:
+> - **Option A (OCI Always Free VM):** A single Ampere A1 ARM64 instance running Ubuntu 24.04, Docker Compose, Caddy reverse proxy, and local file/database storage.
+> - **Option B (Render Web Service + Neon PostgreSQL + Upstash Redis):** A serverless containerized deployment on Render with external serverless database and cache.
 >
-> To guarantee ₹0/month, the tenancy must remain strictly within the OCI Always Free resource limits:
-> - **Compute:** Maximum 4 OCPUs and 24 GB RAM (Ampere A1 ARM64).
-> - **Storage:** Maximum 200 GB total block volume allocation across all boot and block disks.
-> - **Networking:** Maximum 10 TB/month outbound data transfer.
-> - **IP Address:** 1 Ephemeral or Reserved IPv4 address.
-
-### Account Verification Hold
-During registration, Oracle places a temporary pre-authorization hold (typically ₹80–₹100 or $1 USD) on the credit card to verify identity. This is automatically reversed within 3–5 business days.
+> **The selection of the final production hosting provider is an item requiring explicit user approval.**
+> This runbook provides the operational specifications for both options without unilaterally declaring either one the sole production standard.
 
 ---
 
-## 2. Infrastructure Sizing & OCI Capacity Verification
+## 2. Option A: OCI Always Free Deployment (Single-VM Model)
 
-### Target VM Configuration
-- **Operating System:** Ubuntu 24.04 LTS (Canonical Minimal or Standard Server for ARM64 / `aarch64`).
-- **Shape:** `VM.Standard.A1.Flex`
-- **OCPUs:** 2 (can scale up to 4).
-- **Memory:** 12 GB RAM (conservative baseline; provides ample headroom for Python runtimes without memory pressure).
-- **Boot Volume:** 100 GB (well below the 200 GB combined account limit).
+### 2.1. OCI Always Free Quotas & Cost Warnings
+To guarantee ₹0/month, the tenancy must remain strictly within OCI Always Free limits:
+- **Compute:** Maximum 4 OCPUs and 24 GB RAM (Ampere A1 ARM64).
+- **Storage:** Maximum 200 GB total block volume allocation across all boot and block disks.
+- **Networking:** Maximum 10 TB/month outbound data transfer.
+- **IP Address:** 1 Ephemeral or Reserved IPv4 address.
 
-### Home-Region Capacity Check
-OCI Ampere A1 capacity is constrained in certain regions (e.g. `ap-mumbai-1`, `ap-hyderabad-1`, `us-ashburn-1`).
-- Attempt launching the instance in your designated home region.
-- If an "Out of host capacity" error is encountered, retry periodically or select an alternate availability domain within the same region.
+### 2.2. VM Configuration & Network Security
+- **Operating System:** Ubuntu 24.04 LTS (ARM64 / `aarch64`).
+- **VM Shape:** `VM.Standard.A1.Flex` (2 OCPUs, 12 GB RAM, 100 GB Boot Volume).
+- **OCI Security List Ingress Rules:**
+  - Port 22 (SSH): Restricted to administrator IP CIDR.
+  - Port 80 (HTTP): Open to `0.0.0.0/0` (Let's Encrypt ACME HTTP-01 challenge & HTTPS redirect).
+  - Port 443 (HTTPS): Open to `0.0.0.0/0` (Public web edge).
+- **Private Database Enforcement:** Port 5432 is **never** exposed on the public internet; it communicates strictly across the internal Docker bridge network (`sebi-internal-net`).
 
----
-
-## 3. Network Architecture and Firewall Configuration
-
-### OCI Virtual Cloud Network (VCN) Ingress Security List
-Configure the subnet's Security List with the following **Inbound Rules**:
-
-| Source CIDR | IP Protocol | Destination Port | Purpose | Security Guidance |
-| :--- | :---: | :---: | :--- | :--- |
-| `<YOUR_ADMIN_IP>/32` | TCP | `22` | SSH Administration | **Strictly restrict to admin IP where practical**; avoid `0.0.0.0/0` unless key-only SSH with fail2ban is enforced. |
-| `0.0.0.0/0` | TCP | `80` | HTTP Edge Traffic | Required for Let's Encrypt ACME HTTP-01 challenge and HTTP->HTTPS redirect. |
-| `0.0.0.0/0` | TCP | `443` | HTTPS Public Edge | Public reverse proxy serving React frontend and `/api/v1/query`. |
-
-### Outbound Connectivity
-- **Egress Rule:** Allow All Outbound Traffic (`0.0.0.0/0`) for package updates, Let's Encrypt TLS renewal, SEBI circular PDF downloads, and optional external LLM API calls.
-
-### Private Database Enforcement
-- **PostgreSQL Port 5432 is NEVER exposed on the host or public internet.**
-- It communicates exclusively within the private Docker bridge network (`sebi-internal-net`).
-
-### Host Firewall (UFW on Ubuntu)
-Run on the VM:
+### 2.3. Offline Model Cache Preparation
+The production backend runs with `TRANSFORMERS_OFFLINE=1` and `HF_HUB_OFFLINE=1`. The embedding model (`BAAI/bge-small-en-v1.5`) is pre-staged via `scripts/prepare_model_cache.py`:
 ```bash
-sudo ufw default deny incoming
-sudo ufw default allow outgoing
-sudo ufw allow 22/tcp
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw enable
-```
-
----
-
-## 4. DNS and Public HTTPS Prerequisites
-
-Caddy automatically provisions Let's Encrypt / ZeroSSL TLS certificates. This requires:
-1. A valid public domain or subdomain (e.g., free DuckDNS, or a domain managed via Cloudflare).
-2. DNS A record pointing the domain to the VM's Public IPv4 address.
-3. Inbound TCP ports 80 and 443 accessible from the public internet.
-
----
-
-## 5. Environment Configuration & Secret Permissions
-
-Create `/opt/sebi-rag/.env.prod` with restrictive file permissions:
-```bash
-sudo mkdir -p /opt/sebi-rag/data/backups /opt/sebi-rag/data/indexes /opt/sebi-rag/data/processed /opt/sebi-rag/data/raw
-sudo chown -R 10001:10001 /opt/sebi-rag/data
-sudo chmod 600 /opt/sebi-rag/.env.prod
-```
-
-### Template `.env.prod`
-```env
-APP_ENV=production
-POSTGRES_USER=sebi_app
-POSTGRES_PASSWORD=<GENERATE_SECURE_PASSWORD_32_CHARS>
-POSTGRES_DB=sebi_regulatory_db
-DATABASE_URL=postgresql+asyncpg://sebi_app:<GENERATE_SECURE_PASSWORD_32_CHARS>@postgres:5432/sebi_regulatory_db
-ADMIN_API_KEY=<GENERATE_SECURE_ADMIN_KEY_MIN_16_CHARS>
-DOMAIN=sebi-rag.yourdomain.com
-ACME_EMAIL=admin@yourdomain.com
-FRONTEND_ORIGIN=https://sebi-rag.yourdomain.com
-SYNTHESIS_PROVIDER=mock
-WEB_CONCURRENCY=1
-RATE_LIMIT_QUERY_PER_MINUTE=20
-RATE_LIMIT_QUERY_BURST=10
-```
-
----
-
-## 6. Offline Model Cache Preparation
-
-The production backend runs with `TRANSFORMERS_OFFLINE=1` and `HF_HUB_OFFLINE=1`. The embedding model (`BAAI/bge-small-en-v1.5`) must be staged prior to container startup.
-
-### Step 1: Pre-download model weights (on machine with internet access)
-Run the preparation script to download pinned revision `5c38ec7c405ec4b44b94cc5a9bb96e735b38267a`:
-```bash
+# 1. Download model weights on connected machine:
 python scripts/prepare_model_cache.py download --target-dir ./hf_model_cache
-```
-*Note on Directory Structure:* The download tool creates `./hf_model_cache/hub/models--BAAI--bge-small-en-v1.5/...`. The root directory `./hf_model_cache/` directly contains `hub/`.
 
-### Step 2: Transfer to VM and set container permissions
-The container environment sets `HF_HOME=/home/sebi/.cache/huggingface`, which means Hugging Face looks for `$HF_HOME/hub`. Therefore, the entire `./hf_model_cache/` folder contents (including the `hub/` directory) must be placed at the root of the volume:
-```bash
-# On the OCI VM:
+# 2. Transfer to VM and set container permissions (unprivileged UID 10001):
 sudo mkdir -p /var/lib/docker/volumes/sebi_rag_hf_model_cache/_data
-# Copy the entire contents (including hub/) into the volume data root:
 sudo cp -r ./hf_model_cache/* /var/lib/docker/volumes/sebi_rag_hf_model_cache/_data/
-# Set ownership to unprivileged application user UID 10001 (sebi):
 sudo chown -R 10001:10001 /var/lib/docker/volumes/sebi_rag_hf_model_cache/_data
-```
-*Verification Check:* The file `/var/lib/docker/volumes/sebi_rag_hf_model_cache/_data/hub/models--BAAI--bge-small-en-v1.5/snapshots/5c38ec7c405ec4b44b94cc5a9bb96e735b38267a/model.safetensors` must exist.
 
-### Step 3: Validate offline load on VM
-Pass the parent cache root directory (the directory containing `hub/`) to `--cache-dir`:
-```bash
+# 3. Validate offline load:
 python scripts/prepare_model_cache.py validate --cache-dir ./hf_model_cache
 ```
-This sets `HF_HOME=./hf_model_cache`, enforces `TRANSFORMERS_OFFLINE=1` and `HF_HUB_OFFLINE=1`, and loads the SentenceTransformer locally to confirm the cache is complete before starting containers.
 
-
----
-
-## 7. Service Startup and Seeding Sequence
-
-### Step 1: Launch Database & Run Migrations
+### 2.4. Service Startup via Docker Compose
 ```bash
 cd /opt/sebi-rag
+# 1. Launch database and run migrations
 docker compose -f docker-compose.prod.yml up -d postgres alembic-upgrade
-```
-Verify migration status:
-```bash
-docker compose -f docker-compose.prod.yml logs alembic-upgrade
-```
 
-### Step 2: Seed Baseline Regulatory Corpus
-Import the authoritative baseline circular corpus into the database:
-```bash
+# 2. Seed baseline corpus into database (if DB storage enabled)
 docker compose -f docker-compose.prod.yml run --rm api \
-  python -m backend.app.persistence.importer \
-  --db-url "$DATABASE_URL" \
-  --processed-dir /app/data/processed
-```
+  python -m backend.app.persistence.importer --db-url "$DATABASE_URL" --processed-dir /app/data/processed
 
-### Step 3: Launch Web, API, Worker, and Proxy
-```bash
+# 3. Launch application services
 docker compose -f docker-compose.prod.yml up -d api worker frontend reverse-proxy
 ```
 
-### Step 4: Validate Service Health
-```bash
-# Internal readiness
-docker compose -f docker-compose.prod.yml exec api curl -f http://127.0.0.1:8000/ready
+---
 
-# Public edge health
-curl -f https://sebi-rag.yourdomain.com/health
-curl -f https://sebi-rag.yourdomain.com/ready
+## 3. Option B: Render + Neon + Upstash (Serverless Container Model)
+
+### 3.1. Architectural Separation & Free-Tier Limits
+- **Backend Web Service (Render Free Tier):**
+  - Limits: 512 MB RAM, 0.1 CPU, spun down after 15 minutes of inactivity (cold start: $\sim 30\text{–}50\text{s}$).
+  - Memory Constraint: In-memory embeddings and BM25 index must fit within 512 MB. For multiple collections, lazy index loading is required.
+- **Metadata Database (Neon Serverless PostgreSQL - Phase 3 Conditional):**
+  - Limits: 0.5 GB storage, 100 compute hours/month on Free tier.
+  - Role: Relational document registry, relationship graph edges, query audit logs. Chunks and dense vectors remain in local snapshot files to conserve Neon storage and compute hours.
+- **Distributed Cache (Upstash Redis - Deferred / Optional):**
+  - Limits: 10,000 commands/day on Free tier.
+  - Role: Distributed rate limiting if multiple Render backend workers are deployed.
+
+---
+
+## 4. Environment Configuration & Secret Management
+
+Create `.env.prod` with strict file permissions (`chmod 600`):
+```env
+APP_ENV=production
+# Application Secrets
+ADMIN_API_KEY=<GENERATE_SECURE_ADMIN_KEY_MIN_16_CHARS>
+FRONTEND_ORIGIN=https://sebi-rag.yourdomain.com
+DOMAIN=sebi-rag.yourdomain.com
+ACME_EMAIL=admin@yourdomain.com
+
+# Persistence & Storage
+PROCESSED_DIR=/app/data/processed
+INDEXES_DIR=/app/data/indexes
+RAW_DIR=/app/data/raw
+BACKUPS_DIR=/app/data/backups
+
+# Rate Limiting
+RATE_LIMIT_QUERY_PER_MINUTE=20
+RATE_LIMIT_QUERY_BURST=10
+
+# Synthesis Configuration (mock, groq, gemini)
+SYNTHESIS_PROVIDER=mock
+SYNTHESIS_TIMEOUT_SECONDS=5.0
+MAX_SYNTHESIS_EVIDENCE_CHUNKS=5
+# GROQ_API_KEY=<OPTIONAL_KEY>
+# GEMINI_API_KEY=<OPTIONAL_KEY>
 ```
 
 ---
 
-## 8. Backup Verification & Recovery Limitations
+## 5. Multi-Collection Scale & Memory Considerations
 
-### Creating a Production Coordinated Backup
+As the platform generalizes beyond the 5-document pilot, memory and index size require careful capacity planning:
+1. **Pilot Memory Baseline:** The 5-document SEBI CSCRF corpus (168 chunks) requires $< 30\text{ MB}$ RAM for BM25 tables and normalized dense vectors.
+2. **50-Document Projection:** 50 typical regulatory circulars ($\sim 2,000\text{ chunks}$) require $\sim 150\text{ MB}$ RAM, well within Render's 512 MB limit and OCI's 12 GB RAM.
+3. **Index Hot-Reload Safety:** When publishing a new index snapshot via `/api/v1/admin/indexes/publish`, the application loads the new snapshot into memory alongside the old snapshot during reload. Peak memory momentarily doubles ($\sim 60\text{ MB} \to 120\text{ MB}$).
+4. **Collection-Scoped Lazy Loading:** For dozens of collections, Phase 2 will implement on-demand index loading with an LRU cache to prevent exceeding memory ceilings on free-tier containers.
+
+---
+
+## 6. Backup, Recovery & Rollback Procedures
+
+### 6.1. Coordinated Snapshot Backups
 ```bash
 docker compose -f docker-compose.prod.yml exec api \
   python -m app.backup.cli create \
@@ -186,26 +130,14 @@ docker compose -f docker-compose.prod.yml exec api \
   --include-database
 ```
 
-### Important Recovery Limitations
-- **Local Storage Risk:** Backups created inside `/app/data/backups` reside on the VM's local block volume. They survive container restarts and upgrades, but **DO NOT survive catastrophic VM termination, hypervisor failure, or storage corruption**.
-- **Recommended Off-Host Procedure:** Periodically transfer completed `*.tar.gz` archives off the VM to secure offline storage using `scp` or an automated rsync/cron job.
+### 6.2. Recovery Limitations
+- **Local Block Volume Risk:** Backups stored in `/app/data/backups` survive container restarts, but **do not survive VM termination or hypervisor failure**.
+- **Off-Host Archival:** Completed backup archives (`*.tar.gz`) should be transferred off-host using `scp` or automated cron jobs.
 
----
-
-## 9. Rollback & Troubleshooting
-
-### Viewing Logs
-```bash
-docker compose -f docker-compose.prod.yml logs --tail=100 -f api
-docker compose -f docker-compose.prod.yml logs --tail=100 -f reverse-proxy
-```
-
-### Emergency Rollback
-To stop services cleanly and retain all database and index volumes:
+### 6.3. Rollback
+In the event of an unrecoverable failure during deployment:
 ```bash
 docker compose -f docker-compose.prod.yml down
-```
-To restart cleanly:
-```bash
 docker compose -f docker-compose.prod.yml up -d
 ```
+Active search snapshots can be rolled back instantly by editing `data/indexes/active_snapshot.json` to point to the prior verified snapshot timestamp.

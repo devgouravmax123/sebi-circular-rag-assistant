@@ -54,6 +54,23 @@ class QueryRequest(BaseModel):
         default=None,
         description="Optional latest circular issue_date (YYYY-MM-DD).",
     )
+    collection_id: str = Field(
+        default="sebi_cscrf",
+        description="Target document collection identifier (defaults to 'sebi_cscrf' for SEBI pilot compatibility).",
+    )
+
+    @field_validator("collection_id")
+    @classmethod
+    def validate_collection_id(cls, v: str) -> str:
+        s = v.strip()
+        if not s:
+            raise ValueError("collection_id cannot be empty or whitespace.")
+        import re
+        if not re.match(r"^[a-zA-Z0-9_-]+$", s):
+            raise ValueError(
+                f"collection_id '{s}' contains invalid characters; must contain only alphanumeric characters, underscores, or hyphens."
+            )
+        return s
 
     @field_validator("regulator")
     @classmethod

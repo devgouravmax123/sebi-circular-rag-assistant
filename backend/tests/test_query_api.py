@@ -259,8 +259,8 @@ def test_15_regression_narrative_count_include_superseded_false(client):
     # Setup mock with 2 verified excerpts and 1 superseded excerpt
     mock_v1 = ValidatedExcerptItem(
         excerpt_id="e1",
-        source_chunk_id="c1",
-        document_id="doc1",
+        source_chunk_id="sebi_cscrf_2024_113_p1_0",
+        document_id="sebi_cscrf_2024_113",
         page_start=1,
         page_end=2,
         excerpt_text="Excerpt 1",
@@ -269,8 +269,8 @@ def test_15_regression_narrative_count_include_superseded_false(client):
     )
     mock_v2 = ValidatedExcerptItem(
         excerpt_id="e2",
-        source_chunk_id="c2",
-        document_id="doc1",
+        source_chunk_id="sebi_cscrf_2024_113_p2_0",
+        document_id="sebi_cscrf_2024_113",
         page_start=2,
         page_end=3,
         excerpt_text="Excerpt 2",
@@ -279,8 +279,8 @@ def test_15_regression_narrative_count_include_superseded_false(client):
     )
     mock_s1 = ValidatedExcerptItem(
         excerpt_id="e3",
-        source_chunk_id="c3",
-        document_id="doc2",
+        source_chunk_id="sebi_cscrf_2025_045_p1_0",
+        document_id="sebi_cscrf_2025_045",
         page_start=1,
         page_end=1,
         excerpt_text="Superseded excerpt",
@@ -305,9 +305,9 @@ def test_15_regression_narrative_count_include_superseded_false(client):
         query="Test query",
         total_results=3,
         results=[
-            RetrievalResult(chunk_id="c1", document_id="doc1", page_start=1, page_end=2, text="Test query text 1", score=1.0, rank=1),
-            RetrievalResult(chunk_id="c2", document_id="doc1", page_start=2, page_end=3, text="Test query text 2", score=0.9, rank=2),
-            RetrievalResult(chunk_id="c3", document_id="doc2", page_start=1, page_end=1, text="Test query text 3", score=0.8, rank=3),
+            RetrievalResult(chunk_id="sebi_cscrf_2024_113_p1_0", document_id="sebi_cscrf_2024_113", page_start=1, page_end=2, text="Test query text 1", score=1.0, rank=1),
+            RetrievalResult(chunk_id="sebi_cscrf_2024_113_p2_0", document_id="sebi_cscrf_2024_113", page_start=2, page_end=3, text="Test query text 2", score=0.9, rank=2),
+            RetrievalResult(chunk_id="sebi_cscrf_2025_045_p1_0", document_id="sebi_cscrf_2025_045", page_start=1, page_end=1, text="Test query text 3", score=0.8, rank=3),
         ],
     )
 
@@ -331,8 +331,8 @@ def test_16_regression_narrative_count_include_superseded_true(client):
     # Setup mock with 2 verified excerpts and 1 superseded excerpt
     mock_v1 = ValidatedExcerptItem(
         excerpt_id="e1",
-        source_chunk_id="c1",
-        document_id="doc1",
+        source_chunk_id="sebi_cscrf_2024_113_p1_0",
+        document_id="sebi_cscrf_2024_113",
         page_start=1,
         page_end=2,
         excerpt_text="Excerpt 1",
@@ -341,8 +341,8 @@ def test_16_regression_narrative_count_include_superseded_true(client):
     )
     mock_v2 = ValidatedExcerptItem(
         excerpt_id="e2",
-        source_chunk_id="c2",
-        document_id="doc1",
+        source_chunk_id="sebi_cscrf_2024_113_p2_0",
+        document_id="sebi_cscrf_2024_113",
         page_start=2,
         page_end=3,
         excerpt_text="Excerpt 2",
@@ -351,8 +351,8 @@ def test_16_regression_narrative_count_include_superseded_true(client):
     )
     mock_s1 = ValidatedExcerptItem(
         excerpt_id="e3",
-        source_chunk_id="c3",
-        document_id="doc2",
+        source_chunk_id="sebi_cscrf_2025_045_p1_0",
+        document_id="sebi_cscrf_2025_045",
         page_start=1,
         page_end=1,
         excerpt_text="Superseded excerpt",
@@ -377,9 +377,9 @@ def test_16_regression_narrative_count_include_superseded_true(client):
         query="Test query",
         total_results=3,
         results=[
-            RetrievalResult(chunk_id="c1", document_id="doc1", page_start=1, page_end=2, text="Test query text 1", score=1.0, rank=1),
-            RetrievalResult(chunk_id="c2", document_id="doc1", page_start=2, page_end=3, text="Test query text 2", score=0.9, rank=2),
-            RetrievalResult(chunk_id="c3", document_id="doc2", page_start=1, page_end=1, text="Test query text 3", score=0.8, rank=3),
+            RetrievalResult(chunk_id="sebi_cscrf_2024_113_p1_0", document_id="sebi_cscrf_2024_113", page_start=1, page_end=2, text="Test query text 1", score=1.0, rank=1),
+            RetrievalResult(chunk_id="sebi_cscrf_2024_113_p2_0", document_id="sebi_cscrf_2024_113", page_start=2, page_end=3, text="Test query text 2", score=0.9, rank=2),
+            RetrievalResult(chunk_id="sebi_cscrf_2025_045_p1_0", document_id="sebi_cscrf_2025_045", page_start=1, page_end=1, text="Test query text 3", score=0.8, rank=3),
         ],
     )
 
@@ -423,8 +423,8 @@ def test_17_regression_zero_returned_excerpts_narrative(client):
 def test_18_regression_warnings_and_disposition_preserved_under_filtering(client):
     mock_v1 = ValidatedExcerptItem(
         excerpt_id="e1",
-        source_chunk_id="c1",
-        document_id="doc1",
+        source_chunk_id="sebi_cscrf_2024_113_p1_0",
+        document_id="sebi_cscrf_2024_113",
         page_start=1,
         page_end=2,
         excerpt_text="Excerpt 1",
@@ -448,7 +448,7 @@ def test_18_regression_warnings_and_disposition_preserved_under_filtering(client
         query="Test query",
         total_results=1,
         results=[
-            RetrievalResult(chunk_id="c1", document_id="doc1", page_start=1, page_end=2, text="Test query text 1", score=1.0, rank=1)
+            RetrievalResult(chunk_id="sebi_cscrf_2024_113_p1_0", document_id="sebi_cscrf_2024_113", page_start=1, page_end=2, text="Test query text 1", score=1.0, rank=1)
         ],
     )
 

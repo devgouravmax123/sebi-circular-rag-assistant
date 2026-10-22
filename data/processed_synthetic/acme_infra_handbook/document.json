@@ -1,0 +1,16 @@
+{
+  "document_id": "acme_infra_handbook",
+  "circular_number": null,
+  "title": "Acme Global Systems Infrastructure and Operations Handbook",
+  "department": "Global Infrastructure & SRE",
+  "issue_date": "2024-03-15",
+  "effective_date": "2024-04-01",
+  "source_url": "https://internal.acme.example/docs/infra_handbook_v2.4.pdf",
+  "retrieved_at": "2026-10-22T06:23:10.403212+00:00",
+  "sha256": "92b4000fae4037c17bf2b57d5f16f92123c4ef3698cf09a36a14ff619a6c2a84",
+  "pdf_path": "data/raw/synthetic_general/acme_infra_handbook.pdf",
+  "extraction_status": "extracted",
+  "regulator": "SEBI",
+  "domain": "ACME_TECH",
+  "collection_id": "general_synthetic"
+}

@@ -21,6 +21,20 @@ from app.ingestion.orchestrator import (
     RetryableIngestionError,
 )
 
+from app.ingestion.manifest_runner import (
+    ManifestIngestionRunner,
+    ManifestSecurityError,
+    ManifestValidationError,
+    resolve_and_validate_pdf_path,
+    load_and_validate_manifest,
+)
+from app.schemas.manifest import (
+    CollectionManifest,
+    ManifestDocumentItem,
+    ManifestIngestionOutcome,
+    ManifestIngestionReport,
+)
+
 __all__ = [
     "PDFExtractor",
     "TextChunker",
@@ -40,4 +54,34 @@ __all__ = [
     "JobExecutionResult",
     "NonRetryableIngestionError",
     "RetryableIngestionError",
+    "ManifestIngestionRunner",
+    "ManifestSecurityError",
+    "ManifestValidationError",
+    "resolve_and_validate_pdf_path",
+    "load_and_validate_manifest",
+    "CollectionManifest",
+    "ManifestDocumentItem",
+    "ManifestIngestionOutcome",
+    "ManifestIngestionReport",
+    "CollectionRegistry",
+    "CollectionRegistryError",
+    "UnknownCollectionError",
+    "DuplicateCollectionError",
+    "InvalidCollectionError",
+    "CollectionStatus",
+    "GroundingPolicyDeclaration",
+    "GroundingPolicyType",
 ]
+
+from app.ingestion.collection_registry import (
+    CollectionRegistry,
+    CollectionRegistryError,
+    UnknownCollectionError,
+    DuplicateCollectionError,
+    InvalidCollectionError,
+)
+from app.schemas.manifest import (
+    CollectionStatus,
+    GroundingPolicyDeclaration,
+    GroundingPolicyType,
+)

@@ -22,8 +22,8 @@ RUN groupadd -g 10001 sebi && \
 COPY --chown=sebi:sebi backend/app /app/app
 
 # Copy immutable snapshot assets and verified graph
-COPY --chown=sebi:sebi data/indexes/active_snapshot.json /app/data/indexes/active_snapshot.json
-COPY --chown=sebi:sebi data/indexes/snapshots /app/data/indexes/snapshots
+COPY --chown=sebi:sebi data/manifests /app/data/manifests
+COPY --chown=sebi:sebi data/indexes /app/data/indexes
 COPY --chown=sebi:sebi data/processed/cscrf_graph.json /app/data/processed/cscrf_graph.json
 COPY --chown=sebi:sebi data/processed/manifest.json /app/data/processed/manifest.json
 

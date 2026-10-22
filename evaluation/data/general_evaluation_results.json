@@ -1,0 +1,394 @@
+{
+  "dataset_version": "1.0.0",
+  "collection_id": "general_synthetic",
+  "total_queries": 22,
+  "answerable_queries": {
+    "count": 17,
+    "evidence_recall_hits": 17,
+    "recall_rate_pct": "100.00% (17/17)",
+    "evidence_presence_hits": 17,
+    "evidence_presence_rate_pct": "100.00% (17/17)"
+  },
+  "unanswerable_queries": {
+    "count": 5,
+    "safe_abstentions": 5,
+    "safe_abstention_rate_pct": "100.00% (5/5)"
+  },
+  "collection_isolation": {
+    "violations": 0,
+    "status": "ISOLATED"
+  },
+  "citation_validation": {
+    "attempted": 18,
+    "passed": 18,
+    "rejected": 0,
+    "valid_rate_pct": "100.00% (18/18)"
+  },
+  "lexical_support_heuristic": {
+    "claims_tested": 36,
+    "false_rejections": 1,
+    "false_rejection_rate_pct": "2.78% (1/36)"
+  },
+  "per_query_results": [
+    {
+      "query_id": "gen_q01_password_length",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_security_policy_p1_0",
+        "acme_product_spec_p1_0",
+        "acme_infra_handbook_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_security_policy_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q02_service_account_auth",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_security_policy_p1_0",
+        "acme_product_spec_p1_0",
+        "acme_infra_handbook_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_security_policy_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q03_lockout_threshold",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_security_policy_p1_0",
+        "acme_infra_handbook_p1_0",
+        "acme_product_spec_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_security_policy_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q04_crypto_key_rotation",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_security_policy_p1_0",
+        "acme_infra_handbook_p1_0",
+        "acme_product_spec_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_security_policy_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q05_employee_termination_deprovisioning",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_security_policy_p1_0",
+        "acme_infra_handbook_p1_0",
+        "acme_product_spec_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_security_policy_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q06_contractor_credential_lifespan",
+      "category": "conditional",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_security_policy_p1_0",
+        "acme_infra_handbook_p1_0",
+        "acme_product_spec_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_security_policy_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q07_db_version_and_replication",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_infra_handbook_p1_0",
+        "acme_product_spec_p1_0",
+        "acme_security_policy_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_infra_handbook_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q08_rpo_rto_tier1",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_infra_handbook_p1_0",
+        "acme_product_spec_p1_0",
+        "acme_security_policy_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_infra_handbook_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q09_rpo_analytical",
+      "category": "conditional",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_infra_handbook_p1_0",
+        "acme_product_spec_p1_0",
+        "acme_security_policy_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_infra_handbook_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q10_db_snapshot_frequency_retention",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_infra_handbook_p1_0",
+        "acme_product_spec_p1_0",
+        "acme_security_policy_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_infra_handbook_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q11_staging_snapshot_retention",
+      "category": "conditional",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_infra_handbook_p1_0",
+        "acme_product_spec_p1_0",
+        "acme_security_policy_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_infra_handbook_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q12_dns_failover_latency",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_infra_handbook_p1_0",
+        "acme_security_policy_p1_0",
+        "acme_product_spec_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_infra_handbook_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q13_data_mesh_ingestion_rate",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_product_spec_p1_0",
+        "acme_infra_handbook_p1_0",
+        "acme_security_policy_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_product_spec_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q14_payload_limit_and_error",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_product_spec_p1_0",
+        "acme_infra_handbook_p1_0",
+        "acme_security_policy_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_product_spec_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q15_missing_tenant_dlq",
+      "category": "conditional",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_product_spec_p1_0",
+        "acme_infra_handbook_p1_0",
+        "acme_security_policy_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_product_spec_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q16_telemetry_hot_cold_tiers",
+      "category": "direct_fact",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_product_spec_p1_0",
+        "acme_infra_handbook_p1_0",
+        "acme_security_policy_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_product_spec_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q17_snapshot_vs_mesh_retention_disambiguation",
+      "category": "conflicting_evidence",
+      "expected_outcome": "answerable",
+      "retrieved_chunks": [
+        "acme_product_spec_p1_0",
+        "acme_infra_handbook_p1_0",
+        "acme_security_policy_p1_0"
+      ],
+      "expected_chunks": [
+        "acme_product_spec_p1_0",
+        "acme_infra_handbook_p1_0"
+      ],
+      "evidence_presence": true,
+      "recall_success": true,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q18_unanswerable_salary_bands",
+      "category": "unanswerable",
+      "expected_outcome": "abstention",
+      "retrieved_chunks": [
+        "acme_security_policy_p1_0",
+        "acme_infra_handbook_p1_0",
+        "acme_product_spec_p1_0"
+      ],
+      "top_score": 0.03252247488101534,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "safe_abstention_enforced": true,
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q19_unanswerable_cscrf_circular",
+      "category": "unanswerable",
+      "expected_outcome": "abstention",
+      "retrieved_chunks": [
+        "acme_product_spec_p1_0",
+        "acme_security_policy_p1_0",
+        "acme_infra_handbook_p1_0"
+      ],
+      "top_score": 0.03252247488101534,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "safe_abstention_enforced": true,
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q20_unanswerable_azure_blob_storage",
+      "category": "unanswerable",
+      "expected_outcome": "abstention",
+      "retrieved_chunks": [
+        "acme_infra_handbook_p1_0",
+        "acme_product_spec_p1_0",
+        "acme_security_policy_p1_0"
+      ],
+      "top_score": 0.03252247488101534,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "safe_abstention_enforced": true,
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q21_unsupported_inference_legal_force",
+      "category": "unsupported_inference",
+      "expected_outcome": "abstention",
+      "retrieved_chunks": [
+        "acme_security_policy_p1_0",
+        "acme_product_spec_p1_0",
+        "acme_infra_handbook_p1_0"
+      ],
+      "top_score": 0.03278688524590164,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "safe_abstention_enforced": true,
+      "status": "PASS"
+    },
+    {
+      "query_id": "gen_q22_unanswerable_wifi_ssid",
+      "category": "unanswerable",
+      "expected_outcome": "abstention",
+      "retrieved_chunks": [
+        "acme_infra_handbook_p1_0",
+        "acme_security_policy_p1_0",
+        "acme_product_spec_p1_0"
+      ],
+      "top_score": 0.032266458495966696,
+      "gate_disposition": "VERIFIED_HISTORICAL_EXCERPTS",
+      "safe_abstention_enforced": true,
+      "status": "PASS"
+    }
+  ]
+}
