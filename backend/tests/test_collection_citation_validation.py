@@ -306,7 +306,7 @@ def test_8_claim_to_excerpt_binding_and_verbatim_quotation(general_chunks_and_do
 
 def test_9_sebi_citation_and_temporal_regression_compatibility():
     """Existing SEBI CSCRF citation and temporal invariants remain fully intact."""
-    validator = CitationValidator(processed_dir="data/processed")
+    validator = CitationValidator(collection_id="sebi_cscrf")
     # Verify CIR/2025/045 chunk
     exact_text = "Recognising the need for robust cybersecurity measures and protection of data and IT infrastructure"
     cit = CitationItem(

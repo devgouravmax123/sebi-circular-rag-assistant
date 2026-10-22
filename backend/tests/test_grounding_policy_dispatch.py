@@ -35,6 +35,7 @@ from app.schemas.safety_gate import (
     SafetyGateResponse,
 )
 from app.grounding.safety_gate import AnswerSafetyGate
+from app.grounding.validator import CitationValidator
 
 
 @pytest.fixture
@@ -71,7 +72,8 @@ def mock_sebi_manifest() -> CollectionManifest:
 
 def test_1_sebi_collection_retains_graph_and_temporal_behavior(mock_sebi_manifest):
     """SEBI collections invoke ConservativeGraphResolver and evaluate supersession / unresolved status."""
-    gate = AnswerSafetyGate(processed_dir="data/processed")
+    validator = CitationValidator(collection_id="sebi_cscrf")
+    gate = AnswerSafetyGate(validator=validator)
     # Query with 'current' keyword testing SEBI temporal check
     exact_text = "Recognising the need for robust cybersecurity measures and protection of data and IT infrastructure"
     payload = ExcerptDraftPayload(
