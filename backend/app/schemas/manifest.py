@@ -182,3 +182,14 @@ class ManifestIngestionReport(BaseModel):
     index_published: bool = False
     snapshot_id: Optional[str] = None
     publication_error: Optional[str] = None
+
+
+class CollectionSummary(BaseModel):
+    """Public discovery summary of a queryable collection."""
+    collection_id: str = Field(..., description="Unique collection identifier")
+    name: str = Field(..., description="Human-readable collection name")
+    description: Optional[str] = Field(None, description="Scope and purpose summary")
+    domain: Optional[str] = Field(None, description="Regulatory or technical domain")
+    regulator: Optional[str] = Field(None, description="Regulator code if applicable")
+    policy_type: GroundingPolicyType = Field(..., description="Grounding policy enforced for this collection")
+    status: CollectionStatus = Field(..., description="Public operational availability status")

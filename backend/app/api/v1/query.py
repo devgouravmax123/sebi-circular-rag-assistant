@@ -24,7 +24,12 @@ from app.grounding.classifier import QueryIntent, classify_query_intent
 from app.grounding.relevance import filter_relevant_candidates, RelevanceDecisionCode
 from app.core.config import Settings, get_settings
 from app.ingestion.collection_registry import CollectionRegistry, UnknownCollectionError
-from app.schemas.manifest import CollectionStatus, GroundingPolicyDeclaration, GroundingPolicyType
+from app.schemas.manifest import (
+    CollectionStatus,
+    CollectionSummary,
+    GroundingPolicyDeclaration,
+    GroundingPolicyType,
+)
 from app.schemas.document import resolve_collection_identity
 
 logger = logging.getLogger(__name__)
@@ -192,6 +197,55 @@ def build_response_narrative(
         )
 
     return "Controlled Abstention: No verified excerpts returned."
+
+
+@router.get(
+    "/collections",
+    response_model=List[CollectionSummary],
+    status_code=status.HTTP_200_OK,
+    summary="List available queryable document collections",
+    description="Returns discovery metadata for enabled collections that have an active published snapshot.",
+)
+async def list_available_collections(
+    collection_registry: Optional[CollectionRegistry] = Depends(get_collection_registry),
+    retrieval_service: Optional[RetrievalService] = Depends(get_retrieval_service),
+) -> List[CollectionSummary]:
+    """
+    Returns public discovery summaries for registered collections.
+    Strictly filters to collections that are enabled AND have an active, verified published snapshot.
+    """
+    if collection_registry is None or not hasattr(collection_registry, "list_collections"):
+        collection_registry = get_collection_registry()
+    if retrieval_service is None or not hasattr(retrieval_service, "get_active_snapshot_dir"):
+        retrieval_service = get_retrieval_service()
+
+    summaries: List[CollectionSummary] = []
+    # Deterministic alphabetical iteration over registered collections
+    for manifest in collection_registry.list_collections():
+        cid = manifest.collection_id
+        status_val = collection_registry.get_collection_status(cid)
+        # Exclude disabled or unpublished collections
+        if status_val != CollectionStatus.ACTIVE or not manifest.enabled:
+            continue
+
+        # Double-check usable published snapshot directory via retrieval_service
+        snap_dir = retrieval_service.get_active_snapshot_dir(cid)
+        if snap_dir is None or not snap_dir.exists():
+            continue
+
+        summaries.append(
+            CollectionSummary(
+                collection_id=cid,
+                name=manifest.name,
+                description=manifest.description,
+                domain=manifest.domain,
+                regulator=manifest.regulator,
+                policy_type=manifest.policy.policy_type,
+                status=CollectionStatus.ACTIVE,
+            )
+        )
+
+    return summaries
 
 
 @router.post(

@@ -23,7 +23,9 @@ dist/
 .vite/
 
 # Generated data and indexes (review before committing any small curated fixtures)
-data/raw/
+data/raw/*
+!data/raw/synthetic_finops/
+!data/raw/synthetic_finops/acme_finops_governance_guide.pdf
 data/backups/
 **/*.npy
 
@@ -52,6 +54,20 @@ data/indexes/general_synthetic/snapshots/snap_20261022_062310_395f75/*
 !data/indexes/general_synthetic/snapshots/snap_20261022_062310_395f75/chunks.json
 !data/indexes/general_synthetic/snapshots/snap_20261022_062310_395f75/documents.json
 !data/indexes/general_synthetic/snapshots/snap_20261022_062310_395f75/manifest.json
+
+# Whitelist curated demo_finops synthetic source PDF, active pointer, and runtime snapshot assets
+!data/raw/synthetic_finops/
+!data/raw/synthetic_finops/acme_finops_governance_guide.pdf
+!data/indexes/demo_finops/
+data/indexes/demo_finops/*
+!data/indexes/demo_finops/active_snapshot.json
+!data/indexes/demo_finops/snapshots/
+data/indexes/demo_finops/snapshots/*
+!data/indexes/demo_finops/snapshots/snap_20261023_123432_e1f1a4/
+data/indexes/demo_finops/snapshots/snap_20261023_123432_e1f1a4/*
+!data/indexes/demo_finops/snapshots/snap_20261023_123432_e1f1a4/chunks.json
+!data/indexes/demo_finops/snapshots/snap_20261023_123432_e1f1a4/documents.json
+!data/indexes/demo_finops/snapshots/snap_20261023_123432_e1f1a4/manifest.json
 
 data/indexes/.publish.lock
 data/indexes/snapshots/*/.publish.lock

@@ -3,7 +3,7 @@
  * Connects to POST /api/v1/query and GET /health.
  */
 
-import type { QueryRequest, QueryResponse, QueryError } from '../types/query';
+import type { QueryRequest, QueryResponse, QueryError, CollectionSummary } from '../types/query';
 
 export const API_BASE_URL: string =
   (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, '') ||
@@ -39,6 +39,36 @@ export async function probeHealth(timeoutMs: number = 5000): Promise<{ ok: boole
 }
 
 /**
+ * Fetches available queryable collections from GET /api/v1/collections.
+ */
+export async function fetchCollections(timeoutMs: number = 5000): Promise<CollectionSummary[]> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/v1/collections`, {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timer);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch collections: HTTP ${res.status} ${res.statusText}`);
+    }
+
+    const data = await res.json();
+    if (!Array.isArray(data)) {
+      throw new Error('Malformed collections response: expected an array.');
+    }
+    return data as CollectionSummary[];
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    throw err;
+  }
+}
+
+/**
  * Submits query to POST /api/v1/query with full client-side timeout and validation safety.
  */
 export async function queryRegulatoryAssistant(
@@ -67,6 +97,7 @@ export async function queryRegulatoryAssistant(
     query: normalizedQuery,
     top_k: request.top_k ?? 5,
     include_superseded: request.include_superseded ?? false,
+    collection_id: request.collection_id || 'sebi_cscrf',
   };
 
   const controller = new AbortController();

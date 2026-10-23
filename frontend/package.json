@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "vite build --ssr tests/presentation.test.jsx --outDir dist-test && node --test dist-test/presentation.test.js",
+    "test": "vite build --ssr tests/presentation.test.jsx --outDir dist-test/presentation && vite build --ssr tests/collection_selector.test.jsx --outDir dist-test/collection && node --test dist-test/presentation/presentation.test.js dist-test/collection/collection_selector.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

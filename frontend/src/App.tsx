@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import type { QueryRequest, QueryResponse, QueryError } from './types/query';
-import { queryRegulatoryAssistant, probeHealth } from './api/client';
+import type { QueryRequest, QueryResponse, QueryError, CollectionSummary } from './types/query';
+import { queryRegulatoryAssistant, probeHealth, fetchCollections } from './api/client';
 import { Header } from './components/Header';
 import { DisclosureBanner } from './components/DisclosureBanner';
 import { QueryForm } from './components/QueryForm';
@@ -14,7 +14,13 @@ export default function App() {
   const [response, setResponse] = useState<QueryResponse | null>(null);
   const [lastSubmittedRequest, setLastSubmittedRequest] = useState<QueryRequest | null>(null);
 
-  // Health check probing
+  // Collections state
+  const [collections, setCollections] = useState<CollectionSummary[]>([]);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string>('sebi_cscrf');
+  const [isCollectionsLoading, setIsCollectionsLoading] = useState<boolean>(true);
+  const [collectionsError, setCollectionsError] = useState<string | null>(null);
+
+  // Health check and collections loading
   const checkHealth = async () => {
     setApiStatus('checking');
     const result = await probeHealth(4000);
@@ -23,11 +29,46 @@ export default function App() {
 
   useEffect(() => {
     let ignore = false;
+
+    // Check health
     probeHealth(4000).then((result) => {
       if (!ignore) {
         setApiStatus(result.ok ? 'connected' : 'disconnected');
       }
     });
+
+    // Fetch collection catalog
+    setIsCollectionsLoading(true);
+    fetchCollections(5000)
+      .then((colls) => {
+        if (!ignore) {
+          setCollections(colls);
+          setCollectionsError(null);
+          // If sebi_cscrf is available, default to it; otherwise select the first active collection
+          if (colls.length > 0) {
+            const hasSebi = colls.some((c) => c.collection_id === 'sebi_cscrf');
+            if (hasSebi) {
+              setSelectedCollectionId('sebi_cscrf');
+            } else {
+              setSelectedCollectionId(colls[0].collection_id);
+            }
+          }
+        }
+      })
+      .catch((err: unknown) => {
+        if (!ignore) {
+          const msg = err instanceof Error ? err.message : 'Failed to load collections catalog';
+          setCollectionsError(msg);
+          // Safe default fallback
+          setSelectedCollectionId('sebi_cscrf');
+        }
+      })
+      .finally(() => {
+        if (!ignore) {
+          setIsCollectionsLoading(false);
+        }
+      });
+
     return () => {
       ignore = true;
     };
@@ -60,6 +101,8 @@ export default function App() {
     }
   };
 
+  const activeCollection = collections.find((c) => c.collection_id === selectedCollectionId) || null;
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
       {/* Header with connection indicator */}
@@ -68,12 +111,17 @@ export default function App() {
       {/* Main Container */}
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 flex flex-col gap-6">
         {/* Scope & Grounding Disclosure Banner */}
-        <DisclosureBanner />
+        <DisclosureBanner selectedCollection={activeCollection} />
 
         {/* Main Search and Configuration Form */}
         <QueryForm
           isLoading={isLoading}
           onSubmit={handleQuerySubmit}
+          collections={collections}
+          selectedCollectionId={selectedCollectionId}
+          onSelectCollection={(id) => setSelectedCollectionId(id)}
+          isCollectionsLoading={isCollectionsLoading}
+          collectionsError={collectionsError}
           initialQuery={lastSubmittedRequest?.query || ''}
           initialTopK={lastSubmittedRequest?.top_k || 5}
           initialIncludeSuperseded={lastSubmittedRequest?.include_superseded || false}
@@ -95,10 +143,12 @@ export default function App() {
       <footer className="border-t border-slate-900 bg-slate-950/80 px-6 py-6 text-center text-xs text-slate-500">
         <div className="max-w-4xl mx-auto space-y-1">
           <p>
-            SEBI CSCRF Regulatory Intelligence Assistant — Educational Research Prototype.
+            SEBI Regulatory Intelligence & Multi-Collection Research Platform — Prototype.
           </p>
           <p className="text-[11px] text-slate-600">
-            Operating strictly over the 5-document pilot corpus. Not affiliated with, sponsored, or endorsed by the Securities and Exchange Board of India (SEBI). Excerpts represent mechanical text grounding only.
+            {activeCollection?.policy_type === 'general_static'
+              ? `Active collection: ${activeCollection.name} (${activeCollection.collection_id}). Static documents are mechanically verified for verbatim textual provenance.`
+              : 'Operating strictly over the 5-document SEBI CSCRF pilot corpus. Not affiliated with, sponsored, or endorsed by SEBI. Excerpts represent mechanical text grounding only.'}
           </p>
         </div>
       </footer>

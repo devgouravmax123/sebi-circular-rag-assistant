@@ -62,10 +62,21 @@ export interface UnresolvedSubquestion {
   reason: string;
 }
 
+export interface CollectionSummary {
+  collection_id: string;
+  name: string;
+  description?: string | null;
+  domain?: string | null;
+  regulator?: string | null;
+  policy_type: 'sebi_cscrf_strict' | 'general_static' | string;
+  status: 'active' | 'disabled' | 'unpublished' | string;
+}
+
 export interface QueryRequest {
   query: string;
   top_k?: number;
   include_superseded?: boolean;
+  collection_id?: string;
 }
 
 export interface QueryResponse {

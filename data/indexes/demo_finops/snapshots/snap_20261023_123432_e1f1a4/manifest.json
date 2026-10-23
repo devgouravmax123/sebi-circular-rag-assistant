@@ -1,0 +1,29 @@
+{
+  "snapshot_id": "snap_20261023_123432_e1f1a4",
+  "collection_id": "demo_finops",
+  "created_at": "2026-10-23T12:34:32.298698Z",
+  "format_version": "1.0.0",
+  "embedding_model": "BAAI/bge-small-en-v1.5",
+  "embedding_dim": 384,
+  "total_documents": 1,
+  "total_chunks": 3,
+  "document_ids": [
+    "acme_finops_guide_2026"
+  ],
+  "document_versions": {
+    "acme_finops_guide_2026": "ec0885d76f9b23f1a5e71f7ac49c93e5ba172e972ddaba8bf438746c559fb02e"
+  },
+  "chunk_ids": [
+    "acme_finops_guide_2026_p1_0",
+    "acme_finops_guide_2026_p1_1",
+    "acme_finops_guide_2026_p2_2"
+  ],
+  "corpus_fingerprint": "97926980c404634f8f9b685d70f66f248e284704f5a03d8fdc18b7752aa24d0b",
+  "artifact_checksums": {
+    "chunks.json": "2af6778883765f026efa6dd1ce48011a8faf31692f07a1be0e94983e296b4a7d",
+    "documents.json": "3b9acedf7d5faecf354a09689d07faa99b50d754b600b6d50a5cb2354b9fe725",
+    "dense_index.npy": "a76b8a2b6bdfab2bef178c2aad5209726e62117145c0855313549dd9d9a03091",
+    "dense_index_meta.json": "166be9813d0a1f00affce97ef01844d8e5922c9adc73b801fba5099fdcecd5a1"
+  },
+  "metadata": {}
+}

@@ -1,0 +1,44 @@
+[
+  {
+    "chunk_id": "acme_finops_guide_2026_p1_0",
+    "document_id": "acme_finops_guide_2026",
+    "collection_id": "demo_finops",
+    "text": "DEMO SYNTHETIC FINOPS GUIDE - FOR DEMONSTRATION USE ONLY. Section 1: Mandatory Cloud Tagging Policy. All cloud infrastructure assets across production and staging environments must bear standard cost-allocation tags. Every provisioned virtual machine, serverless function, and cloud storage bucket must have mandatory tags: Owner and CostCenter. tagging_rule_0 requires mandatory Owner and CostCenter resource tags. tagging_rule_1 requires mandatory Owner and CostCenter resource tags. tagging_rule_2 requires mandatory Owner and CostCenter resource tags. tagging_rule_3 requires mandatory Owner and CostCenter resource tags. tagging_rule_4 requires mandatory Owner and CostCenter resource tags. tagging_rule_5 requires mandatory Owner and CostCenter resource tags. tagging_rule_6 requires mandatory Owner and CostCenter resource tags. tagging_rule_7 requires mandatory Owner and CostCenter resource tags. tagging_rule_8 requires mandatory Owner and CostCenter resource tags. tagging_rule_9 requires mandatory Owner and CostCenter resource tags. tagging_rule_10 requires mandatory Owner and CostCenter resource tags. tagging_rule_11 requires mandatory Owner and CostCenter resource tags. tagging_rule_12 requires mandatory Owner and CostCenter resource tags. tagging_rule_13 requires mandatory Owner and CostCenter resource tags. tagging_rule_14 requires mandatory Owner and CostCenter resource tags. tagging_rule_15 requires mandatory Owner and CostCenter resource tags. tagging_rule_16 requires mandatory Owner and CostCenter resource tags. tagging_rule_17 requires mandatory Owner and CostCenter resource tags. tagging_rule_18 requires mandatory Owner and CostCenter resource tags. tagging_rule_19 requires mandatory Owner and CostCenter resource tags. tagging_rule_20 requires mandatory Owner and CostCenter resource tags. tagging_rule_21 requires mandatory Owner and CostCenter resource tags. tagging_rule_22 requires mandatory Owner and CostCenter resource tags. tagging_rule_23 requires mandatory Owner and CostCenter resource tags. tagging_rule_24 requires mandatory Owner and CostCenter resource tags. tagging_rule_25 requires mandatory Owner and CostCenter resource tags. tagging_rule_26 requires mandatory Owner and CostCenter resource tags. tagging_rule_27 requires mandatory Owner and CostCenter resource tags. tagging_rule_28 requires mandatory Owner and CostCenter resource tags. tagging_rule_29 requires mandatory Owner and CostCenter resource tags. tagging_rule_30 requires mandatory Owner and CostCenter resource tags. tagging_rule_31 requires mandatory Owner and CostCenter resource tags. tagging_rule_32 requires mandatory Owner and CostCenter resource tags. tagging_rule_33 requires mandatory Owner and CostCenter resource tags. tagging_rule_34 requires mandatory Owner and CostCenter resource tags. tagging_rule_35 requires mandatory Owner and CostCenter resource tags. tagging_rule_36 requires mandatory Owner and CostCenter resource tags. tagging_rule_37 requires mandatory Owner and CostCenter resource tags.",
+    "page_start": 1,
+    "page_end": 1,
+    "is_ocr": false,
+    "chunk_type": "body",
+    "metadata": {
+      "word_count": 350,
+      "chunk_index": 0
+    }
+  },
+  {
+    "chunk_id": "acme_finops_guide_2026_p1_1",
+    "document_id": "acme_finops_guide_2026",
+    "collection_id": "demo_finops",
+    "text": "tagging_rule_33 requires mandatory Owner and CostCenter resource tags. tagging_rule_34 requires mandatory Owner and CostCenter resource tags. tagging_rule_35 requires mandatory Owner and CostCenter resource tags. tagging_rule_36 requires mandatory Owner and CostCenter resource tags. tagging_rule_37 requires mandatory Owner and CostCenter resource tags. tagging_rule_38 requires mandatory Owner and CostCenter resource tags. tagging_rule_39 requires mandatory Owner and CostCenter resource tags. DEMO SYNTHETIC FINOPS GUIDE - FOR DEMONSTRATION USE ONLY. Section 2: Storage Volume Reclamation SLA. Under the Acme FinOps policy, unattached-disk reclamation SLA is 30 days. Any storage volume unattached for 30 days is automatically archived and deleted. reclamation_clause_0 unattached disk retention SLA is 30 days. reclamation_clause_1 unattached disk retention SLA is 30 days. reclamation_clause_2 unattached disk retention SLA is 30 days. reclamation_clause_3 unattached disk retention SLA is 30 days. reclamation_clause_4 unattached disk retention SLA is 30 days. reclamation_clause_5 unattached disk retention SLA is 30 days. reclamation_clause_6 unattached disk retention SLA is 30 days. reclamation_clause_7 unattached disk retention SLA is 30 days. reclamation_clause_8 unattached disk retention SLA is 30 days. reclamation_clause_9 unattached disk retention SLA is 30 days. reclamation_clause_10 unattached disk retention SLA is 30 days. reclamation_clause_11 unattached disk retention SLA is 30 days. reclamation_clause_12 unattached disk retention SLA is 30 days. reclamation_clause_13 unattached disk retention SLA is 30 days. reclamation_clause_14 unattached disk retention SLA is 30 days. reclamation_clause_15 unattached disk retention SLA is 30 days. reclamation_clause_16 unattached disk retention SLA is 30 days. reclamation_clause_17 unattached disk retention SLA is 30 days. reclamation_clause_18 unattached disk retention SLA is 30 days. reclamation_clause_19 unattached disk retention SLA is 30 days. reclamation_clause_20 unattached disk retention SLA is 30 days. reclamation_clause_21 unattached disk retention SLA is 30 days. reclamation_clause_22 unattached disk retention SLA is 30 days. reclamation_clause_23 unattached disk retention SLA is 30 days. reclamation_clause_24 unattached disk retention SLA is 30 days. reclamation_clause_25 unattached disk retention SLA is 30 days. reclamation_clause_26 unattached disk retention SLA is 30 days. reclamation_clause_27 unattached disk retention SLA is 30 days. reclamation_clause_28 unattached disk retention SLA is 30 days. reclamation_clause_29 unattached disk retention SLA is 30 days. reclamation_clause_30 unattached disk retention SLA is 30 days. reclamation_clause_31 unattached disk retention SLA is 30 days.",
+    "page_start": 1,
+    "page_end": 2,
+    "is_ocr": false,
+    "chunk_type": "body",
+    "metadata": {
+      "word_count": 350,
+      "chunk_index": 1
+    }
+  },
+  {
+    "chunk_id": "acme_finops_guide_2026_p2_2",
+    "document_id": "acme_finops_guide_2026",
+    "collection_id": "demo_finops",
+    "text": "reclamation_clause_27 unattached disk retention SLA is 30 days. reclamation_clause_28 unattached disk retention SLA is 30 days. reclamation_clause_29 unattached disk retention SLA is 30 days. reclamation_clause_30 unattached disk retention SLA is 30 days. reclamation_clause_31 unattached disk retention SLA is 30 days. reclamation_clause_32 unattached disk retention SLA is 30 days. reclamation_clause_33 unattached disk retention SLA is 30 days. reclamation_clause_34 unattached disk retention SLA is 30 days. reclamation_clause_35 unattached disk retention SLA is 30 days. reclamation_clause_36 unattached disk retention SLA is 30 days. reclamation_clause_37 unattached disk retention SLA is 30 days. reclamation_clause_38 unattached disk retention SLA is 30 days. reclamation_clause_39 unattached disk retention SLA is 30 days.",
+    "page_start": 2,
+    "page_end": 2,
+    "is_ocr": false,
+    "chunk_type": "body",
+    "metadata": {
+      "word_count": 104,
+      "chunk_index": 2
+    }
+  }
+]

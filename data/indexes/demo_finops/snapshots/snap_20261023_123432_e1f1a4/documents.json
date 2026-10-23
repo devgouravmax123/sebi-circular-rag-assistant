@@ -1,0 +1,18 @@
+{
+  "acme_finops_guide_2026": {
+    "document_id": "acme_finops_guide_2026",
+    "circular_number": null,
+    "title": "Acme Cloud FinOps & Governance Guide",
+    "department": "Cloud FinOps & Infrastructure Governance",
+    "issue_date": "2026-03-01",
+    "effective_date": "2026-04-01",
+    "source_url": "https://internal.acme.example/finops/guide_v1.pdf",
+    "retrieved_at": "2026-10-23T12:34:32.269912+00:00",
+    "sha256": "ec0885d76f9b23f1a5e71f7ac49c93e5ba172e972ddaba8bf438746c559fb02e",
+    "pdf_path": "C:\\Users\\Raja\\OneDrive\\Desktop\\sebi-rag-assistant\\data\\raw\\synthetic_finops\\acme_finops_governance_guide.pdf",
+    "extraction_status": "extracted",
+    "regulator": "SEBI",
+    "domain": "FINOPS",
+    "collection_id": "demo_finops"
+  }
+}
