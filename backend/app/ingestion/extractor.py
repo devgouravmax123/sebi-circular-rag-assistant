@@ -2,7 +2,6 @@ import hashlib
 import os
 from pathlib import Path
 from typing import List, Tuple
-import fitz  # PyMuPDF
 from app.schemas.document import PageContent, DocumentRecord
 
 
@@ -26,6 +25,14 @@ class PDFExtractor:
         path = Path(pdf_path)
         if not path.exists():
             raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+
+        try:
+            import fitz  # PyMuPDF
+        except ImportError as err:
+            raise RuntimeError(
+                "PyMuPDF ('fitz') is required for PDF text extraction but is not installed. "
+                "Install PyMuPDF or use pre-indexed snapshot collections."
+            ) from err
 
         try:
             doc = fitz.open(str(path))
