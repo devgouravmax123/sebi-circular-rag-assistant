@@ -15,8 +15,8 @@ export const DisclosureBanner = ({ selectedCollection }: DisclosureBannerProps) 
         </svg>
         <span>
           {isGeneralStatic
-            ? `Static Collection Disclosure — ${selectedCollection?.name || 'General Documentation'}`
-            : 'Authoritative Pilot Scope & Non-Legal-Advice Disclosure'}
+            ? `Documentation Disclosure — ${selectedCollection?.name || 'General Documentation'}`
+            : 'Authoritative Scope & Non-Legal-Advice Disclosure'}
         </span>
       </div>
       {isGeneralStatic ? (
@@ -32,7 +32,7 @@ export const DisclosureBanner = ({ selectedCollection }: DisclosureBannerProps) 
       ) : (
         <>
           <p className="text-slate-400">
-            This prototype retrieves and mechanically validates verbatim excerpts strictly against the <strong>5-document SEBI Cybersecurity & Cyber Resilience Framework (CSCRF)</strong> corpus (<code className="text-cyan-300 font-mono text-[11px]">CIR/2024/113</code>, <code className="text-cyan-300 font-mono text-[11px]">CIR/2025/045</code>, <code className="text-cyan-300 font-mono text-[11px]">CIR/2025/060</code>, <code className="text-cyan-300 font-mono text-[11px]">CIR/2025/096</code>, and <code className="text-cyan-300 font-mono text-[11px]">CIR/2025/119</code>).
+            This prototype retrieves and mechanically validates verbatim excerpts strictly against the indexed <strong>SEBI Cybersecurity & Cyber Resilience Framework (CSCRF)</strong> circular collection (<code className="text-cyan-300 font-mono text-[11px]">CIR/2024/113</code>, <code className="text-cyan-300 font-mono text-[11px]">CIR/2025/045</code>, <code className="text-cyan-300 font-mono text-[11px]">CIR/2025/060</code>, <code className="text-cyan-300 font-mono text-[11px]">CIR/2025/096</code>, and <code className="text-cyan-300 font-mono text-[11px]">CIR/2025/119</code>).
           </p>
           <p className="text-slate-400 text-[11px]">
             Retrieved excerpts reflect technical document grounding only and do not independently establish universal legal validity, complete regulatory compliance, or binding legal advice.

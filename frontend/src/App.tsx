@@ -151,9 +151,7 @@ export default function App() {
             Multi-Collection Document Intelligence & Regulatory Research Platform — Prototype.
           </p>
           <p className="text-[11px] text-slate-600">
-            {activeCollection?.policy_type === 'general_static'
-              ? `Active collection: ${activeCollection.name} (${activeCollection.collection_id}). Static documents are mechanically verified for verbatim textual provenance.`
-              : 'Operating strictly over the 5-document SEBI CSCRF pilot corpus. Not affiliated with, sponsored, or endorsed by SEBI. Excerpts represent mechanical text grounding only.'}
+            Answers are limited to the selected indexed collection and its available evidence. SEBI CSCRF materials are not affiliated with, sponsored, or endorsed by SEBI. Excerpts represent mechanical text grounding only.
           </p>
         </div>
       </footer>

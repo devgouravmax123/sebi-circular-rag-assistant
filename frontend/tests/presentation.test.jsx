@@ -182,14 +182,14 @@ test('6. ResultsPanel: preserves safety-gate disposition, warnings, and corpus b
   assert.match(html, /5 indexed documents in demo snapshot\./);
 });
 
-test('7. EvidenceCard: clarifies UNRESOLVED badge with pilot scope boundary without implying active law', () => {
+test('7. EvidenceCard: clarifies unresolved currency without implying active law', () => {
   const html = renderToStaticMarkup(React.createElement(EvidenceCard, {
     excerpt: baseExcerpt,
     index: 0,
   }));
 
-  assert.match(html, /UNRESOLVED WITHIN PILOT SCOPE/);
-  assert.match(html, /Passage verified from SEBI circular; active legal currency is not established beyond the 5-document pilot corpus\./);
+  assert.match(html, /CURRENCY NOT RESOLVED/);
+  assert.match(html, /Passage verified from collection; active legal or operational currency is not established beyond the indexed collection\./);
   assert.doesNotMatch(html, /verified current law/i);
 });
 

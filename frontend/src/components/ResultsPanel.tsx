@@ -60,7 +60,7 @@ const SEBI_DISPOSITION_CONFIG: Record<AnswerDisposition, { label: string; bg: st
     bg: 'bg-amber-950/80',
     text: 'text-amber-300',
     border: 'border-amber-700/60',
-    description: 'Corpus text verified; contains baseline circular provisions whose legal currency is not fully resolved beyond the 5-doc pilot.',
+    description: 'Corpus text verified; contains baseline circular provisions whose legal currency is not fully resolved beyond the indexed SEBI CSCRF collection.',
   },
   CONTROLLED_ABSTENTION: {
     label: 'Unable to Provide a Supported Excerpt',
@@ -117,6 +117,7 @@ export const ResultsPanel = ({
   onRetry,
 }: ResultsPanelProps) => {
   if (isLoading) {
+    const isSebi = selectedCollection?.policy_type === 'sebi_cscrf_strict';
     return (
       <div className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl p-10 flex flex-col items-center justify-center text-center space-y-4 shadow-xl">
         <div className="relative">
@@ -124,10 +125,12 @@ export const ResultsPanel = ({
         </div>
         <div>
           <h3 className="text-base font-semibold text-white">
-            Retrieving & Validating Regulatory Passages
+            Retrieving & Validating Evidence Passages
           </h3>
           <p className="text-xs text-slate-400 mt-1 max-w-md">
-            Running hybrid retrieval (BM25 + Dense RRF), binding candidate excerpts, and resolving relationship graphs...
+            {isSebi
+              ? 'Running hybrid retrieval (BM25 + Dense RRF), binding candidate excerpts, and resolving relationship graphs...'
+              : 'Running hybrid retrieval (BM25 + Dense RRF), binding candidate excerpts, and verifying verbatim provenance...'}
           </p>
         </div>
       </div>
@@ -262,7 +265,7 @@ export const ResultsPanel = ({
               {isGeneralStatic
                 ? `Note: Abstention indicates no sufficiently relevant passages with verified textual provenance exist in ${selectedCollection?.name || 'the selected collection'}.`
                 : isSebiStrict
-                ? 'Note: Abstention in this pilot system does not mean no relevant SEBI circular exists globally—only that no sufficient verified passage exists within the 5-document indexed pilot corpus.'
+                ? 'Note: Abstention indicates that sufficient verified evidence was not available within the indexed SEBI CSCRF collection. It does not establish that no relevant SEBI material exists elsewhere.'
                 : 'Note: Abstention indicates no sufficiently relevant passages with verified textual provenance exist in the indexed collection.'}
             </p>
           </div>

@@ -13,21 +13,21 @@ const STATUS_BADGE_CONFIG: Record<RegulatoryStatus, { label: string; bg: string;
     bg: 'bg-emerald-950/80',
     text: 'text-emerald-400',
     border: 'border-emerald-800/60',
-    desc: 'Supported by full baseline in pilot corpus; no superseding edge found.',
+    desc: 'Supported by full baseline in indexed collection; no superseding edge found.',
   },
   PARTIALLY_AMENDED: {
     label: 'PARTIALLY AMENDED',
     bg: 'bg-amber-950/80',
     text: 'text-amber-400',
     border: 'border-amber-800/60',
-    desc: 'A specific provision or clause has been amended by a subsequent circular.',
+    desc: 'A specific provision or clause has been amended by a subsequent document.',
   },
   SUPERSEDED: {
     label: 'SUPERSEDED (HISTORICAL)',
     bg: 'bg-rose-950/80',
     text: 'text-rose-400',
     border: 'border-rose-800/60',
-    desc: 'Fully superseded or rescinded by a newer circular in the corpus.',
+    desc: 'Fully superseded or rescinded by a newer document in the collection.',
   },
   INFORMATIONAL: {
     label: 'INFORMATIONAL',
@@ -37,11 +37,11 @@ const STATUS_BADGE_CONFIG: Record<RegulatoryStatus, { label: string; bg: string;
     desc: 'Background or reference passage without operative mandate changes.',
   },
   UNRESOLVED: {
-    label: 'UNRESOLVED WITHIN PILOT SCOPE',
+    label: 'CURRENCY NOT RESOLVED',
     bg: 'bg-purple-950/80',
     text: 'text-purple-300',
     border: 'border-purple-800/60',
-    desc: 'Passage verified from SEBI circular; active legal currency is not established beyond the 5-document pilot corpus.',
+    desc: 'Passage verified from collection; active legal or operational currency is not established beyond the indexed collection.',
   },
 };
 

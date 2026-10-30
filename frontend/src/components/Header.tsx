@@ -15,9 +15,9 @@ export const Header = ({ apiStatus, selectedCollection, onRetryHealth }: HeaderP
     ? 'SEBI CSCRF Regulatory Intelligence Assistant'
     : 'Document Intelligence Platform';
   const badgeLabel = isSebiStrict
-    ? '5-Doc Pilot'
+    ? 'SEBI CSCRF'
     : isGeneralStatic
-    ? 'Static Collection'
+    ? 'Documentation'
     : 'Multi-Collection';
 
   return (

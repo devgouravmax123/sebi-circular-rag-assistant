@@ -67,13 +67,13 @@ export const TechnicalInfoDrawer = ({ selectedCollection, initialOpen = false }:
               <li>
                 <strong>{isSebiStrict ? 'Legal Currency:' : 'Advisory Status:'}</strong>{' '}
                 {isSebiStrict
-                  ? 'Does not constitute binding legal counsel or universal currency beyond the 5-document pilot scope.'
+                  ? 'Does not constitute binding legal counsel or universal currency beyond the indexed SEBI CSCRF collection scope.'
                   : 'Document excerpts provide technical and operational information only; they do not establish regulatory compliance or legal advice.'}
               </li>
               <li>
                 <strong>{isSebiStrict ? 'Exhaustive Compliance:' : 'Collection Boundary:'}</strong>{' '}
                 {isSebiStrict
-                  ? 'Subsequent gazette notifications, master circulars, or bilateral SEBI directions outside the pilot are not indexed.'
+                  ? 'Subsequent gazette notifications, master circulars, or bilateral SEBI directions outside the indexed collection are not included.'
                   : 'External standards, unindexed manuals, and organization policies outside the active collection snapshot are not covered.'}
               </li>
               <li>

@@ -66,7 +66,7 @@ test('3. DisclosureBanner renders general_static disclosure without regulatory l
     })
   );
 
-  assert.match(html, /Static Collection Disclosure — Acme Technical Handbook/);
+  assert.match(html, /Documentation Disclosure — Acme Technical Handbook/);
   assert.match(html, /general_synthetic/);
   assert.match(html, /General technical documentation does not represent regulatory circulars or official legal advice/);
   assert.doesNotMatch(html, /CIR\/2024\/113/);
@@ -79,7 +79,7 @@ test('4. DisclosureBanner preserves SEBI CSCRF disclosure when sebi_cscrf is sel
     })
   );
 
-  assert.match(html, /Authoritative Pilot Scope &amp; Non-Legal-Advice Disclosure/);
+  assert.match(html, /Authoritative Scope &amp; Non-Legal-Advice Disclosure/);
   assert.match(html, /CIR\/2024\/113/);
   assert.match(html, /CIR\/2025\/119/);
 });
@@ -273,7 +273,7 @@ test('8. ResultsPanel: Missing collection context does not accidentally display 
 // Phase 5.3B Focused Tests: Header and TechnicalInfoDrawer Shell Generalization
 // =========================================================================
 
-test('9. Header: GENERAL_STATIC displays DOC, Document Intelligence Platform, and Static Collection badge', () => {
+test('9. Header: GENERAL_STATIC displays DOC, Document Intelligence Platform, and Documentation badge', () => {
   const html = renderToStaticMarkup(
     React.createElement(Header, {
       apiStatus: 'connected',
@@ -283,13 +283,13 @@ test('9. Header: GENERAL_STATIC displays DOC, Document Intelligence Platform, an
 
   assert.match(html, />DOC<\/div>/);
   assert.match(html, /Document Intelligence Platform/);
-  assert.match(html, /Static Collection/);
+  assert.match(html, /Documentation/);
   assert.doesNotMatch(html, />SEBI<\/div>/);
   assert.doesNotMatch(html, /SEBI CSCRF Regulatory Intelligence Assistant/);
   assert.doesNotMatch(html, /5-Doc Pilot/);
 });
 
-test('10. Header: SEBI_CSCRF_STRICT preserves SEBI avatar, title, and 5-Doc Pilot badge', () => {
+test('10. Header: SEBI_CSCRF_STRICT preserves SEBI avatar, title, and SEBI CSCRF badge', () => {
   const html = renderToStaticMarkup(
     React.createElement(Header, {
       apiStatus: 'connected',
@@ -299,7 +299,8 @@ test('10. Header: SEBI_CSCRF_STRICT preserves SEBI avatar, title, and 5-Doc Pilo
 
   assert.match(html, />SEBI<\/div>/);
   assert.match(html, /SEBI CSCRF Regulatory Intelligence Assistant/);
-  assert.match(html, /5-Doc Pilot/);
+  assert.match(html, /SEBI CSCRF/);
+  assert.doesNotMatch(html, /5-Doc Pilot/);
 });
 
 test('11. Header: Missing collection context displays neutral branding and Multi-Collection badge', () => {
@@ -358,9 +359,9 @@ test('13. TechnicalInfoDrawer: SEBI_CSCRF_STRICT preserves authoritative regulat
 
   // Limitations
   assert.match(html, /Legal Currency:/);
-  assert.match(html, /Does not constitute binding legal counsel or universal currency beyond the 5-document pilot scope\./);
+  assert.match(html, /Does not constitute binding legal counsel or universal currency beyond the indexed SEBI CSCRF collection scope\./);
   assert.match(html, /Exhaustive Compliance:/);
-  assert.match(html, /Subsequent gazette notifications, master circulars, or bilateral SEBI directions outside the pilot are not indexed\./);
+  assert.match(html, /Subsequent gazette notifications, master circulars, or bilateral SEBI directions outside the indexed collection are not included\./);
 });
 
 test('14. TechnicalInfoDrawer: Missing collection context defaults safely to neutral wording without assuming SEBI policy', () => {
