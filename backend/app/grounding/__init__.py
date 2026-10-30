@@ -24,6 +24,11 @@ from app.schemas.safety_gate import (
     ValidatedExcerptItem,
     SafetyGateResponse,
 )
+from app.grounding.scope import (
+    ScopeMatchStatus,
+    ScopeEvaluationResult,
+    evaluate_query_collection_scope,
+)
 
 __all__ = [
     "ConservativeGraphResolver",
@@ -43,4 +48,7 @@ __all__ = [
     "ExcerptDraftPayload",
     "ValidatedExcerptItem",
     "SafetyGateResponse",
+    "ScopeMatchStatus",
+    "ScopeEvaluationResult",
+    "evaluate_query_collection_scope",
 ]

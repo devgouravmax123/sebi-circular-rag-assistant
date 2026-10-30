@@ -22,6 +22,7 @@ from app.core.rate_limiter import get_query_rate_limiter
 
 from app.grounding.classifier import QueryIntent, classify_query_intent
 from app.grounding.relevance import filter_relevant_candidates, RelevanceDecisionCode
+from app.grounding.scope import evaluate_query_collection_scope, ScopeMatchStatus
 from app.core.config import Settings, get_settings
 from app.ingestion.collection_registry import CollectionRegistry, UnknownCollectionError
 from app.schemas.manifest import (
@@ -430,23 +431,42 @@ async def query_cscrf(
 
     corpus_label = f"SEBI {request.domain} corpus" if request.domain else f"{collection_name} ({resolved_cid})"
 
-    if intent == QueryIntent.OUT_OF_SCOPE_OR_UNESTABLISHED:
+    # Phase 6.3C: Explicit collection-aware scope evaluation
+    candidate_texts = " ".join([r.text for r in relevant_results]) if relevant_results else ""
+    coll_regulator = collection_manifest.regulator if collection_manifest else None
+    coll_domain = collection_manifest.domain if collection_manifest else None
+    scope_eval = evaluate_query_collection_scope(
+        query=query,
+        collection_id=resolved_cid,
+        collection_name=collection_name,
+        regulator=coll_regulator,
+        domain=coll_domain,
+        candidate_excerpts_text=candidate_texts,
+    )
+
+    if scope_eval.status == ScopeMatchStatus.EXPLICIT_MISMATCH or intent == QueryIntent.OUT_OF_SCOPE_OR_UNESTABLISHED:
+        abstention_msg = scope_eval.reason or f"Query subject is outside the scope of the {corpus_label}."
+        narrative_msg = (
+            f"Controlled Abstention: {scope_eval.reason}"
+            if scope_eval.status == ScopeMatchStatus.EXPLICIT_MISMATCH and scope_eval.reason
+            else f"Controlled Abstention: The query is outside the demonstrated regulatory scope of the {corpus_label}."
+        )
         return QueryResponse(
             query=query,
             disposition=AnswerDisposition.CONTROLLED_ABSTENTION,
             verified_excerpts=[],
             historical_superseded_excerpts=[],
-            summary_narrative=f"Controlled Abstention: The query is outside the demonstrated regulatory scope of the {corpus_label}.",
+            summary_narrative=narrative_msg,
             technical_validation_passed=False,
             retrieval_candidate_count=len(retrieval_response.results),
-            abstention_reason=f"Query subject is outside the scope of the {corpus_label}.",
+            abstention_reason=abstention_msg,
             regulatory_warnings=[],
             pilot_corpus_scope_limitation=collection_scope_notice,
             synthesis_status="ABSTAINED",
-            answer_text="Controlled Abstention: The query is outside the demonstrated regulatory scope of the corpus.",
+            answer_text=narrative_msg,
             claim_citations=[],
             unresolved_subquestions=[],
-            synthesis_failure_reason=f"Query subject is outside the scope of the {corpus_label}.",
+            synthesis_failure_reason=abstention_msg,
         )
 
     authorized_chunk_ids: Set[str] = {r.chunk_id for r in relevant_results}
