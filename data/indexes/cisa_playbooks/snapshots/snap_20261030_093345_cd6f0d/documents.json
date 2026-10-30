@@ -1,0 +1,18 @@
+{
+  "cisa_ir_playbook_2021": {
+    "document_id": "cisa_ir_playbook_2021",
+    "circular_number": null,
+    "title": "Federal Government Cybersecurity Incident and Vulnerability Response Playbooks",
+    "department": "Cybersecurity and Infrastructure Security Agency",
+    "issue_date": "2021-11-01",
+    "effective_date": "2021-11-01",
+    "source_url": "https://www.cisa.gov/sites/default/files/2024-08/Federal_Government_Cybersecurity_Incident_and_Vulnerability_Response_Playbooks_508C.pdf",
+    "retrieved_at": "2026-10-30T09:32:59.933673+00:00",
+    "sha256": "2277247542d844d2258c0f6892d649d6885f783fc629664924e60638086f47f0",
+    "pdf_path": "C:\\Users\\Raja\\OneDrive\\Desktop\\sebi-rag-assistant\\data\\raw\\cisa\\Federal_Government_Cybersecurity_Incident_and_Vulnerability_Response_Playbooks_508C.pdf",
+    "extraction_status": "extracted",
+    "regulator": "SEBI",
+    "domain": "CYBER_INCIDENT_RESPONSE",
+    "collection_id": "cisa_playbooks"
+  }
+}

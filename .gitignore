@@ -69,6 +69,18 @@ data/indexes/demo_finops/snapshots/snap_20261023_123432_e1f1a4/*
 !data/indexes/demo_finops/snapshots/snap_20261023_123432_e1f1a4/documents.json
 !data/indexes/demo_finops/snapshots/snap_20261023_123432_e1f1a4/manifest.json
 
+# Whitelist curated cisa_playbooks active pointer and runtime snapshot assets
+!data/indexes/cisa_playbooks/
+data/indexes/cisa_playbooks/*
+!data/indexes/cisa_playbooks/active_snapshot.json
+!data/indexes/cisa_playbooks/snapshots/
+data/indexes/cisa_playbooks/snapshots/*
+!data/indexes/cisa_playbooks/snapshots/snap_20261030_093345_cd6f0d/
+data/indexes/cisa_playbooks/snapshots/snap_20261030_093345_cd6f0d/*
+!data/indexes/cisa_playbooks/snapshots/snap_20261030_093345_cd6f0d/chunks.json
+!data/indexes/cisa_playbooks/snapshots/snap_20261030_093345_cd6f0d/documents.json
+!data/indexes/cisa_playbooks/snapshots/snap_20261030_093345_cd6f0d/manifest.json
+
 data/indexes/.publish.lock
 data/indexes/snapshots/*/.publish.lock
 data/indexes/*/.publish.lock

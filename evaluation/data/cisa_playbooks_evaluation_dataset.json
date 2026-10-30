@@ -1,0 +1,242 @@
+{
+  "dataset_version": "1.0.0",
+  "collection_id": "cisa_playbooks",
+  "description": "Standardized evaluation dataset for the CISA Cybersecurity Incident and Vulnerability Response Playbooks collection, validating factual question answering, page citations, and cross-domain abstention.",
+  "total_queries": 15,
+  "queries": [
+    {
+      "query_id": "cisa_q01_two_playbooks_established",
+      "category": "factual_core",
+      "question": "What two distinct playbooks are established in the CISA guidance issued under Executive Order 14028?",
+      "expected_outcome": "answerable",
+      "expected_documents": [
+        "cisa_ir_playbook_2021"
+      ],
+      "expected_pages": [
+        3
+      ],
+      "rationale": "Directly answered on page 3: 'This document presents two playbooks: one for incident response and one for vulnerability response.'",
+      "key_facts_to_preserve": [
+        "incident response playbook",
+        "vulnerability response playbook"
+      ]
+    },
+    {
+      "query_id": "cisa_q02_incident_response_phases",
+      "category": "lifecycle_taxonomy",
+      "question": "Under the Incident Response Playbook, what are the primary lifecycle phases?",
+      "expected_outcome": "answerable",
+      "expected_documents": [
+        "cisa_ir_playbook_2021"
+      ],
+      "expected_pages": [
+        5
+      ],
+      "rationale": "Directly answered on page 5 (Figure 1) and Table of Contents: Preparation, Detection and Analysis, Containment, Eradication and Recovery, and Post-Incident Activities.",
+      "key_facts_to_preserve": [
+        "Preparation",
+        "Detection and Analysis",
+        "Containment",
+        "Eradication and Recovery",
+        "Post-Incident Activities"
+      ]
+    },
+    {
+      "query_id": "cisa_q03_executive_order_authority",
+      "category": "regulatory_authority",
+      "question": "What executive order directed CISA to develop standard operational playbooks?",
+      "expected_outcome": "answerable",
+      "expected_documents": [
+        "cisa_ir_playbook_2021"
+      ],
+      "expected_pages": [
+        3
+      ],
+      "rationale": "Directly answered on page 3: 'Section 6 of Executive Order 14028 directed DHS, via CISA, to develop a standard set of operational procedures (playbook)...'",
+      "key_facts_to_preserve": [
+        "Executive Order 14028",
+        "Section 6"
+      ]
+    },
+    {
+      "query_id": "cisa_q04_major_incident_notification_timeline",
+      "category": "procedural_timeline",
+      "question": "Within what timeline must an agency notify CISA after determining a major incident under OMB M-20-04?",
+      "expected_outcome": "answerable",
+      "expected_documents": [
+        "cisa_ir_playbook_2021"
+      ],
+      "expected_pages": [
+        18
+      ],
+      "rationale": "Directly answered on page 18: 'Notifying CISA within 1 hour of incident determination as directed by OMB M-20-04.'",
+      "key_facts_to_preserve": [
+        "within 1 hour",
+        "OMB M-20-04"
+      ]
+    },
+    {
+      "query_id": "cisa_q05_fbi_coordination",
+      "category": "law_enforcement_coordination",
+      "question": "What law enforcement organization coordinates with CISA when incidents involve potential criminal activity?",
+      "expected_outcome": "answerable",
+      "expected_documents": [
+        "cisa_ir_playbook_2021"
+      ],
+      "expected_pages": [
+        18,
+        19
+      ],
+      "rationale": "Directly answered on pages 18-19: CISA collaborates with federal law enforcement, specifically referencing the Federal Bureau of Investigation (FBI).",
+      "key_facts_to_preserve": [
+        "Federal Bureau of Investigation (FBI)",
+        "law enforcement"
+      ]
+    },
+    {
+      "query_id": "cisa_q06_volatile_memory_imaging",
+      "category": "forensic_preservation",
+      "question": "What evidence preservation action is required when an endpoint requires forensic analysis?",
+      "expected_outcome": "answerable",
+      "expected_documents": [
+        "cisa_ir_playbook_2021"
+      ],
+      "expected_pages": [
+        10
+      ],
+      "rationale": "Directly answered on page 10: 'When an endpoint requires forensic analysis, capture a memory and disk image for evidence preservation.'",
+      "key_facts_to_preserve": [
+        "memory and disk image",
+        "evidence preservation"
+      ]
+    },
+    {
+      "query_id": "cisa_q07_vulnerability_identification_scope",
+      "category": "vulnerability_response",
+      "question": "What category of vulnerabilities does the Vulnerability Response Playbook specifically apply to?",
+      "expected_outcome": "answerable",
+      "expected_documents": [
+        "cisa_ir_playbook_2021"
+      ],
+      "expected_pages": [
+        4
+      ],
+      "rationale": "Directly answered on page 4: 'The Vulnerability Response Playbook applies to vulnerabilities being actively exploited in the wild.'",
+      "key_facts_to_preserve": [
+        "vulnerabilities being actively exploited in the wild"
+      ]
+    },
+    {
+      "query_id": "cisa_q08_post_incident_hotwash",
+      "category": "lessons_learned",
+      "question": "What activity is conducted during post-incident activities to capture lessons learned?",
+      "expected_outcome": "answerable",
+      "expected_documents": [
+        "cisa_ir_playbook_2021"
+      ],
+      "expected_pages": [
+        16,
+        34
+      ],
+      "rationale": "Directly answered on pages 16 and 34: 'Perform Hotwash: Conduct a lessons-learned analysis to review the handling of future incidents.'",
+      "key_facts_to_preserve": [
+        "hotwash",
+        "lessons-learned analysis"
+      ]
+    },
+    {
+      "query_id": "cisa_q09_incident_response_team_readiness",
+      "category": "preparation_roles",
+      "question": "What preparation requirement ensures incident response team members can collaborate securely during an event?",
+      "expected_outcome": "answerable",
+      "expected_documents": [
+        "cisa_ir_playbook_2021"
+      ],
+      "expected_pages": [
+        8
+      ],
+      "rationale": "Directly answered on page 8: 'Establish out-of-band communication mechanisms to allow responders to coordinate securely without relying on compromised agency infrastructure.'",
+      "key_facts_to_preserve": [
+        "out-of-band communication",
+        "secure coordination"
+      ]
+    },
+    {
+      "query_id": "cisa_q10_non_federal_applicability",
+      "category": "applicability_scope",
+      "question": "Are organizations outside the Federal Civilian Executive Branch encouraged to use these playbooks?",
+      "expected_outcome": "answerable",
+      "expected_documents": [
+        "cisa_ir_playbook_2021"
+      ],
+      "expected_pages": [
+        3
+      ],
+      "rationale": "Directly answered on page 3: 'This playbook may be useful for organizations outside of the FCEB to standardize incident response practices.'",
+      "key_facts_to_preserve": [
+        "useful for organizations outside of the FCEB",
+        "standardize incident response practices"
+      ]
+    },
+    {
+      "query_id": "cisa_q11_abstention_sebi_penalty",
+      "category": "cross_collection_abstention",
+      "question": "What is the maximum monetary penalty SEBI can levy for delayed CSCRF cyber audit reports?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_pages": [],
+      "rationale": "SEBI financial regulatory enforcement is entirely out of scope for CISA operational playbooks.",
+      "key_facts_to_preserve": [
+        "controlled abstention"
+      ]
+    },
+    {
+      "query_id": "cisa_q12_abstention_acme_disk_retention",
+      "category": "cross_collection_abstention",
+      "question": "How many days does Acme allow unattached disks to persist before automated deletion?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_pages": [],
+      "rationale": "Synthetic Acme FinOps cloud policy is out of scope for CISA playbooks.",
+      "key_facts_to_preserve": [
+        "controlled abstention"
+      ]
+    },
+    {
+      "query_id": "cisa_q13_abstention_data_mesh_rate_limit",
+      "category": "cross_collection_abstention",
+      "question": "What is the maximum tenant telemetry ingestion rate per second for the Acme Data Mesh?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_pages": [],
+      "rationale": "Acme Data Mesh telemetry specifications are out of scope for CISA playbooks.",
+      "key_facts_to_preserve": [
+        "controlled abstention"
+      ]
+    },
+    {
+      "query_id": "cisa_q14_abstention_gdpr_article_33",
+      "category": "external_regulatory_abstention",
+      "question": "What are the mandatory statutory compliance notification timelines under EU GDPR Article 33?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_pages": [],
+      "rationale": "EU GDPR statutory law is outside the scope of U.S. federal operational playbooks.",
+      "key_facts_to_preserve": [
+        "controlled abstention"
+      ]
+    },
+    {
+      "query_id": "cisa_q15_abstention_cisco_bgp_cli",
+      "category": "unrelated_hardware_abstention",
+      "question": "What exact command line utility should be executed to configure BGP routing on Cisco IOS-XR?",
+      "expected_outcome": "abstention",
+      "expected_documents": [],
+      "expected_pages": [],
+      "rationale": "Vendor-specific network switch command-line configuration is outside the scope of the playbooks.",
+      "key_facts_to_preserve": [
+        "controlled abstention"
+      ]
+    }
+  ]
+}

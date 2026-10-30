@@ -1,0 +1,28 @@
+{
+  "collection_id": "cisa_playbooks",
+  "name": "CISA Cybersecurity Incident and Vulnerability Response Playbooks",
+  "description": "Official federal operational procedures and checklists for cybersecurity incident and vulnerability response published by CISA under Executive Order 14028.",
+  "domain": "CYBER_INCIDENT_RESPONSE",
+  "regulator": null,
+  "enforce_regulatory_graph": false,
+  "policy": {
+    "policy_type": "general_static",
+    "enforce_regulatory_graph": false,
+    "enforce_verbatim_citation": true,
+    "enforce_retrieval_binding": true
+  },
+  "documents": [
+    {
+      "document_id": "cisa_ir_playbook_2021",
+      "title": "Federal Government Cybersecurity Incident and Vulnerability Response Playbooks",
+      "pdf_path": "data/raw/cisa/Federal_Government_Cybersecurity_Incident_and_Vulnerability_Response_Playbooks_508C.pdf",
+      "circular_number": null,
+      "department": "Cybersecurity and Infrastructure Security Agency",
+      "issue_date": "2021-11-01",
+      "effective_date": "2021-11-01",
+      "document_type": "operational_playbook",
+      "source_url": "https://www.cisa.gov/sites/default/files/2024-08/Federal_Government_Cybersecurity_Incident_and_Vulnerability_Response_Playbooks_508C.pdf",
+      "expected_sha256": "2277247542d844d2258c0f6892d649d6885f783fc629664924e60638086f47f0"
+    }
+  ]
+}
