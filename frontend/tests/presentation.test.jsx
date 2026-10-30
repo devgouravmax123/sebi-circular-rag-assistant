@@ -158,10 +158,21 @@ test('6. ResultsPanel: preserves safety-gate disposition, warnings, and corpus b
     synthesis_status: 'FULLY_ANSWERED',
   };
 
+  const sebiCollection = {
+    collection_id: 'sebi_cscrf',
+    name: 'SEBI CSCRF Regulatory Intelligence',
+    description: 'Master circulars and guidelines',
+    domain: 'CSCRF',
+    regulator: 'SEBI',
+    policy_type: 'sebi_cscrf_strict',
+    status: 'active',
+  };
+
   const html = renderToStaticMarkup(React.createElement(ResultsPanel, {
     isLoading: false,
     error: null,
     response: resp,
+    selectedCollection: sebiCollection,
   }));
 
   assert.match(html, /Safety Gate Disposition/);

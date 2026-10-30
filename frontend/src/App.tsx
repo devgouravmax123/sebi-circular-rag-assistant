@@ -106,7 +106,11 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
       {/* Header with connection indicator */}
-      <Header apiStatus={apiStatus} onRetryHealth={checkHealth} />
+      <Header
+        apiStatus={apiStatus}
+        selectedCollection={activeCollection}
+        onRetryHealth={checkHealth}
+      />
 
       {/* Main Container */}
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 flex flex-col gap-6">
@@ -132,18 +136,19 @@ export default function App() {
           isLoading={isLoading}
           error={error}
           response={response}
+          selectedCollection={activeCollection}
           onRetry={lastSubmittedRequest ? handleRetry : undefined}
         />
 
         {/* Mechanical vs Legal Technical Validation Explainer */}
-        <TechnicalInfoDrawer />
+        <TechnicalInfoDrawer selectedCollection={activeCollection} />
       </main>
 
       {/* Footer */}
       <footer className="border-t border-slate-900 bg-slate-950/80 px-6 py-6 text-center text-xs text-slate-500">
         <div className="max-w-4xl mx-auto space-y-1">
           <p>
-            SEBI Regulatory Intelligence & Multi-Collection Research Platform — Prototype.
+            Multi-Collection Document Intelligence & Regulatory Research Platform — Prototype.
           </p>
           <p className="text-[11px] text-slate-600">
             {activeCollection?.policy_type === 'general_static'

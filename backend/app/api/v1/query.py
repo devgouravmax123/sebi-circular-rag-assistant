@@ -326,6 +326,23 @@ async def query_cscrf(
             detail=f"Collection '{resolved_cid}' declares an unsupported or invalid grounding policy.",
         )
 
+    # Phase 5.2B: Define collection-aware scope notice based on authoritative policy
+    if grounding_policy.policy_type == GroundingPolicyType.GENERAL_STATIC:
+        collection_scope_notice = (
+            f"Static document collection: excerpts verified verbatim from {collection_name} ({resolved_cid})."
+        )
+    elif grounding_policy.policy_type == GroundingPolicyType.SEBI_CSCRF_STRICT:
+        collection_scope_notice = (
+            "Educational & Pilot Assistant: Operating strictly over the 5-document SEBI CSCRF circular corpus "
+            "(CIR/2024/113, CIR/2025/045, CIR/2025/060, CIR/2025/096, CIR/2025/119). "
+            "Excerpts represent technical document grounding only and do not establish universal legal currency."
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Collection '{resolved_cid}' has an unrecognized grounding policy type.",
+        )
+
     query = request.query.strip()
     top_k = request.top_k
     include_superseded = request.include_superseded
@@ -424,6 +441,7 @@ async def query_cscrf(
             retrieval_candidate_count=len(retrieval_response.results),
             abstention_reason=f"Query subject is outside the scope of the {corpus_label}.",
             regulatory_warnings=[],
+            pilot_corpus_scope_limitation=collection_scope_notice,
             synthesis_status="ABSTAINED",
             answer_text="Controlled Abstention: The query is outside the demonstrated regulatory scope of the corpus.",
             claim_citations=[],
@@ -447,7 +465,10 @@ async def query_cscrf(
                 f"Controlled Abstention: Insufficient evidence found in {corpus_label} to substantiate an answer for this query."
             )
         else:
-            abstention_reason = f"No relevant circular passages identified in the registered {corpus_label}."
+            if grounding_policy.policy_type == GroundingPolicyType.GENERAL_STATIC:
+                abstention_reason = f"No relevant document passages identified in the registered {corpus_label}."
+            else:
+                abstention_reason = f"No relevant circular passages identified in the registered {corpus_label}."
             narrative = f"Controlled Abstention: Zero candidate passages found in {corpus_label} for this query."
 
         return QueryResponse(
@@ -460,6 +481,7 @@ async def query_cscrf(
             retrieval_candidate_count=len(retrieval_response.results),
             abstention_reason=abstention_reason,
             regulatory_warnings=[],
+            pilot_corpus_scope_limitation=collection_scope_notice,
             synthesis_status="ABSTAINED",
             answer_text=narrative,
             claim_citations=[],
@@ -522,13 +544,7 @@ async def query_cscrf(
         if hasattr(exc, "collection_id"):
             exc.collection_id = resolved_cid
 
-    # Phase 2.2B.7 Controlled GENERAL_STATIC Synthesis Enablement:
-    # Set pilot / collection notice appropriately
-    if grounding_policy.policy_type == GroundingPolicyType.GENERAL_STATIC:
-        pilot_notice = f"Static document collection: excerpts verified verbatim from {collection_name} ({resolved_cid})."
-    else:
-        pilot_notice = gate_response.pilot_corpus_scope_limitation
-
+    # Phase 2.2B.7 / Phase 5.2B: Apply authoritative collection_scope_notice
     # 7. Execute Grounded Synthesis over verified excerpts with authoritative policy
     # Allowed strictly for validated SEBI_CSCRF_STRICT and GENERAL_STATIC policies.
     policy_str = (
@@ -557,7 +573,7 @@ async def query_cscrf(
         retrieval_candidate_count=gate_response.retrieval_candidate_count,
         abstention_reason=gate_response.abstention_reason,
         regulatory_warnings=gate_response.regulatory_warnings,
-        pilot_corpus_scope_limitation=pilot_notice,
+        pilot_corpus_scope_limitation=collection_scope_notice,
         answer_text=synthesis_result.answer,
         synthesis_status=synthesis_result.status.value,
         claim_citations=synthesis_result.claims,

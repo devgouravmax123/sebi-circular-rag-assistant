@@ -1,10 +1,11 @@
-import type { QueryResponse, QueryError, AnswerDisposition, SynthesisStatus } from '../types/query';
+import type { QueryResponse, QueryError, AnswerDisposition, SynthesisStatus, CollectionSummary } from '../types/query';
 import { EvidenceCard } from './EvidenceCard';
 
 interface ResultsPanelProps {
   isLoading: boolean;
   error: QueryError | null;
   response: QueryResponse | null;
+  selectedCollection?: CollectionSummary | null;
   onRetry?: () => void;
 }
 
@@ -46,7 +47,7 @@ const SYNTHESIS_STATUS_CONFIG: Partial<Record<SynthesisStatus, { label: string; 
   },
 };
 
-const DISPOSITION_CONFIG: Record<AnswerDisposition, { label: string; bg: string; text: string; border: string; description: string }> = {
+const SEBI_DISPOSITION_CONFIG: Record<AnswerDisposition, { label: string; bg: string; text: string; border: string; description: string }> = {
   VERIFIED_HISTORICAL_EXCERPTS: {
     label: 'Verified Historical Excerpts',
     bg: 'bg-emerald-950/80',
@@ -77,10 +78,42 @@ const DISPOSITION_CONFIG: Record<AnswerDisposition, { label: string; bg: string;
   },
 };
 
+const GENERIC_DISPOSITION_CONFIG: Record<AnswerDisposition, { label: string; bg: string; text: string; border: string; description: string }> = {
+  VERIFIED_HISTORICAL_EXCERPTS: {
+    label: 'Verified Document Excerpts',
+    bg: 'bg-emerald-950/80',
+    text: 'text-emerald-300',
+    border: 'border-emerald-700/60',
+    description: 'All returned excerpts mechanically verified for verbatim textual provenance against authoritative collection snapshots.',
+  },
+  QUALIFIED_HISTORICAL_EXCERPTS: {
+    label: 'Document Excerpts — Qualifications Apply',
+    bg: 'bg-amber-950/80',
+    text: 'text-amber-300',
+    border: 'border-amber-700/60',
+    description: 'Passages verified against source documents; version qualifications or separated archived excerpts apply.',
+  },
+  CONTROLLED_ABSTENTION: {
+    label: 'Unable to Provide a Supported Excerpt',
+    bg: 'bg-slate-900',
+    text: 'text-slate-300',
+    border: 'border-slate-700',
+    description: 'The system abstained safely due to lack of supported evidence in the selected document collection.',
+  },
+  REJECTED_UNSAFE: {
+    label: 'Response Rejected by Safety Checks',
+    bg: 'bg-rose-950/80',
+    text: 'text-rose-300',
+    border: 'border-rose-700/60',
+    description: 'Draft payload failed mechanical integrity or candidate binding checks.',
+  },
+};
+
 export const ResultsPanel = ({
   isLoading,
   error,
   response,
+  selectedCollection,
   onRetry,
 }: ResultsPanelProps) => {
   if (isLoading) {
@@ -138,7 +171,16 @@ export const ResultsPanel = ({
     return null;
   }
 
-  const dispCfg = DISPOSITION_CONFIG[response.disposition] || {
+  const isGeneralStatic = selectedCollection?.policy_type === 'general_static';
+  const isSebiStrict = selectedCollection?.policy_type === 'sebi_cscrf_strict';
+
+  const dispMap = isGeneralStatic
+    ? GENERIC_DISPOSITION_CONFIG
+    : isSebiStrict
+    ? SEBI_DISPOSITION_CONFIG
+    : GENERIC_DISPOSITION_CONFIG;
+
+  const dispCfg = dispMap[response.disposition] || {
     label: response.disposition || 'UNKNOWN DISPOSITION',
     bg: 'bg-slate-900',
     text: 'text-slate-300',
@@ -150,6 +192,22 @@ export const ResultsPanel = ({
   const hasHistorical =
     response.historical_superseded_excerpts && response.historical_superseded_excerpts.length > 0;
 
+  // Resolve collection-aware corpus boundary text:
+  // For GENERAL_STATIC, avoid misleading 5-document SEBI CSCRF text.
+  let boundaryText = response.pilot_corpus_scope_limitation;
+  if (isGeneralStatic) {
+    if (!boundaryText || boundaryText.includes('SEBI CSCRF') || boundaryText.includes('CIR/')) {
+      const collName = selectedCollection?.name || 'General Static Collection';
+      const collId = selectedCollection?.collection_id ? ` (${selectedCollection.collection_id})` : '';
+      boundaryText = `Static document collection: excerpts verified verbatim from ${collName}${collId}.`;
+    }
+  } else if (!isSebiStrict) {
+    // Missing or unknown collection context: do not display SEBI-specific text if not explicitly sebi_cscrf_strict
+    if (boundaryText && (boundaryText.includes('SEBI CSCRF') || boundaryText.includes('CIR/'))) {
+      boundaryText = 'Document collection: verified verbatim against indexed technical document snapshots.';
+    }
+  }
+
   return (
     <section aria-label="Query results" className="w-full space-y-6">
       {/* Response Header & Disposition Summary */}
@@ -160,6 +218,7 @@ export const ResultsPanel = ({
               Safety Gate Disposition
             </span>
             <span
+              title={dispCfg.description}
               className={`inline-flex items-center px-3 py-1 rounded-lg text-xs sm:text-sm font-bold border ${dispCfg.bg} ${dispCfg.text} ${dispCfg.border}`}
             >
               {dispCfg.label}
@@ -200,7 +259,11 @@ export const ResultsPanel = ({
             <span className="font-semibold text-amber-400 block">Abstention Reason:</span>
             <p className="text-slate-300">{response.abstention_reason}</p>
             <p className="text-[11px] text-amber-400/80 pt-1">
-              Note: Abstention in this pilot system does not mean no relevant SEBI circular exists globally—only that no sufficient verified passage exists within the 5-document indexed pilot corpus.
+              {isGeneralStatic
+                ? `Note: Abstention indicates no sufficiently relevant passages with verified textual provenance exist in ${selectedCollection?.name || 'the selected collection'}.`
+                : isSebiStrict
+                ? 'Note: Abstention in this pilot system does not mean no relevant SEBI circular exists globally—only that no sufficient verified passage exists within the 5-document indexed pilot corpus.'
+                : 'Note: Abstention indicates no sufficiently relevant passages with verified textual provenance exist in the indexed collection.'}
             </p>
           </div>
         )}
@@ -225,7 +288,7 @@ export const ResultsPanel = ({
         {/* Pilot Scope limitation footer note */}
         <div className="text-[11px] text-slate-500 pt-2 border-t border-slate-800/60 flex items-center gap-1.5">
           <span className="font-semibold">Corpus Boundary:</span>
-          <span>{response.pilot_corpus_scope_limitation}</span>
+          <span>{boundaryText}</span>
         </div>
       </div>
 

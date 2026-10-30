@@ -464,3 +464,281 @@ def test_18_regression_warnings_and_disposition_preserved_under_filtering(client
         assert data["verified_excerpts"][0]["regulatory_status"] == RegulatoryStatus.UNRESOLVED.value
     finally:
         app.dependency_overrides.clear()
+
+
+# =========================================================================
+# Phase 5.2B Regression Tests: Collection-Aware Response Metadata
+# =========================================================================
+
+def test_19_general_static_early_abstention_zero_candidates(client):
+    """
+    GENERAL_STATIC early abstention from zero candidates:
+    - Assert controlled abstention
+    - Assert exact general collection scope notice
+    - Assert no SEBI wording in scope notice
+    - Assert abstention reason does not say 'circular passages'
+    """
+    from app.api.v1.query import get_collection_registry
+    from app.schemas.manifest import CollectionManifest, CollectionStatus, GroundingPolicyDeclaration, GroundingPolicyType
+
+    manifest = CollectionManifest(
+        collection_id="demo_finops",
+        name="Acme Cloud FinOps",
+        description="FinOps guidelines",
+        domain="FINOPS",
+        regulator=None,
+        enabled=True,
+        policy=GroundingPolicyDeclaration(
+            policy_type=GroundingPolicyType.GENERAL_STATIC,
+            enforce_regulatory_graph=False,
+        ),
+        version="1.0.0",
+        created_at="2026-10-30T00:00:00Z",
+    )
+    mock_reg = MagicMock()
+    mock_reg.has_collection.return_value = True
+    mock_reg.get_collection_status.return_value = CollectionStatus.ACTIVE
+    mock_reg.get_collection.return_value = manifest
+    mock_reg.get_grounding_policy.return_value = manifest.policy
+
+    mock_ret = MagicMock()
+    mock_ret.chunks = []
+    mock_ret.documents = {}
+    mock_ret.search_hybrid.return_value = RetrievalResponse(
+        query="completely unknown out-of-vocabulary topic",
+        total_results=0,
+        results=[],
+    )
+
+    app.dependency_overrides[get_collection_registry] = lambda: mock_reg
+    app.dependency_overrides[get_retrieval_service] = lambda: mock_ret
+
+    try:
+        resp = client.post(
+            "/api/v1/query",
+            json={"query": "completely unknown out-of-vocabulary topic", "collection_id": "demo_finops"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+
+        assert data["disposition"] == AnswerDisposition.CONTROLLED_ABSTENTION.value
+        assert data["pilot_corpus_scope_limitation"] == (
+            "Static document collection: excerpts verified verbatim from Acme Cloud FinOps (demo_finops)."
+        )
+        assert "SEBI" not in data["pilot_corpus_scope_limitation"]
+        assert "circular passages" not in data["abstention_reason"]
+        assert "document passages" in data["abstention_reason"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_20_general_static_out_of_scope_intent_early_abstention(client):
+    """
+    GENERAL_STATIC out-of-scope intent early abstention:
+    - Assert exact general collection scope notice
+    - Assert no SEBI pilot disclaimer appears
+    """
+    from app.api.v1.query import get_collection_registry
+    from app.schemas.manifest import CollectionManifest, CollectionStatus, GroundingPolicyDeclaration, GroundingPolicyType
+
+    manifest = CollectionManifest(
+        collection_id="general_synthetic",
+        name="Acme Technical Handbook",
+        description="Technical handbook",
+        domain="TECH",
+        regulator=None,
+        enabled=True,
+        policy=GroundingPolicyDeclaration(
+            policy_type=GroundingPolicyType.GENERAL_STATIC,
+            enforce_regulatory_graph=False,
+        ),
+        version="1.0.0",
+        created_at="2026-10-30T00:00:00Z",
+    )
+    mock_reg = MagicMock()
+    mock_reg.has_collection.return_value = True
+    mock_reg.get_collection_status.return_value = CollectionStatus.ACTIVE
+    mock_reg.get_collection.return_value = manifest
+    mock_reg.get_grounding_policy.return_value = manifest.policy
+
+    # Provide search results that intent classifier rejects as OUT_OF_SCOPE_OR_UNESTABLISHED
+    # E.g., conversational greeting or completely unestablished intent
+    mock_ret = MagicMock()
+    mock_ret.chunks = []
+    mock_ret.documents = {}
+    mock_ret.search_hybrid.return_value = RetrievalResponse(
+        query="hi hello there what are you doing",
+        total_results=0,
+        results=[],
+    )
+
+    app.dependency_overrides[get_collection_registry] = lambda: mock_reg
+    app.dependency_overrides[get_retrieval_service] = lambda: mock_ret
+
+    try:
+        resp = client.post(
+            "/api/v1/query",
+            json={"query": "hi hello there what are you doing", "collection_id": "general_synthetic"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+
+        assert data["disposition"] == AnswerDisposition.CONTROLLED_ABSTENTION.value
+        assert data["pilot_corpus_scope_limitation"] == (
+            "Static document collection: excerpts verified verbatim from Acme Technical Handbook (general_synthetic)."
+        )
+        assert "5-document SEBI CSCRF" not in data["pilot_corpus_scope_limitation"]
+        assert "CIR/" not in data["pilot_corpus_scope_limitation"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_21_general_static_grounded_success(client):
+    """
+    GENERAL_STATIC grounded success:
+    - Assert the exact general collection scope notice
+    """
+    from app.api.v1.query import get_collection_registry
+    from app.schemas.manifest import CollectionManifest, CollectionStatus, GroundingPolicyDeclaration, GroundingPolicyType
+    from app.schemas.document import ChunkRecord, DocumentRecord
+    from app.synthesis.mock_provider import MockSynthesisProvider
+    from app.synthesis.service import SynthesisService, get_synthesis_service
+
+    manifest = CollectionManifest(
+        collection_id="demo_finops",
+        name="Acme Cloud FinOps",
+        description="FinOps guidelines",
+        domain="FINOPS",
+        regulator=None,
+        enabled=True,
+        policy=GroundingPolicyDeclaration(
+            policy_type=GroundingPolicyType.GENERAL_STATIC,
+            enforce_regulatory_graph=False,
+        ),
+        version="1.0.0",
+        created_at="2026-10-30T00:00:00Z",
+    )
+    mock_reg = MagicMock()
+    mock_reg.has_collection.return_value = True
+    mock_reg.get_collection_status.return_value = CollectionStatus.ACTIVE
+    mock_reg.get_collection.return_value = manifest
+    mock_reg.get_grounding_policy.return_value = manifest.policy
+
+    chunk = ChunkRecord(
+        chunk_id="finops_c1",
+        document_id="finops_doc1",
+        text="Automated lifecycle policies delete unattached snapshots after 14 days.",
+        page_start=5,
+        page_end=5,
+        collection_id="demo_finops",
+    )
+    doc = DocumentRecord(
+        document_id="finops_doc1",
+        title="FinOps Lifecycle Guide",
+        source_url="https://internal.example.org/docs/finops.pdf",
+        sha256="abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        total_pages=10,
+        pdf_path="finops/guide.pdf",
+        collection_id="demo_finops",
+    )
+
+    mock_ret = MagicMock()
+    mock_ret.chunks = [chunk]
+    mock_ret.documents = {"finops_doc1": doc}
+    mock_ret.search_hybrid.return_value = RetrievalResponse(
+        query="unattached snapshots retention lifecycle",
+        total_results=1,
+        results=[
+            RetrievalResult(
+                chunk_id="finops_c1",
+                document_id="finops_doc1",
+                title="FinOps Lifecycle Guide",
+                text=chunk.text,
+                page_start=5,
+                page_end=5,
+                score=0.95,
+                rank=1,
+                collection_id="demo_finops",
+            )
+        ],
+    )
+
+    synth_service = SynthesisService(provider=MockSynthesisProvider())
+
+    app.dependency_overrides[get_collection_registry] = lambda: mock_reg
+    app.dependency_overrides[get_retrieval_service] = lambda: mock_ret
+    app.dependency_overrides[get_synthesis_service] = lambda: synth_service
+
+    try:
+        resp = client.post(
+            "/api/v1/query",
+            json={"query": "unattached snapshots retention lifecycle", "collection_id": "demo_finops"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+
+        assert data["technical_validation_passed"] is True
+        assert len(data["verified_excerpts"]) == 1
+        assert data["pilot_corpus_scope_limitation"] == (
+            "Static document collection: excerpts verified verbatim from Acme Cloud FinOps (demo_finops)."
+        )
+        assert "SEBI" not in data["pilot_corpus_scope_limitation"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_22_sebi_cscrf_strict_early_abstention(client):
+    """
+    SEBI_CSCRF_STRICT early abstention:
+    - Assert original complete SEBI pilot disclaimer is preserved
+    - Assert circular passages wording in abstention_reason
+    """
+    mock_ret = MagicMock()
+    mock_ret.search_hybrid.return_value = RetrievalResponse(
+        query="unprecedented unrelated topic query",
+        total_results=0,
+        results=[],
+    )
+
+    app.dependency_overrides[get_retrieval_service] = lambda: mock_ret
+
+    try:
+        resp = client.post(
+            "/api/v1/query",
+            json={"query": "unprecedented unrelated topic query", "collection_id": "sebi_cscrf"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+
+        assert data["disposition"] == AnswerDisposition.CONTROLLED_ABSTENTION.value
+        expected_sebi_notice = (
+            "Educational & Pilot Assistant: Operating strictly over the 5-document SEBI CSCRF circular corpus "
+            "(CIR/2024/113, CIR/2025/045, CIR/2025/060, CIR/2025/096, CIR/2025/119). "
+            "Excerpts represent technical document grounding only and do not establish universal legal currency."
+        )
+        assert data["pilot_corpus_scope_limitation"] == expected_sebi_notice
+        assert "circular passages" in data["abstention_reason"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_23_sebi_cscrf_strict_grounded_success(client):
+    """
+    SEBI_CSCRF_STRICT grounded success:
+    - Assert original complete SEBI pilot disclaimer is preserved
+    """
+    resp = client.post(
+        "/api/v1/query",
+        json={"query": "What are the audit and reporting timelines for cyber incidents?", "collection_id": "sebi_cscrf"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["technical_validation_passed"] is True
+    assert len(data["verified_excerpts"]) > 0
+    expected_sebi_notice = (
+        "Educational & Pilot Assistant: Operating strictly over the 5-document SEBI CSCRF circular corpus "
+        "(CIR/2024/113, CIR/2025/045, CIR/2025/060, CIR/2025/096, CIR/2025/119). "
+        "Excerpts represent technical document grounding only and do not establish universal legal currency."
+    )
+    assert data["pilot_corpus_scope_limitation"] == expected_sebi_notice
