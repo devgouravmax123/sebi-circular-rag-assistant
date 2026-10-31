@@ -42,15 +42,26 @@ logger = logging.getLogger("ingestion_worker_daemon")
 
 def get_repository_factory() -> StorageRepositoryFactory:
     settings = get_settings(force_reload=True)
-    if settings.is_database_enabled and settings.database_url:
-        logger.info(f"Worker connecting to PostgreSQL storage: {settings.sanitized_database_url}")
+
+    # If worker_database_url is configured, use it directly with dedicated connection settings
+    if settings.is_worker_database_enabled and settings.worker_database_url:
+        logger.info(f"Worker connecting to PostgreSQL storage via dedicated worker URL: {settings.sanitized_worker_database_url}")
         return PostgresStorageRepositoryFactory(
-            database_url=settings.database_url,
+            database_url=settings.worker_database_url,
             pool_size=settings.db_pool_size,
             max_overflow=settings.db_max_overflow,
             pool_timeout=settings.db_pool_timeout,
             pool_recycle=settings.db_pool_recycle,
         )
+
+    # Enforce strict separation: if general database is enabled (e.g. DATABASE_URL is set) but
+    # WORKER_DATABASE_URL is absent, do NOT silently fall back to DATABASE_URL.
+    if settings.is_database_enabled:
+        raise ValueError(
+            "Worker database configuration error: WORKER_DATABASE_URL must be explicitly configured "
+            "when running in PostgreSQL database mode. Silent fallback to DATABASE_URL is strictly prohibited."
+        )
+
     logger.info(f"Worker operating in file-backed storage mode (processed_dir={settings.processed_dir})")
     return FileStorageRepositoryFactory(processed_dir=settings.processed_dir)
 
@@ -103,12 +114,26 @@ def run_worker_daemon(
 
     processed = 0
     try:
+        # Perform startup cleanup of abandoned orphaned staging files older than 1 hour
+        cleaned_orphans = worker.cleanup_orphan_staging_files(max_age_seconds=3600.0)
+        if cleaned_orphans > 0:
+            logger.info(f"Cleaned up {cleaned_orphans} orphaned staging file(s) on worker startup.")
+
         processed = worker.run_loop(max_jobs=max_jobs)
         logger.info(f"Worker loop stopped gracefully. Processed {processed} total job(s).")
         return 0
     except Exception as loop_err:
         logger.error(f"Supervised worker loop encountered unexpected fatal exception: {loop_err}", exc_info=True)
         return 1
+    finally:
+        # Guarantee disposal of worker-owned SQLAlchemy engine and connection pool
+        if hasattr(factory, "engine") and factory.engine is not None:
+            try:
+                logger.info("Disposing worker database engine and connection pool...")
+                factory.engine.dispose()
+                logger.info("Worker database engine disposed successfully.")
+            except Exception as disp_err:
+                logger.warning(f"Error while disposing worker database engine: {disp_err}")
 
 
 def main() -> int:

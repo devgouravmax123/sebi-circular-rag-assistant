@@ -19,7 +19,7 @@ import os
 from pathlib import Path
 import threading
 import time
-from typing import Optional, Dict, Any, Tuple, List
+from typing import Optional, Dict, Any, Tuple, List, Union
 import uuid
 
 import numpy as np
@@ -52,6 +52,10 @@ from app.persistence.interfaces import (
     ChunkRepository,
     PersistenceError,
     ConnectionStorageError,
+)
+from app.persistence.worker_procedure_repo import (
+    PostgresWorkerProcedureRepository,
+    ChunkBatchItem,
 )
 
 logger = logging.getLogger(__name__)
@@ -102,15 +106,17 @@ class HeartbeatThread:
         self,
         job_repo: IngestionJobRepository,
         job_id: uuid.UUID,
-        claim_token: uuid.UUID,
+        claim_token: Union[str, uuid.UUID],
         interval_seconds: float = 15.0,
         stage: ProcessingStage = ProcessingStage.PENDING,
+        worker_procedure_repo: Optional[PostgresWorkerProcedureRepository] = None,
     ):
         self.job_repo = job_repo
         self.job_id = job_id
         self.claim_token = claim_token
         self.interval_seconds = interval_seconds
         self.current_stage = stage
+        self.worker_procedure_repo = worker_procedure_repo
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self.lost_lease = False
@@ -127,17 +133,28 @@ class HeartbeatThread:
             if self.lost_lease:
                 break
             try:
-                self.job_repo.update_stage_and_heartbeat(
-                    job_id=self.job_id,
-                    claim_token=self.claim_token,
-                    stage=self.current_stage,
-                )
-            except StaleLeaseError:
-                logger.warning(
-                    f"Heartbeat failed: lease for job {self.job_id} has been lost or superseded."
-                )
-                self.lost_lease = True
-                break
+                if self.worker_procedure_repo is not None:
+                    self.worker_procedure_repo.heartbeat(
+                        job_id=self.job_id,
+                        raw_claim_token=str(self.claim_token),
+                        stage=self.current_stage.value,
+                    )
+                else:
+                    self.job_repo.update_stage_and_heartbeat(
+                        job_id=self.job_id,
+                        claim_token=self.claim_token if isinstance(self.claim_token, uuid.UUID) else uuid.UUID(self.claim_token),
+                        stage=self.current_stage,
+                    )
+            except (StaleLeaseError, PersistenceError) as e:
+                err_str = str(e)
+                if "UNAUTHORIZED_WORKER" in err_str or "LEASE_EXPIRED" in err_str or "StaleLeaseError" in err_str:
+                    logger.warning(
+                        f"Heartbeat failed: lease for job {self.job_id} has been lost or superseded."
+                    )
+                    self.lost_lease = True
+                    break
+                else:
+                    logger.warning(f"Transient error in heartbeat update for job {self.job_id}: {e}")
             except Exception as e:
                 logger.warning(f"Transient error in heartbeat update for job {self.job_id}: {e}")
 
@@ -161,12 +178,23 @@ class IngestionOrchestrator:
         chunker: Optional[TextChunker] = None,
         embedder: Optional[DenseEmbedder] = None,
         heartbeat_interval_seconds: float = 15.0,
+        worker_procedure_repo: Optional[PostgresWorkerProcedureRepository] = None,
+        chunk_batch_size: int = 100,
     ):
         self.factory = repository_factory
         self.job_repo: IngestionJobRepository = repository_factory.get_ingestion_job_repository()
         self.doc_repo: DocumentRepository = repository_factory.get_document_repository()
         self.chunk_repo: ChunkRepository = repository_factory.get_chunk_repository()
 
+        # Wire stored procedure repository if provided or if repository_factory is PostgresStorageRepositoryFactory
+        if worker_procedure_repo is not None:
+            self.worker_procedure_repo: Optional[PostgresWorkerProcedureRepository] = worker_procedure_repo
+        elif hasattr(repository_factory, "session_factory"):
+            self.worker_procedure_repo = PostgresWorkerProcedureRepository(repository_factory.session_factory)
+        else:
+            self.worker_procedure_repo = None
+
+        self.chunk_batch_size = chunk_batch_size
         self.downloader = downloader or SecurePDFDownloader()
         self.extractor = extractor or PDFExtractor()
         self.chunker = chunker or TextChunker()
@@ -176,7 +204,7 @@ class IngestionOrchestrator:
     def process_job(
         self,
         job: IngestionJobRecord,
-        claim_token: uuid.UUID,
+        claim_token: Union[str, uuid.UUID],
     ) -> JobExecutionResult:
         """
         Execute full ingestion lifecycle for a claimed job.
@@ -192,6 +220,7 @@ class IngestionOrchestrator:
             claim_token=claim_token,
             interval_seconds=self.heartbeat_interval_seconds,
             stage=ProcessingStage.PENDING,
+            worker_procedure_repo=self.worker_procedure_repo,
         )
         heartbeat.start()
 
@@ -202,11 +231,18 @@ class IngestionOrchestrator:
         def _update_stage(stage: ProcessingStage) -> None:
             _assert_lease_alive()
             heartbeat.set_stage(stage)
-            self.job_repo.update_stage_and_heartbeat(
-                job_id=job_id,
-                claim_token=claim_token,
-                stage=stage,
-            )
+            if self.worker_procedure_repo is not None:
+                self.worker_procedure_repo.heartbeat(
+                    job_id=job_id,
+                    raw_claim_token=str(claim_token),
+                    stage=stage.value,
+                )
+            else:
+                self.job_repo.update_stage_and_heartbeat(
+                    job_id=job_id,
+                    claim_token=claim_token if isinstance(claim_token, uuid.UUID) else uuid.UUID(claim_token),
+                    stage=stage,
+                )
 
         try:
             # Stage 1: Downloading
@@ -244,33 +280,90 @@ class IngestionOrchestrator:
                 # Mark completed cleanly without creating duplicates or redundant work.
                 target_doc_id = job.document_id or existing_doc.document_id
                 if existing_doc.document_id == target_doc_id:
-                    self.job_repo.mark_completed(
-                        job_id=job_id,
-                        claim_token=claim_token,
-                        document_id=existing_doc.document_id,
-                        sha256=sha256,
-                    )
+                    # Reconstruct the expected chunks from the validated downloaded PDF
+                    # to strictly verify that persisted chunk count matches the true expected chunk count.
+                    _update_stage(ProcessingStage.PARSING)
+                    try:
+                        pages: List[PageContent] = self.extractor.extract_pages(downloaded_file)
+                    except Exception as e:
+                        raise NonRetryableIngestionError(f"PDF extraction failed during crash recovery: {e}") from e
+
+                    if not pages:
+                        raise NonRetryableIngestionError("PDF has 0 readable pages during crash recovery")
+
+                    _update_stage(ProcessingStage.CHUNKING)
+                    try:
+                        expected_chunks: List[ChunkRecord] = self.chunker.chunk_document(target_doc_id, pages)
+                    except Exception as e:
+                        raise NonRetryableIngestionError(f"Chunking failed during crash recovery: {e}") from e
+
+                    expected_count = len(expected_chunks)
+                    if expected_count == 0:
+                        raise NonRetryableIngestionError("Document produced 0 text chunks during crash recovery")
+
+                    heartbeat.stop()
+
+                    if self.worker_procedure_repo is not None:
+                        # Stored procedure app.complete_ingestion_job requires an assigned version_id and chunks.
+                        # It validates that actual chunks in DB equals expected_count and verifies 1:1 embedding coverage.
+                        self.worker_procedure_repo.complete_job(
+                            job_id=job_id,
+                            raw_claim_token=str(claim_token),
+                            expected_chunk_count=expected_count,
+                            allow_empty=False,
+                        )
+                    else:
+                        job_claim_uuid = claim_token if isinstance(claim_token, uuid.UUID) else uuid.UUID(claim_token)
+                        self.job_repo.mark_completed(
+                            job_id=job_id,
+                            claim_token=job_claim_uuid,
+                            document_id=existing_doc.document_id,
+                            sha256=sha256,
+                        )
                     return JobExecutionResult(
                         job_id=job_id,
                         status=JobStatus.COMPLETED,
                         document_id=existing_doc.document_id,
                         sha256=sha256,
-                        message=f"Crash recovery: Document '{existing_doc.document_id}' was already persisted; marked completed.",
+                        chunks_count=expected_count,
+                        message=f"Crash recovery: Document '{existing_doc.document_id}' was already persisted; marked completed with verified chunk count {expected_count}.",
                     )
                 else:
                     # Content deduplication: different job/document registered with identical content
-                    self.job_repo.mark_duplicate(
-                        job_id=job_id,
-                        claim_token=claim_token,
-                        sha256=sha256,
-                        document_id=existing_doc.document_id,
-                    )
+                    dup_message = f"Identical content SHA-256 already ingested as '{existing_doc.document_id}'"
+                    if self.worker_procedure_repo is not None:
+                        error_details = {
+                            "code": "DUPLICATE_DOCUMENT",
+                            "reason": dup_message,
+                            "original_document_id": existing_doc.document_id,
+                            "sha256": sha256,
+                            "detected_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                        self.worker_procedure_repo.mark_duplicate_job(
+                            job_id=job_id,
+                            raw_claim_token=str(claim_token),
+                            error_details=error_details,
+                        )
+                    else:
+                        job_claim_uuid = claim_token if isinstance(claim_token, uuid.UUID) else uuid.UUID(claim_token)
+                        self.job_repo.mark_duplicate(
+                            job_id=job_id,
+                            claim_token=job_claim_uuid,
+                            sha256=sha256,
+                            document_id=existing_doc.document_id,
+                        )
+
                     return JobExecutionResult(
                         job_id=job_id,
                         status=JobStatus.DUPLICATE,
                         document_id=existing_doc.document_id,
                         sha256=sha256,
-                        message=f"Identical content SHA-256 already ingested as '{existing_doc.document_id}'",
+                        message=dup_message,
+                        error_details={
+                            "code": "DUPLICATE_DOCUMENT",
+                            "original_document_id": existing_doc.document_id,
+                            "sha256": sha256,
+                        },
                     )
 
             # Determine logical document_id from job or derive from source
@@ -317,39 +410,104 @@ class IngestionOrchestrator:
 
             # Stage 6: Persisting
             _update_stage(ProcessingStage.PERSISTING)
-            doc_record = DocumentRecord(
-                document_id=doc_id,
-                title=job.document_id or doc_id,
-                source_url=source_url,
-                sha256=sha256,
-                pdf_path=str(downloaded_file),
-                extraction_status="extracted",
-            )
 
-            try:
-                self.doc_repo.save_document(doc_record)
-                self.chunk_repo.save_chunks(chunks)
-                self.chunk_repo.save_embeddings(embeddings_dict, model_name=DEFAULT_MODEL_NAME)
-            except ConnectionStorageError as e:
-                raise RetryableIngestionError(f"Storage connection error during persistence: {e}") from e
-            except PersistenceError as e:
-                raise RetryableIngestionError(f"Persistence operation failed: {e}") from e
-            except Exception as e:
-                raise RetryableIngestionError(f"Unexpected error during persistence: {e}") from e
+            if self.worker_procedure_repo is not None:
+                try:
+                    # 1. Stored Procedure: Create immutable document version (status: 'processing')
+                    raw_token_str = str(claim_token)
+                    version_id = self.worker_procedure_repo.create_version(
+                        job_id=job_id,
+                        raw_claim_token=raw_token_str,
+                        version_number=1,
+                        sha256_hash=sha256,
+                        source_url=source_url,
+                        storage_path=str(downloaded_file),
+                        issue_date=None,
+                        effective_date=None,
+                    )
 
-            # Stage 7: Indexing boundary
-            _update_stage(ProcessingStage.INDEXING)
-            # Note: Live in-memory index hot-reloading is decoupled in Phase 8B.4 to prevent mutating
-            # concurrent read-query structures. Index publication will be handled via dedicated sync.
+                    # 2. Build batch items and write chunks + embeddings in batches
+                    batch_items: List[ChunkBatchItem] = []
+                    for idx, chunk in enumerate(chunks):
+                        emb = embeddings_dict[chunk.chunk_id]
+                        emb_list = emb.tolist() if hasattr(emb, "tolist") else list(emb)
+                        batch_items.append(
+                            ChunkBatchItem(
+                                chunk_id=chunk.chunk_id,
+                                chunk_index=chunk.metadata.get("chunk_index", idx),
+                                text=chunk.text,
+                                pdf_page_start=chunk.page_start,
+                                pdf_page_end=chunk.page_end,
+                                embedding=emb_list,
+                                printed_page_start=chunk.metadata.get("printed_page_start"),
+                                printed_page_end=chunk.metadata.get("printed_page_end"),
+                                is_ocr=chunk.is_ocr,
+                                chunk_type=chunk.chunk_type or "body",
+                                metadata_json=chunk.metadata,
+                            )
+                        )
 
-            # Final: Mark Completed
-            heartbeat.stop()
-            self.job_repo.mark_completed(
-                job_id=job_id,
-                claim_token=claim_token,
-                document_id=doc_id,
-                sha256=sha256,
-            )
+                    # Write in configured chunk_batch_size
+                    for b_start in range(0, len(batch_items), self.chunk_batch_size):
+                        b_slice = batch_items[b_start : b_start + self.chunk_batch_size]
+                        self.worker_procedure_repo.write_chunks_batch(
+                            job_id=job_id,
+                            raw_claim_token=raw_token_str,
+                            version_id=version_id,
+                            chunks=b_slice,
+                        )
+
+                    # Stage 7: Indexing boundary
+                    _update_stage(ProcessingStage.INDEXING)
+
+                    # Final: Complete job via stored procedure
+                    heartbeat.stop()
+                    self.worker_procedure_repo.complete_job(
+                        job_id=job_id,
+                        raw_claim_token=raw_token_str,
+                        expected_chunk_count=len(chunks),
+                        allow_empty=False,
+                    )
+                except ConnectionStorageError as e:
+                    raise RetryableIngestionError(f"Storage connection error during worker procedure persistence: {e}") from e
+                except PersistenceError as e:
+                    raise RetryableIngestionError(f"Worker procedure persistence operation failed: {e}") from e
+                except Exception as e:
+                    raise RetryableIngestionError(f"Unexpected error during worker procedure persistence: {e}") from e
+            else:
+                # Direct repository persistence (file-backed storage / tests)
+                doc_record = DocumentRecord(
+                    document_id=doc_id,
+                    title=job.document_id or doc_id,
+                    source_url=source_url,
+                    sha256=sha256,
+                    pdf_path=str(downloaded_file),
+                    extraction_status="extracted",
+                )
+
+                try:
+                    self.doc_repo.save_document(doc_record)
+                    self.chunk_repo.save_chunks(chunks)
+                    self.chunk_repo.save_embeddings(embeddings_dict, model_name=DEFAULT_MODEL_NAME)
+                except ConnectionStorageError as e:
+                    raise RetryableIngestionError(f"Storage connection error during persistence: {e}") from e
+                except PersistenceError as e:
+                    raise RetryableIngestionError(f"Persistence operation failed: {e}") from e
+                except Exception as e:
+                    raise RetryableIngestionError(f"Unexpected error during persistence: {e}") from e
+
+                # Stage 7: Indexing boundary
+                _update_stage(ProcessingStage.INDEXING)
+
+                # Final: Mark Completed
+                heartbeat.stop()
+                fallback_claim_uuid = claim_token if isinstance(claim_token, uuid.UUID) else uuid.UUID(claim_token)
+                self.job_repo.mark_completed(
+                    job_id=job_id,
+                    claim_token=fallback_claim_uuid,
+                    document_id=doc_id,
+                    sha256=sha256,
+                )
 
             return JobExecutionResult(
                 job_id=job_id,
@@ -378,14 +536,24 @@ class IngestionOrchestrator:
                 "reason": err_msg,
                 "failed_at": datetime.now(timezone.utc).isoformat(),
             }
-            try:
-                self.job_repo.mark_failed(
-                    job_id=job_id,
-                    claim_token=claim_token,
-                    error_details=error_details,
-                )
-            except StaleLeaseError:
-                pass
+            if not heartbeat.lost_lease:
+                try:
+                    if self.worker_procedure_repo is not None:
+                        self.worker_procedure_repo.fail_job(
+                            job_id=job_id,
+                            raw_claim_token=str(claim_token),
+                            error_details=error_details,
+                            is_retryable=False,
+                        )
+                    else:
+                        fallback_claim_uuid = claim_token if isinstance(claim_token, uuid.UUID) else uuid.UUID(claim_token)
+                        self.job_repo.mark_failed(
+                            job_id=job_id,
+                            claim_token=fallback_claim_uuid,
+                            error_details=error_details,
+                        )
+                except Exception as fail_err:
+                    logger.warning(f"Failed to record permanent failure for job {job_id}: {fail_err}")
             return JobExecutionResult(
                 job_id=job_id,
                 status=JobStatus.FAILED,
@@ -408,14 +576,24 @@ class IngestionOrchestrator:
                     "attempts": next_attempt,
                     "failed_at": datetime.now(timezone.utc).isoformat(),
                 }
-                try:
-                    self.job_repo.mark_failed(
-                        job_id=job_id,
-                        claim_token=claim_token,
-                        error_details=error_details,
-                    )
-                except StaleLeaseError:
-                    pass
+                if not heartbeat.lost_lease:
+                    try:
+                        if self.worker_procedure_repo is not None:
+                            self.worker_procedure_repo.fail_job(
+                                job_id=job_id,
+                                raw_claim_token=str(claim_token),
+                                error_details=error_details,
+                                is_retryable=False,
+                            )
+                        else:
+                            fallback_claim_uuid = claim_token if isinstance(claim_token, uuid.UUID) else uuid.UUID(claim_token)
+                            self.job_repo.mark_failed(
+                                job_id=job_id,
+                                claim_token=fallback_claim_uuid,
+                                error_details=error_details,
+                            )
+                    except Exception as fail_err:
+                        logger.warning(f"Failed to record terminal failure for job {job_id}: {fail_err}")
                 return JobExecutionResult(
                     job_id=job_id,
                     status=JobStatus.FAILED,
@@ -432,15 +610,25 @@ class IngestionOrchestrator:
                     "retry_after_seconds": backoff_sec,
                     "scheduled_at": datetime.now(timezone.utc).isoformat(),
                 }
-                try:
-                    self.job_repo.schedule_retry(
-                        job_id=job_id,
-                        claim_token=claim_token,
-                        error_details=error_details,
-                        retry_delay_seconds=backoff_sec,
-                    )
-                except StaleLeaseError:
-                    pass
+                if not heartbeat.lost_lease:
+                    try:
+                        if self.worker_procedure_repo is not None:
+                            self.worker_procedure_repo.fail_job(
+                                job_id=job_id,
+                                raw_claim_token=str(claim_token),
+                                error_details=error_details,
+                                is_retryable=True,
+                            )
+                        else:
+                            fallback_claim_uuid = claim_token if isinstance(claim_token, uuid.UUID) else uuid.UUID(claim_token)
+                            self.job_repo.schedule_retry(
+                                job_id=job_id,
+                                claim_token=fallback_claim_uuid,
+                                error_details=error_details,
+                                retry_delay_seconds=backoff_sec,
+                            )
+                    except Exception as retry_err:
+                        logger.warning(f"Failed to schedule retry for job {job_id}: {retry_err}")
                 return JobExecutionResult(
                     job_id=job_id,
                     status=JobStatus.QUEUED,
@@ -460,8 +648,9 @@ class IngestionOrchestrator:
 
 class IngestionWorker:
     """
-    Background worker that polls IngestionJobRepository for eligible queued jobs,
-    claims them atomically, and executes them through IngestionOrchestrator.
+    Background worker that polls for eligible queued jobs,
+    claims them atomically via PostgresWorkerProcedureRepository (or legacy IngestionJobRepository),
+    and executes them through IngestionOrchestrator.
     Supports clean shutdown (SIGINT/SIGTERM), configurable polling interval,
     and automatic stale job recovery.
     """
@@ -474,6 +663,8 @@ class IngestionWorker:
         lease_timeout_seconds: float = 60.0,
         stale_recovery_interval_seconds: float = 30.0,
         orchestrator: Optional[IngestionOrchestrator] = None,
+        worker_procedure_repo: Optional[PostgresWorkerProcedureRepository] = None,
+        recovery_batch_limit: int = 50,
     ):
         self.factory = repository_factory
         self.job_repo: IngestionJobRepository = repository_factory.get_ingestion_job_repository()
@@ -481,10 +672,24 @@ class IngestionWorker:
         self.poll_interval_seconds = poll_interval_seconds
         self.lease_timeout_seconds = lease_timeout_seconds
         self.stale_recovery_interval_seconds = stale_recovery_interval_seconds
-        self.orchestrator = orchestrator or IngestionOrchestrator(repository_factory)
+        self.recovery_batch_limit = recovery_batch_limit
+
+        if worker_procedure_repo is not None:
+            self.worker_procedure_repo: Optional[PostgresWorkerProcedureRepository] = worker_procedure_repo
+        elif hasattr(repository_factory, "session_factory"):
+            self.worker_procedure_repo = PostgresWorkerProcedureRepository(repository_factory.session_factory)
+        else:
+            self.worker_procedure_repo = None
+
+        self.orchestrator = orchestrator or IngestionOrchestrator(
+            repository_factory=repository_factory,
+            worker_procedure_repo=self.worker_procedure_repo,
+        )
 
         self._stop_event = threading.Event()
         self._last_stale_recovery = 0.0
+        self._active_job_lock = threading.Lock()
+        self._current_job_id: Optional[uuid.UUID] = None
 
     def stop(self) -> None:
         """Signal the worker to gracefully stop polling."""
@@ -494,36 +699,129 @@ class IngestionWorker:
     def is_running(self) -> bool:
         return not self._stop_event.is_set()
 
+    @property
+    def current_job_id(self) -> Optional[uuid.UUID]:
+        """Return the job ID currently being processed, if any."""
+        with self._active_job_lock:
+            return self._current_job_id
+
+    def cleanup_orphan_staging_files(
+        self,
+        staging_dir: Optional[Path] = None,
+        max_age_seconds: float = 3600.0,
+    ) -> int:
+        """
+        Safely remove abandoned staging files left behind after ungraceful process crashes.
+        Strict safety rules:
+        - Only removes files matching the dedicated prefix 'sebi_staging_worker_' and '.pdf.staging' suffix.
+        - Only removes files strictly older than max_age_seconds (default 1 hr, well past max lease time).
+        - Preserves all active files and files belonging to other services/applications.
+        - Idempotent and fails safe (logs warnings without raising).
+        """
+        import tempfile
+        import time
+
+        target_dir = Path(staging_dir) if staging_dir else Path(tempfile.gettempdir())
+        if not target_dir.exists() or not target_dir.is_dir():
+            return 0
+
+        now = time.time()
+        cleaned_count = 0
+        try:
+            for item in target_dir.iterdir():
+                if (
+                    item.is_file()
+                    and item.name.startswith("sebi_staging_worker_")
+                    and item.name.endswith(".pdf.staging")
+                ):
+                    try:
+                        mtime = item.stat().st_mtime
+                        if (now - mtime) >= max_age_seconds:
+                            item.unlink()
+                            cleaned_count += 1
+                            logger.info(f"Cleaned up orphaned worker staging file: {item.name}")
+                    except FileNotFoundError:
+                        # Concurrent deletion or already removed
+                        pass
+                    except Exception as err:
+                        logger.warning(f"Failed to remove orphaned staging file {item.name}: {err}")
+        except Exception as scan_err:
+            logger.warning(f"Failed scanning staging directory {target_dir} for orphaned files: {scan_err}")
+
+        return cleaned_count
+
     def run_once(self) -> Optional[JobExecutionResult]:
         """
         Poll and execute a single job if available.
         Performs stale recovery if the recovery interval has elapsed.
         Returns JobExecutionResult or None if no eligible job was found.
         """
+        if self._stop_event.is_set():
+            return None
+
         now_ts = time.time()
         if now_ts - self._last_stale_recovery >= self.stale_recovery_interval_seconds:
             try:
-                recovered = self.job_repo.recover_stale_jobs(
-                    lease_timeout_seconds=self.lease_timeout_seconds
-                )
+                if self.worker_procedure_repo is not None:
+                    recovered = self.worker_procedure_repo.recover_stale_jobs(
+                        batch_limit=self.recovery_batch_limit
+                    )
+                else:
+                    recovered = self.job_repo.recover_stale_jobs(
+                        lease_timeout_seconds=self.lease_timeout_seconds
+                    )
                 if recovered > 0:
                     logger.info(f"Worker {self.worker_id} recovered {recovered} stale jobs")
             except Exception as e:
                 logger.warning(f"Error during stale job recovery: {e}")
             self._last_stale_recovery = now_ts
 
-        # Attempt to atomically claim next job
-        claim_token = uuid.uuid4()
-        job = self.job_repo.claim_next_job(
-            worker_id=self.worker_id,
-            claim_token=claim_token,
-        )
-
-        if not job:
+        if self._stop_event.is_set():
             return None
 
-        logger.info(f"Worker {self.worker_id} claimed job {job.id} (URL: {job.source_url})")
-        return self.orchestrator.process_job(job=job, claim_token=claim_token)
+        # Attempt to atomically claim next job
+        if self.worker_procedure_repo is not None:
+            claimed = self.worker_procedure_repo.claim_job(
+                instance_id=self.worker_id,
+                lease_duration_seconds=int(self.lease_timeout_seconds),
+            )
+            if not claimed:
+                return None
+
+            job_rec = IngestionJobRecord(
+                id=claimed.job_id,
+                source_url=claimed.source_url,
+                idempotency_key=f"key_{claimed.job_id}",
+                document_id=claimed.document_id,
+                status=JobStatus.PROCESSING,
+                stage=ProcessingStage.PENDING,
+            )
+            logger.info(f"Worker {self.worker_id} claimed job {claimed.job_id} (URL: {claimed.source_url})")
+            with self._active_job_lock:
+                self._current_job_id = claimed.job_id
+            try:
+                return self.orchestrator.process_job(job=job_rec, claim_token=claimed.raw_claim_token)
+            finally:
+                with self._active_job_lock:
+                    self._current_job_id = None
+        else:
+            claim_token = uuid.uuid4()
+            job = self.job_repo.claim_next_job(
+                worker_id=self.worker_id,
+                claim_token=claim_token,
+            )
+
+            if not job:
+                return None
+
+            logger.info(f"Worker {self.worker_id} claimed job {job.id} (URL: {job.source_url})")
+            with self._active_job_lock:
+                self._current_job_id = job.id
+            try:
+                return self.orchestrator.process_job(job=job, claim_token=claim_token)
+            finally:
+                with self._active_job_lock:
+                    self._current_job_id = None
 
     def run_loop(self, max_jobs: Optional[int] = None) -> int:
         """

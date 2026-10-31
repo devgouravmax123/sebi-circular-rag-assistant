@@ -321,7 +321,7 @@ class SecurePDFDownloader:
         temp_dir = self.staging_dir or Path(tempfile.gettempdir())
         temp_dir.mkdir(parents=True, exist_ok=True)
         temp_file = tempfile.NamedTemporaryFile(
-            dir=temp_dir, prefix="sebi_doc_", suffix=".pdf.staging", delete=False
+            dir=temp_dir, prefix="sebi_staging_worker_", suffix=".pdf.staging", delete=False
         )
         staging_path = Path(temp_file.name)
 

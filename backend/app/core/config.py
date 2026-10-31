@@ -25,6 +25,7 @@ class Settings(BaseModel):
     app_name: str = "SEBI Regulatory Intelligence Platform"
     environment: str = Field(default_factory=lambda: os.getenv("APP_ENV", "development"))
     database_url: Optional[str] = Field(default_factory=lambda: os.getenv("DATABASE_URL"))
+    worker_database_url: Optional[str] = Field(default_factory=lambda: os.getenv("WORKER_DATABASE_URL"))
     frontend_origin: str = Field(default_factory=lambda: os.getenv("FRONTEND_ORIGIN", "http://localhost:5173"))
     processed_dir: str = Field(default_factory=lambda: os.getenv("PROCESSED_DIR", "data/processed"))
     indexes_dir: str = Field(default_factory=lambda: os.getenv("INDEXES_DIR", "data/indexes"))
@@ -72,6 +73,11 @@ class Settings(BaseModel):
         return bool(self.database_url and self.database_url.strip())
 
     @property
+    def is_worker_database_enabled(self) -> bool:
+        """Returns True only when a non-empty, non-whitespace WORKER_DATABASE_URL is configured."""
+        return bool(self.worker_database_url and self.worker_database_url.strip())
+
+    @property
     def allowed_cors_origins(self) -> list[str]:
         """
         Parses allowed frontend origins safely.
@@ -105,6 +111,21 @@ class Settings(BaseModel):
         except Exception:
             return "[malformed_or_unparseable_url]"
 
+    @property
+    def sanitized_worker_database_url(self) -> Optional[str]:
+        """
+        Returns worker database URL with password masked for safe diagnostic logging.
+        Never logs real credentials.
+        """
+        if not self.worker_database_url:
+            return None
+        try:
+            from sqlalchemy.engine import make_url
+            url = make_url(self.worker_database_url)
+            return url.render_as_string(hide_password=True)
+        except Exception:
+            return "[malformed_or_unparseable_url]"
+
     from pydantic import model_validator
 
     @model_validator(mode="after")
@@ -116,7 +137,7 @@ class Settings(BaseModel):
                 )
         return self
 
-    @field_validator("database_url")
+    @field_validator("database_url", "worker_database_url")
     @classmethod
     def validate_database_url(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
