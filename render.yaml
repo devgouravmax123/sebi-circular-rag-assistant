@@ -1,0 +1,78 @@
+services:
+  - type: web
+    name: sebi-rag-api-staging
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.14
+      - key: APP_ENV
+        value: staging
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: ADMIN_API_KEY
+        sync: false
+      - key: AUTH_SECRET_KEY
+        sync: false
+      - key: SYNTHESIS_PROVIDER
+        value: mock
+      - key: RETRIEVAL_MODE
+        value: hybrid
+      - key: STORAGE_PROVIDER
+        value: b2
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_BUCKET_NAME
+        sync: false
+      - key: S3_REGION_NAME
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: PROCESSED_DIR
+        value: data/processed
+      - key: INDEXES_DIR
+        value: data/indexes
+      - key: UPLOADS_DIR
+        value: data/uploads
+
+  - type: worker
+    name: sebi-rag-worker-staging
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.ingestion.worker
+    autoDeploy: false
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.14
+      - key: APP_ENV
+        value: staging
+      - key: WORKER_DATABASE_URL
+        sync: false
+      - key: STORAGE_PROVIDER
+        value: b2
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_BUCKET_NAME
+        sync: false
+      - key: S3_REGION_NAME
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: PROCESSED_DIR
+        value: data/processed
+      - key: INDEXES_DIR
+        value: data/indexes
+      - key: UPLOADS_DIR
+        value: data/uploads
+
