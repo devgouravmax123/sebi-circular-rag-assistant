@@ -18,6 +18,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
 RUN groupadd -g 10001 sebi && \
     useradd -u 10001 -g sebi -m -s /bin/bash sebi
 
+# Create data directories with permissions
+RUN mkdir -p /app/data/processed /app/data/indexes /app/data/uploads && \
+    chown -R sebi:sebi /app/data
+
 # Copy application source code
 COPY --chown=sebi:sebi backend/app /app/app
 
