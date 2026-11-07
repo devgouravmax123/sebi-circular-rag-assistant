@@ -1,10 +1,15 @@
 # Source-Backed Relationship Audit: SEBI CSCRF Corpus
 
 > [!NOTE]
-> **Authoritative SEBI CSCRF Regression Fixture:**
-> This document is the verified evidentiary ledger for the 9 regulatory relationships connecting the 5 circulars in the `sebi_cscrf` reference collection. Its relationships, verbatim quotations, and temporal analyses are permanent regression benchmarks.
+> **Specialized Regulatory Collection & Permanent Regression Baseline:**
+> This document constitutes the verified evidentiary ledger for the 9 regulatory relationships connecting the 5 circulars in the `sebi_cscrf` system demonstration collection. Its verbatim quotations, provision scopes, and temporal analyses serve as the **permanent regression anchor** for the platform's regulatory reasoning engine.
 >
-> Generalization of the platform does **not** imply that other collections require supersession graphs or publication dates. Non-regulatory collections (e.g. technical manuals, organizational standards) operate without amendment graphs under a `PassthroughPolicy`.
+> **Decoupled Grounding & Generalization Boundary:**
+> 1. **SEBI CSCRF is a Specialized Collection:** The rigorous supersession tracking, clause-level amendments, and temporal validity rules documented here are specific to regulatory circulars. They remain 100% active and enforced for the `sebi_cscrf` collection.
+> 2. **General Collections Use a Separate Policy:** User-created and general document collections operate under `PassthroughPolicy` (defined in `backend/app/grounding/relationship_policy.py`). General collections evaluate candidate relevance, factual grounding, and citation overlap without requiring amendment chains or directed graph modeling.
+> 3. **Non-Indiscriminate Application:** Regulatory circular rules (`AMENDS`, `RESCINDS`, circular reference parsing) must **never be applied indiscriminately** to arbitrary PDF uploads or unrelated document datasets.
+
+---
 
 ## 1. Audit Overview & Methodology
 
@@ -110,9 +115,6 @@ We inspected the current graph schemas in [`backend/app/schemas/graph.py`](file:
 - **Printed Page:** Page 2 of 2
 - **Verbatim Evidence Quotation:**
   > *"2. SEBI has received multiple requests for CSCRF compliance timelines extension to ensure ease of compliance for them. Therefore, it has been decided to extend the compliance timelines by two (2) months, i.e., till August 31, 2025 to all REs, except Market Infrastructure Institutions (MIIs), KYC Registration Agencies (KRAs), and Qualified Registrars to an Issue and Share Transfer Agents (QRTAs)."*
-- **Critical Finding on Affected Categories & Extension Dates:**
-  - *Correction of Premise:* Earlier audit drafts incorrectly stated that `2025/96` extended deadlines from June 30, 2025 to July 31, 2025 for Qualified and Mid-size REs.
-  - *Source Verification:* The official source text in `CSCRF_2025_096.pdf` (Page 2, Para 2) explicitly states an extension by **two (2) months, i.e., till August 31, 2025** to **all REs, except Market Infrastructure Institutions (MIIs), KYC Registration Agencies (KRAs), and Qualified Registrars to an Issue and Share Transfer Agents (QRTAs)**.
 - **Effective Date:** 2025-06-30 (Para 4: *"The provisions of this Circular shall come into force with immediate effect."*)
 - **Audit Verification Status:** `verified`
 

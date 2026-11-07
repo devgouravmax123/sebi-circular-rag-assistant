@@ -1,152 +1,142 @@
 # Data Pipeline & Ingestion Architecture
 
-## 1. Overview & Ingestion Lifecycle
+## 1. Overview: The Generalized Ingestion Lifecycle
 
-The platform uses a deterministic, multi-stage ingestion pipeline to transform unstructured official regulatory PDFs into structured, provenance-annotated, and searchable text chunks.
+The platform uses a deterministic, multi-stage ingestion pipeline to transform unstructured PDF documents into structured, provenance-annotated, searchable text chunks and index snapshots. 
+
+While the pipeline originally supported only static SEBI circular manifests, it is now fully generalized: users can upload arbitrary PDF documents from the web interface, which are stored in durable object storage, processed asynchronously through a durable PostgreSQL job queue, indexed, and atomically published for search.
+
+```mermaid
+flowchart TD
+    A["1. User Uploads PDF (Web UI)"] --> B["2. Security & Magic Byte Validation (%PDF-, <30MB)"]
+    B --> C["3. SHA-256 Deduplication & B2 Object Storage Persistence"]
+    C --> D["4. Durable Ingestion Job Enqueueing (Neon PostgreSQL, status='queued')"]
+    D --> E["5. Atomic Worker Claim (FOR UPDATE SKIP LOCKED / app.claim_ingestion_job)"]
+    E --> F["6. PyMuPDF Text & Layout Extraction + Quality Density Audit"]
+    F --> G["7. Deterministic Sliding-Window Chunking (350w/40o) with Dual-Page Provenance"]
+    G --> H["8. Procedural Chunk & Vector Persistence (app.worker_write_chunks_batch)"]
+    H --> I["9. Index Snapshot Assembly & Validation (IndexPublisher)"]
+    I --> J["10. Atomic Active Pointer Promotion (with B2 Advisory Lock)"]
+    J --> K["11. Hot-Reload & Query Readiness in RetrievalService"]
+```
+
+---
+
+## 2. Ingestion Stages & State Machine
+
+Every document ingestion workflow is tracked as a durable state machine in PostgreSQL table `ingestion_jobs` ([`backend/app/persistence/models.py`](file:///c:/Users/Raja/OneDrive/Desktop/sebi-rag-assistant/backend/app/persistence/models.py)):
 
 ```text
-  [Official PDF File]
-         |
-         v
-  1. Registration & Path Security Validation (traversal & extension checks)
-         |
-         v
-  2. SHA-256 Checksum Computation & Deduplication
-         |
-         v
-  3. Text Extraction & Quality Auditing (PyMuPDF: OK, SPARSE, EMPTY)
-         |
-         v
-  4. Provenance-Preserving Sliding-Window Chunking (350 words, 40 overlap)
-         |
-         v
-  5. Processed JSON Artifact Persistence (document, pages, chunks, manifest)
-         |
-         v
-  6. Hybrid Index Build (BM25 token matrix & BGE-Small dense vectors)
-         |
-         v
-  7. Atomic Index Snapshot Publication (data/indexes/snapshots/{snapshot_id}/)
++---------------------------------------------------------------------------------------+
+| Ingestion Job Statuses:                                                               |
+|   - queued: Waiting for available worker claim                                         |
+|   - processing: Claimed and actively being processed under lease                       |
+|   - completed: Successfully extracted, chunked, indexed, and snapshot published       |
+|   - failed: Errored out after retries or fatal parse exception                         |
++---------------------------------------------------------------------------------------+
+| Lifecycle Stages:                                                                     |
+|   pending -> parsing -> chunking -> embedding -> persisting -> indexing -> finished  |
++---------------------------------------------------------------------------------------+
 ```
 
-The 5-document SEBI CSCRF circular corpus (`sebi_cscrf_2024_113`, `2025_045`, `2025_060`, `2025_096`, `2025_119`), comprising 168 chunks and 9 verified graph edges, represents the validated **initial reference collection and permanent regression anchor**.
+### 2.1. Stage Descriptions
+1. **`pending` (`status="queued"`):** File stream validated, SHA-256 recorded, uploaded to Backblaze B2, and inserted into `ingestion_jobs`.
+2. **`parsing` (`status="processing"`):** Worker claims job, opens temporary streaming handle from B2, and executes PyMuPDF page-by-page extraction.
+3. **`chunking`:** Extracted text is segmented into deterministic 350-word chunks with 40-word overlap, capturing physical PDF page and printed page strings.
+4. **`embedding`:** In dense or hybrid modes, vectors are computed. In lexical-only mode, token matrices are generated.
+5. **`persisting`:** Worker invokes `app.worker_write_chunks_batch` to commit chunk records and vector arrays to PostgreSQL.
+6. **`indexing`:** Search indexes (BM25 inverted token catalog, vector matrices) and metadata manifests are compiled into an isolated staging directory.
+7. **`finished` (`status="completed"`):** Authoritative active pointer is atomically updated in B2 and PostgreSQL; worker lease is cleared; completion timestamp is recorded.
 
 ---
 
-## 2. Ingestion Connectors & Source Integrity Rules (`IMPLEMENTED AND VERIFIED`)
+## 3. Worker Procedures, Leases & Concurrency Control
 
-1. **Immutable Cryptographic Hash:** Every PDF is hashed with SHA-256 upon arrival. If an active document with an identical hash exists, duplicate re-ingestion is short-circuited.
-2. **Dual-Page Provenance:** Every chunk tracks both its physical 1-indexed PDF page (`page_start: 3`) and the document's printed page identifier (`printed_page_start: "Page 3 of 8"`).
-3. **Extraction Quality Auditing:** Every extracted page is classified by text density:
-   - `OK`: Extracted character count $\ge 200$.
-   - `SPARSE`: $1 \le \text{characters} < 200$ (flagged for review).
-   - `EMPTY`: Zero characters extracted (flagged as unreadable or image-only).
-4. **No Inference of Missing Attributes:** Missing publication or effective dates remain `null`. An issue date is never silently substituted as an effective date.
-5. **Path Traversal Protection:** All file paths are strictly resolved relative to approved project data roots. Attempts to access parent directories (`../`) or absolute paths outside the data root are rejected.
+Worker execution is strictly decoupled from the web API and secured through database procedures:
 
----
-
-## 3. Phase 1: Manifest-Driven Local Ingestion Design
-
-In **Phase 1**, static Python registries (`backend/app/ingestion/corpus_registry.py`) are replaced with declarative JSON/YAML manifests stored in `data/manifests/`. This allows adding new documents or collections without modifying application source code.
-
-### 3.1. Proposed Manifest Schema (`data/manifests/{collection_id}.json`)
-```json
-{
-  "collection_id": "sebi_cscrf",
-  "name": "SEBI Cybersecurity and Cyber Resilience Framework",
-  "description": "Official master circulars and technical revisions for CSCRF compliance.",
-  "regulator": "SEBI",
-  "domain": "CSCRF",
-  "enforce_regulatory_graph": true,
-  "documents": [
-    {
-      "document_id": "sebi_cscrf_2024_113",
-      "title": "Cybersecurity and Cyber Resilience Framework (CSCRF) for SEBI Regulated Entities",
-      "pdf_path": "data/raw/CSCRF_2024_113.pdf",
-      "circular_number": "SEBI/HO/ITD/ITD-PoD-1/P/CIR/2024/113",
-      "issue_date": "2024-08-20",
-      "effective_date": "2025-01-01",
-      "document_type": "master_framework",
-      "source_url": "https://www.sebi.gov.in/legal/circulars/aug-2024/cybersecurity-and-cyber-resilience-framework-cscrf-for-sebi-regulated-entities-res-_85973.html"
-    },
-    {
-      "document_id": "sebi_cscrf_2025_045",
-      "title": "Extension of compliance timelines for CSCRF",
-      "pdf_path": "data/raw/CSCRF_2025_045.pdf",
-      "circular_number": "SEBI/HO/ITD-1/ITD_CSC_EXT/P/CIR/2025/45",
-      "issue_date": "2025-03-28",
-      "effective_date": "2025-03-28",
-      "document_type": "extension_circular",
-      "source_url": "https://www.sebi.gov.in/legal/circulars/mar-2025/extension-of-compliance-timelines-for-cscrf_93155.html"
-    }
-  ]
-}
-```
-
-### 3.2. Manifest Validation Contract
-1. **Schema Validation:** Mandatory fields (`collection_id`, `document_id`, `title`, `pdf_path`) must be non-empty strings.
-2. **Path Containment:** `pdf_path` must resolve strictly within the project's authorized raw data root (`data/raw/`). Path traversal (`../`) is blocked.
-3. **Duplicate Prevention:** Document IDs within a manifest (and across active manifests) must be globally unique.
-4. **Graceful Failure:** If a single PDF in a manifest is unreadable or malformed, the ingestion run logs the error to an execution report, leaves existing indexed documents untouched, and fails safely.
-5. **Zero Database Requirement:** Manifest-driven ingestion writes processed JSON files to `data/processed/{doc_id}/` and triggers index publication to generate snapshot files locally without requiring a database connection.
-
-### 3.3. CLI Ingestion Execution & Path Resolution
-The ingestion CLI module resides at `backend/app/ingestion/cli.py`. Because the application package root is `backend/app/`, invoking `python -m app.ingestion.cli` requires setting the Python module search path.
-
-#### Supported CLI Ingestion Commands
-- **Option 1 (From repository root in PowerShell):**
-  ```powershell
-  $env:PYTHONPATH="backend"; .\.venv\Scripts\python.exe -m app.ingestion.cli ingest-manifest --manifest data/manifests/sebi_cscrf.json
-  ```
-- **Option 2 (From `backend/` directory in PowerShell):**
-  ```powershell
-  cd backend
-  ..\.venv\Scripts\python.exe -m app.ingestion.cli ingest-manifest --manifest ../data/manifests/sebi_cscrf.json
-  ```
-
-#### Path Resolution Distinction
-- **Manifest Argument Path (`--manifest <path>`):** Resolved relative to the **current working directory** from which the command is executed.
-- **Document PDF Paths (`pdf_path` inside manifest):** Resolved relative to the **repository root** (e.g., `"data/raw/CSCRF_2024_113.pdf"` resolves to `<repo_root>/data/raw/CSCRF_2024_113.pdf`), ensuring manifest definitions remain portable regardless of execution directory.
+1. **Atomic Job Claiming (`app.claim_ingestion_job`):**
+   - Uses `FOR UPDATE SKIP LOCKED` to prevent lock contention among concurrent workers.
+   - Generates a cryptographically random 256-bit raw claim token returned only to the claiming worker session.
+   - Computes and stores only the SHA-256 digest (`claim_token_hash`) in `ingestion_jobs`.
+   - Sets `lease_expires_at = clock_timestamp() + lease_duration` (default 60s).
+2. **Heartbeat Maintenance (`app.heartbeat_ingestion_job`):**
+   - Long-running PDF processing jobs refresh `lease_expires_at` periodically to prevent premature reassignment.
+3. **Stale Lease Recovery (`app.recover_stale_jobs`):**
+   - If a worker crashes or loses network connectivity, jobs with expired leases are automatically returned to `queued` status if `attempt_count < max_attempts` (default 3), or transitioned to `failed`.
+4. **Idempotency & Deduplication:**
+   - Uploading an identical document (matching SHA-256) within the same workspace and collection detects the existing job. Redundant uploads are cleaned up immediately, and the caller receives the existing job status without duplicate re-indexing.
+5. **Backblaze B2 Pointer Promotion Lock:**
+   - Because Backblaze B2 does not support S3 conditional `PutObject` (`If-None-Match: *`), updating `active_snapshot.json` uses a PostgreSQL advisory lock (`pg_try_advisory_xact_lock`). If another worker holds the promotion lock, the candidate worker retries with exponential backoff.
 
 ---
 
-## 4. Chunking Strategy & Determinism (`IMPLEMENTED AND VERIFIED`)
+## 4. Text Extraction & Chunking Strategy
 
-- **Word-Level Sliding Window:** Default chunk size is **350 words** with an overlap of **40 words** (`backend/app/ingestion/chunker.py:TextChunker`).
-- **Stable Chunk Identifiers:** Chunk IDs are deterministically generated as:
+### 4.1. Extraction Quality Density Auditing
+Using PyMuPDF ([`backend/app/ingestion/extractor.py`](file:///c:/Users/Raja/OneDrive/Desktop/sebi-rag-assistant/backend/app/ingestion/extractor.py)), each page is classified by extracted character density:
+- **`OK`:** Character count $\ge 200$. Clean, high-density selectable text.
+- **`SPARSE`:** $1 \le \text{characters} < 200$. Flagged for potential tables, scanned fragments, or title pages.
+- **`EMPTY`:** 0 characters extracted. Flagged as image-only or unreadable.
+
+### 4.2. Deterministic Sliding-Window Chunking
+Implemented in [`backend/app/ingestion/chunker.py`](file:///c:/Users/Raja/OneDrive/Desktop/sebi-rag-assistant/backend/app/ingestion/chunker.py):
+- **Window Size:** **350 words** with **40-word overlap**.
+- **Stable Identifiers:**
   $$\text{chunk\_id} = \{\text{document\_id}\}\_\text{p}\{\text{page\_start}\}\_\{\text{chunk\_idx}\}$$
-  Example: `sebi_cscrf_2024_113_p66_56`.
-- **Dual-Page Annotation:** If a chunk spans across page boundaries (e.g. from page 66 to 67), both `page_start` and `page_end` are recorded alongside the corresponding printed page numbers.
-- **Section & Header Retention:** Paragraph breaks and section headings are retained in chunk text to preserve semantic clarity for embedding models.
+  Example: `doc_9a8b7c_p4_2`.
+- **Dual-Page Provenance:** Every chunk tracks both its physical 1-indexed PDF page (`page_start`, `page_end`) and document printed page strings (`printed_page_start`, `printed_page_end`).
 
 ---
 
-## 5. Regulatory Relationships & Temporal Resolution
+## 5. Search Index Snapshot Publication & B2 Hydration
 
-### 5.1. Direction Standard
-For collections enforcing regulatory relationships, edges are strictly directed:
-$$\text{source\_document\_id (acting / newer circular)} \xrightarrow{\text{RELATIONSHIP}} \text{target\_document\_id (affected / older circular)}$$
+To prevent queries from reading partially written indexes, search indexes are published as **immutable snapshot bundles** ([`backend/app/retrieval/publisher.py`](file:///c:/Users/Raja/OneDrive/Desktop/sebi-rag-assistant/backend/app/retrieval/publisher.py)):
 
-### 5.2. Edge Types & Supersession Semantics
-- `AMENDS`: Modifies specific clauses or requirements of an earlier circular (`is_supersession_inducing = True`).
-- `RESCINDS`: Repeals an earlier circular in whole or in part (`is_supersession_inducing = True`).
-- `REFERENCES`: Informational background citation or statutory preamble (`is_supersession_inducing = False`). Does not alter legal currency.
+### 5.1. The 5 Immutable Bundle Artifacts
+Every published snapshot directory (`indexes/{collection_id}/snapshots/{snapshot_id}/`) contains:
+1. `chunks.json`: Complete chunk records with full text and dual-page provenance.
+2. `documents.json`: Parent document metadata (titles, circular numbers, SHA-256 hashes).
+3. `dense_index.npy` (or `bm25_index.pkl`): Embedding matrix or inverted BM25 token tables.
+4. `dense_index_meta.json`: Embedding model dimensions and normalization parameters.
+5. `manifest.json`: Cryptographic manifest containing SHA-256 hashes of all bundle artifacts.
 
-### 5.3. Provision Scoping Rule
-When an edge specifies `scope = "partial"`, only the specific clauses listed in `affected_provisions` (e.g. `["Section 2.1", "Clause 6.11"]`) are marked as amended or superseded. The remainder of the target document continues in full legal effect.
+### 5.2. Atomic Pointer Swapping
+The authoritative active pointer is maintained at:
+- Remote: `indexes/{collection_id}/active_snapshot.json`
+- Local: `data/indexes/{collection_id}/active_snapshot.json`
+
+Only after all 5 artifacts are verified against the manifest is the active pointer rewritten.
+
+### 5.3. Cold-Start Hydration from Backblaze B2
+When a Render Free container spins up after sleep:
+1. `RetrievalService` checks if the local cache has the active snapshot.
+2. If absent or stale, it downloads the bundle into an isolated staging folder (`_staging_hydrate_*`).
+3. Verifies artifact checksums against `manifest.json`.
+4. Atomically renames the directory to `snapshots/{snapshot_id}/` and updates the local pointer.
 
 ---
 
-## 6. Persistence Tier: Local Default vs. Relational Option
+## 6. The $0/Month Ingestion Worker Execution Strategy
 
-### Active Production Default: Local Snapshot Files (`IMPLEMENTED AND VERIFIED`)
-The active runtime stores and serves indexes entirely from local files:
-- `data/processed/{doc_id}/`: Stores `document.json`, `pages.json`, `chunks.json`, `manifest.json`.
-- `data/indexes/snapshots/{snapshot_id}/`: Stores `chunks.json`, `bm25_index.pkl`, `dense_index.npy`, and `manifest.json`.
-- Memory Footprint: $< 100\text{ MB}$ RAM for pilot corpus; sub-10ms retrieval latency; zero cloud database cost.
+### Current Status: OPEN Architectural Decision
+In local testing, the ingestion worker runs via `python -m app.ingestion.worker` ([`backend/app/ingestion/worker.py`](file:///c:/Users/Raja/OneDrive/Desktop/sebi-rag-assistant/backend/app/ingestion/worker.py)). 
 
-### Relational Database Option (`IMPLEMENTED, VERIFICATION INCOMPLETE - Phase 3 Conditional`)
-SQLAlchemy models (`backend/app/persistence/models.py`) and Alembic migration `0001_initial_persistence_foundation` define tables for `regulators`, `regulatory_domains`, `regulatory_documents`, `document_versions`, `provisions`, `chunks`, `chunk_embeddings`, `regulatory_edges`, and `ingestion_jobs`.
-- **Status:** Validated in isolated persistence tests (`test_persistence_parity.py`), but **not** the active runtime default.
-- **Phase 3 Evolution:** Relational persistence is deferred to Phase 3 and made conditional on demonstrated operational need (e.g., concurrent multi-user write requirements or durable query audit logging). Vector storage remains in local snapshot files.
+However, **Render Background Workers are a paid service ($7+/month)** and cannot run on the free tier. Running heavy PDF extraction and PyTorch embeddings inside Render Free's 512 MB Web Service container risks Out-Of-Memory (OOM) kills.
+
+To maintain a **$0/month hosting budget**, the worker execution strategy evaluates three feasible, genuinely free alternatives:
+
+| Alternative | Execution Mechanism | Pros | Cons / Constraints | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **Option 1: External GitHub Actions Runner** | Scheduled workflow (`cron: "*/10 * * * *"`) or webhook trigger | Free (2,000 min/mo), 7 GB RAM, isolated compute, zero Render memory impact. | Delayed start latency (~30–60s for runner spin-up); requires GitHub repository secret setup. | **Under Evaluation** |
+| **Option 2: Local Operator CLI Daemon** | Operator runs `python -m app.ingestion.worker` on local machine | Zero cloud cost, instantaneous processing, full access to local CPU/RAM. | Requires operator machine to remain online while processing jobs; not fully autonomous. | **Operational Default for Development** |
+| **Option 3: Bounded In-Process Worker / Endpoint** | Bounded async task or administrative `/process-next` trigger inside API | Autonomous, zero external runner needed. | Must bound PDF processing to stay under 512 MB RAM; risk of container restart during large PDF chunking. | **Under Evaluation (Lexical Only)** |
+
+---
+
+## 7. Specialized SEBI Regulatory Ingestion Pipeline (Baseline Preservation)
+
+The original SEBI CSCRF circular corpus (`sebi_cscrf_2024_113`, `2025_045`, `2025_060`, `2025_096`, `2025_119`) remains preserved as a specialized collection pipeline:
+- **Declarative Manifest:** Defined in `data/manifests/sebi_cscrf.json`.
+- **Regulatory Graph Edges:** Contains 9 verified regulatory relationships (`AMENDS`, `RESCINDS`, `REFERENCES`) with clause-specific provision scopes (`affected_provisions`).
+- **Policy Enforcement:** Bound to `RegulatorySupersessionPolicy`, enabling multi-hop temporal traversals.
+- **Permanent Regression Anchor:** Pinned to snapshot `snap_20261011_104512_23a014` and verified against the 32 golden queries in `evaluation/data/gold_evaluation_dataset.json`.

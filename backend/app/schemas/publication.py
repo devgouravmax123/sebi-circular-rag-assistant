@@ -40,6 +40,10 @@ class ActiveSnapshotPointer(BaseModel):
     manifest_checksum: str
     total_documents: int
     total_chunks: int
+    predecessor_snapshot_id: Optional[str] = Field(
+        default=None,
+        description="Authoritative predecessor snapshot ID (N-1) active immediately prior to this snapshot.",
+    )
 
 
 class PublicationResult(BaseModel):

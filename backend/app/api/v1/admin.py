@@ -5,6 +5,7 @@ Path prefix: /api/v1/admin
 from datetime import datetime, timezone
 import hmac
 import logging
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 import uuid
 
@@ -29,7 +30,9 @@ from app.schemas.admin import (
     JobStatusResponse,
     JobListResponse,
     RetryJobResponse,
+    CancelJobResponse,
 )
+from app.schemas.collection_ingestion import sanitize_error_details
 from app.schemas.graph import (
     GraphEdge,
     RelationshipType,
@@ -133,7 +136,7 @@ def _to_status_response(
         max_attempts=job.max_attempts,
         heartbeat_at=job.heartbeat_at,
         next_retry_at=job.next_retry_at,
-        error_details=job.error_details,
+        error_details=sanitize_error_details(job.error_details, getattr(job, 'collection_id', None)),
         created_at=job.created_at,
         started_at=job.started_at,
         completed_at=job.completed_at,
@@ -177,12 +180,17 @@ def register_document_for_ingestion(
                 created_at=existing_job.created_at,
             )
 
+        system_ws = uuid.UUID("00000000-0000-0000-0000-000000000000")
+        doc_id = payload.document_id or (Path(payload.source_url).stem if payload.source_url else None) or f"doc_{uuid.uuid4().hex[:12]}"
+
         # Create new queued job
         job = job_repo.create_job(
             source_url=payload.source_url,
             idempotency_key=payload.idempotency_key,
-            document_id=payload.document_id,
+            document_id=doc_id,
             max_attempts=payload.max_attempts,
+            workspace_id=system_ws,
+            collection_id="sebi_cscrf",
         )
 
         return RegisterDocumentResponse(
@@ -327,38 +335,7 @@ def retry_failed_job(
                 ),
             )
 
-        # Reset job to queued with claim lease cleared and retry time set to immediate
-        now = datetime.now(timezone.utc)
-        if hasattr(job_repo, "session_factory"):
-            # PostgreSQL implementation
-            from sqlalchemy import select
-            from app.persistence.models import IngestionJobModel
-            with job_repo.session_factory() as session:
-                with session.begin():
-                    m = session.execute(
-                        select(IngestionJobModel).where(IngestionJobModel.id == job_id)
-                    ).scalar_one()
-                    m.status = JobStatus.QUEUED.value
-                    m.stage = ProcessingStage.PENDING.value
-                    m.claim_token = None
-                    m.claim_worker_id = None
-                    m.next_retry_at = now
-                    session.flush()
-        else:
-            # File repo implementation
-            from app.persistence.file_repo import FileIngestionJobRepository
-            if isinstance(job_repo, FileIngestionJobRepository):
-                jobs = job_repo._load_jobs()
-                data = jobs.get(str(job_id))
-                if data:
-                    data["status"] = JobStatus.QUEUED.value
-                    data["stage"] = ProcessingStage.PENDING.value
-                    data["claim_token"] = None
-                    data["claim_worker_id"] = None
-                    data["next_retry_at"] = now.isoformat()
-                    job_repo._save_jobs(jobs)
-
-        updated = job_repo.get_job(job_id)
+        updated = job_repo.retry_job(job_id)
         if not updated:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -373,11 +350,74 @@ def retry_failed_job(
         )
     except HTTPException:
         raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     except Exception as e:
         logger.error(f"Unexpected error in retry_failed_job: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal error scheduling job retry.",
+        )
+
+
+@router.post(
+    "/jobs/{job_id}/cancel",
+    response_model=CancelJobResponse,
+)
+def cancel_job(
+    job_id: uuid.UUID,
+    reason: str = Query("cancelled_by_admin", description="Reason for cancellation"),
+    _admin_auth: str = Depends(verify_admin_key),
+    factory: StorageRepositoryFactory = Depends(get_repository_factory),
+) -> CancelJobResponse:
+    """
+    Cancel an active, queued, or running ingestion job.
+    Transitions non-terminal jobs to 'failed' status with cancellation details.
+    """
+    job_repo = factory.get_ingestion_job_repository()
+    try:
+        job = job_repo.get_job(job_id)
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Ingestion job '{job_id}' not found.",
+            )
+
+        if job.is_terminal:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Job '{job_id}' is already in terminal status '{job.status.value}' "
+                    "and cannot be cancelled."
+                ),
+            )
+
+        updated = job_repo.cancel_job(job_id, reason=reason)
+        if not updated:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Job '{job_id}' not found after cancellation update.",
+            )
+        return CancelJobResponse(
+            job_id=job_id,
+            status=updated.status,
+            message=f"Job successfully cancelled (reason: {reason}).",
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in cancel_job: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal error cancelling job.",
         )
 
 

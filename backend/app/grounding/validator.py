@@ -46,12 +46,23 @@ class CitationValidator:
         self.processed_dir = Path(processed_dir)
         self.indexes_dir = Path(indexes_dir)
         self.collection_id = collection_id.strip() if collection_id else None
-        self.graph = graph_collection if graph_collection is not None else create_verified_cscrf_graph()
+        self._graph = graph_collection
         self.corpus_chunks: Dict[str, ChunkRecord] = corpus_chunks if corpus_chunks is not None else {}
         self.corpus_documents: Dict[str, DocumentRecord] = corpus_documents if corpus_documents is not None else {}
 
         if not self.corpus_chunks or not self.corpus_documents:
             self._load_corpus()
+
+    @property
+    def graph(self) -> GraphEdgeCollection:
+        """Lazily load graph dataset only when explicitly accessed (e.g. during claim validation)."""
+        if self._graph is None:
+            self._graph = create_verified_cscrf_graph()
+        return self._graph
+
+    @graph.setter
+    def graph(self, val: Optional[GraphEdgeCollection]) -> None:
+        self._graph = val
 
     def _load_corpus(self) -> None:
         """

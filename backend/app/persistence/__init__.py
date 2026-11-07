@@ -7,6 +7,16 @@ from app.core.config import get_settings
 from app.persistence.interfaces import StorageRepositoryFactory
 from app.persistence.file_repo import FileStorageRepositoryFactory
 
+# Lazy / conditional import helper or direct alias
+try:
+    from app.persistence.postgres import (
+        PostgresStorageRepositoryFactory,
+        PostgresStorageAdapter,
+    )
+except ImportError:
+    PostgresStorageRepositoryFactory = None  # type: ignore[assignment, misc]
+    PostgresStorageAdapter = None  # type: ignore[assignment, misc]
+
 
 _factory: Optional[StorageRepositoryFactory] = None
 
@@ -26,3 +36,12 @@ def get_storage_factory(force_refresh: bool = False) -> StorageRepositoryFactory
         else:
             _factory = FileStorageRepositoryFactory(processed_dir=settings.processed_dir)
     return _factory
+
+
+__all__ = [
+    "StorageRepositoryFactory",
+    "FileStorageRepositoryFactory",
+    "PostgresStorageRepositoryFactory",
+    "PostgresStorageAdapter",
+    "get_storage_factory",
+]

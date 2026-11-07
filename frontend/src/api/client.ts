@@ -1,15 +1,77 @@
 /**
- * Robust API Client for SEBI CSCRF Regulatory Intelligence Assistant.
- * Connects to POST /api/v1/query and GET /health.
+ * Robust API Client for SEBI CSCRF Regulatory Intelligence Assistant & Multi-Tenant SaaS.
+ * Connects to:
+ * - Auth endpoints: /api/v1/auth/signup, /api/v1/auth/login, /api/v1/auth/logout, /api/v1/auth/me
+ * - Workspace endpoints: /api/v1/workspaces, /api/v1/workspaces/{id}/members, /api/v1/workspaces/{id}/collections
+ * - Collections: /api/v1/collections
+ * - Query: /api/v1/query
+ * - History: /api/v1/query-history, /api/v1/query-history/{id}
+ * - Health: /health
  */
 
 import type { QueryRequest, QueryResponse, QueryError, CollectionSummary } from '../types/query';
+import type { User, AuthResponse, LoginCredentials, SignupCredentials } from '../types/auth';
+import type {
+  Workspace,
+  WorkspaceListResponse,
+  WorkspaceCreateInput,
+  WorkspaceMember,
+  MemberListResponse,
+  MemberAddInput,
+  WorkspaceCollection,
+  WorkspaceCollectionListResponse,
+  WorkspaceCollectionCreateInput,
+  CollectionIngestionJob,
+  CollectionIngestionJobListResponse,
+  CollectionDocument,
+  CollectionDocumentListResponse,
+  DocumentUploadResponse,
+} from '../types/workspace';
+import type { QueryHistoryDetail, QueryHistoryListResponse } from '../types/history';
 
-export const API_BASE_URL: string =
-  (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, '') ||
-  'http://127.0.0.1:8000';
+const rawBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+export const API_BASE_URL: string = rawBaseUrl
+  ? rawBaseUrl.replace(/\/+$/, '').replace(/\/api\/v1$/, '')
+  : 'http://127.0.0.1:8000';
 
 const DEFAULT_TIMEOUT_MS = 35000;
+
+/**
+ * Builds request headers, attaching Authorization Bearer header only when a valid token is provided.
+ */
+function buildHeaders(token?: string | null, additionalHeaders: Record<string, string> = {}): HeadersInit {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    ...additionalHeaders,
+  };
+  if (token && token.trim().length > 0) {
+    headers['Authorization'] = `Bearer ${token.trim()}`;
+  }
+  return headers;
+}
+
+/**
+ * Parses and formats API error details from HTTP response without leaking stack traces.
+ */
+async function parseErrorResponse(response: Response, defaultMessage: string): Promise<Error> {
+  let detailMsg = `HTTP ${response.status}: ${response.statusText}`;
+  try {
+    const errorData = await response.json();
+    if (typeof errorData?.detail === 'string') {
+      detailMsg = errorData.detail;
+    } else if (Array.isArray(errorData?.detail)) {
+      detailMsg = errorData.detail
+        .map((d: { msg?: string; loc?: string[] }) => d.msg || JSON.stringify(d))
+        .join('; ');
+    }
+  } catch {
+    // Keep HTTP status string
+  }
+
+  const err = new Error(detailMsg || defaultMessage);
+  (err as unknown as { status: number }).status = response.status;
+  return err;
+}
 
 /**
  * Executes health probe against GET /health.
@@ -38,8 +100,147 @@ export async function probeHealth(timeoutMs: number = 5000): Promise<{ ok: boole
   }
 }
 
+// ============================================================================
+// 1. Authentication APIs
+// ============================================================================
+
+export async function authSignup(credentials: SignupCredentials): Promise<AuthResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(credentials),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Signup failed.');
+  }
+
+  return response.json();
+}
+
+export async function authLogin(credentials: LoginCredentials): Promise<AuthResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify(credentials),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Login failed.');
+  }
+
+  return response.json();
+}
+
+export async function authLogout(token: string): Promise<void> {
+  try {
+    await fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
+      method: 'POST',
+      headers: buildHeaders(token),
+    });
+  } catch {
+    // Stateless logout - ignore network errors on termination
+  }
+}
+
+export async function authGetMe(token: string): Promise<User> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/me`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to retrieve authenticated user identity.');
+  }
+
+  return response.json();
+}
+
+// ============================================================================
+// 2. Workspace & Membership APIs
+// ============================================================================
+
+export async function fetchWorkspaces(token: string): Promise<Workspace[]> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/workspaces`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to fetch workspaces.');
+  }
+
+  const data: WorkspaceListResponse = await response.json();
+  return data.workspaces || [];
+}
+
+export async function createWorkspace(input: WorkspaceCreateInput, token: string): Promise<Workspace> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/workspaces`, {
+    method: 'POST',
+    headers: buildHeaders(token, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to create workspace.');
+  }
+
+  return response.json();
+}
+
+export async function fetchWorkspaceMembers(workspaceId: string, token: string): Promise<WorkspaceMember[]> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/workspaces/${workspaceId}/members`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to fetch workspace members.');
+  }
+
+  const data: MemberListResponse = await response.json();
+  return data.members || [];
+}
+
+export async function addWorkspaceMember(
+  workspaceId: string,
+  input: MemberAddInput,
+  token: string
+): Promise<WorkspaceMember> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/workspaces/${workspaceId}/members`, {
+    method: 'POST',
+    headers: buildHeaders(token, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to add workspace member.');
+  }
+
+  return response.json();
+}
+
+export async function removeWorkspaceMember(
+  workspaceId: string,
+  userId: string,
+  token: string
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/workspaces/${workspaceId}/members/${userId}`, {
+    method: 'DELETE',
+    headers: buildHeaders(token),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to remove workspace member.');
+  }
+}
+
+// ============================================================================
+// 3. Collections APIs
+// ============================================================================
+
 /**
- * Fetches available queryable collections from GET /api/v1/collections.
+ * Fetches publicly queryable collections from GET /api/v1/collections.
  */
 export async function fetchCollections(timeoutMs: number = 5000): Promise<CollectionSummary[]> {
   const controller = new AbortController();
@@ -69,10 +270,194 @@ export async function fetchCollections(timeoutMs: number = 5000): Promise<Collec
 }
 
 /**
- * Submits query to POST /api/v1/query with full client-side timeout and validation safety.
+ * Fetches private collections for a specific workspace.
  */
+export async function fetchWorkspaceCollections(
+  workspaceId: string,
+  token: string
+): Promise<WorkspaceCollection[]> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/workspaces/${workspaceId}/collections`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to fetch workspace collections.');
+  }
+
+  const data: WorkspaceCollectionListResponse = await response.json();
+  return data.collections || [];
+}
+
+/**
+ * Creates a private collection within an authorized workspace.
+ */
+export async function createWorkspaceCollection(
+  workspaceId: string,
+  input: WorkspaceCollectionCreateInput,
+  token: string
+): Promise<WorkspaceCollection> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/workspaces/${workspaceId}/collections`, {
+    method: 'POST',
+    headers: buildHeaders(token, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify(input),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to create collection in workspace.');
+  }
+
+  return response.json();
+}
+
+// ============================================================================
+// 3b. Collection Document Upload & Ingestion Tracking APIs (Milestone 10)
+// ============================================================================
+
+/**
+ * Uploads a PDF document to a private collection to start ingestion.
+ */
+export async function uploadCollectionDocument(
+  workspaceId: string,
+  collectionId: string,
+  file: File,
+  title: string | undefined,
+  circularNumber: string | undefined,
+  token: string
+): Promise<DocumentUploadResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (title && title.trim()) {
+    formData.append('title', title.trim());
+  }
+  if (circularNumber && circularNumber.trim()) {
+    formData.append('circular_number', circularNumber.trim());
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/workspaces/${workspaceId}/collections/${collectionId}/upload`,
+    {
+      method: 'POST',
+      headers: buildHeaders(token),
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to upload document for ingestion.');
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetches the list of ingestion jobs for a collection.
+ */
+export async function fetchCollectionIngestionJobs(
+  workspaceId: string,
+  collectionId: string,
+  token: string
+): Promise<CollectionIngestionJob[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/workspaces/${workspaceId}/collections/${collectionId}/ingestion-jobs`,
+    {
+      method: 'GET',
+      headers: buildHeaders(token),
+    }
+  );
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to fetch ingestion jobs.');
+  }
+
+  const data: CollectionIngestionJobListResponse = await response.json();
+  return data.jobs || [];
+}
+
+/**
+ * Fetches the detailed status of a single ingestion job.
+ */
+export async function fetchCollectionIngestionJob(
+  workspaceId: string,
+  collectionId: string,
+  jobId: string,
+  token: string
+): Promise<CollectionIngestionJob> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/workspaces/${workspaceId}/collections/${collectionId}/ingestion-jobs/${jobId}`,
+    {
+      method: 'GET',
+      headers: buildHeaders(token),
+    }
+  );
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to fetch ingestion job details.');
+  }
+
+  return response.json();
+}
+
+/**
+ * Fetches documents registered in a collection.
+ */
+export async function fetchCollectionDocuments(
+  workspaceId: string,
+  collectionId: string,
+  token: string
+): Promise<CollectionDocument[]> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/v1/workspaces/${workspaceId}/collections/${collectionId}/documents`,
+    {
+      method: 'GET',
+      headers: buildHeaders(token),
+    }
+  );
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to fetch collection documents.');
+  }
+
+  const data: CollectionDocumentListResponse = await response.json();
+  return data.documents || [];
+}
+
+/**
+ * Returns the download URL for a collection document.
+ */
+export function getDocumentDownloadUrl(
+  workspaceId: string,
+  collectionId: string,
+  documentId: string
+): string {
+  return `${API_BASE_URL}/api/v1/workspaces/${workspaceId}/collections/${collectionId}/documents/${documentId}/download`;
+}
+
+export async function downloadCollectionDocumentBlob(
+  workspaceId: string,
+  collectionId: string,
+  documentId: string,
+  token: string
+): Promise<Blob> {
+  const url = getDocumentDownloadUrl(workspaceId, collectionId, documentId);
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  });
+  if (!response.ok) {
+    const errorBody = await response.json().catch(() => ({}));
+    throw new Error(errorBody.detail || `Download failed with HTTP ${response.status}`);
+  }
+  return await response.blob();
+}
+
+// ============================================================================
+// 4. Query API (Public & Private Multi-Tenant)
+// ============================================================================
+
 export async function queryRegulatoryAssistant(
   request: QueryRequest,
+  token?: string | null,
   timeoutMs: number = DEFAULT_TIMEOUT_MS
 ): Promise<QueryResponse> {
   const normalizedQuery = request.query.trim();
@@ -106,10 +491,7 @@ export async function queryRegulatoryAssistant(
   try {
     const response = await fetch(`${API_BASE_URL}/api/v1/query`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
+      headers: buildHeaders(token, { 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
@@ -123,19 +505,25 @@ export async function queryRegulatoryAssistant(
         if (typeof errorData?.detail === 'string') {
           detailMsg = errorData.detail;
         } else if (Array.isArray(errorData?.detail)) {
-          // Pydantic validation error format
-          detailMsg = errorData.detail.map((d: { msg?: string; loc?: string[] }) => d.msg || JSON.stringify(d)).join('; ');
+          detailMsg = errorData.detail
+            .map((d: { msg?: string; loc?: string[] }) => d.msg || JSON.stringify(d))
+            .join('; ');
         }
       } catch {
         // Fall back to HTTP status string
       }
 
       const error: QueryError = {
-        message: response.status === 422
-          ? `Validation Error: ${detailMsg}`
-          : response.status === 500
-          ? `Server Error: ${detailMsg}`
-          : `Request Failed: ${detailMsg}`,
+        message:
+          response.status === 401
+            ? 'Authentication required to query this private collection.'
+            : response.status === 404
+            ? 'The requested collection was not found or is not accessible.'
+            : response.status === 422
+            ? `Validation Error: ${detailMsg}`
+            : response.status === 500
+            ? `Server Error: ${detailMsg}`
+            : `Request Failed: ${detailMsg}`,
         status: response.status,
         detail: detailMsg,
         isValidationError: response.status === 422,
@@ -145,7 +533,6 @@ export async function queryRegulatoryAssistant(
 
     const data = await response.json();
 
-    // Basic shape validation to protect UI from unexpected payloads
     if (!data || typeof data !== 'object' || !data.disposition || !data.summary_narrative) {
       const error: QueryError = {
         message: 'Malformed response structure received from backend service.',
@@ -175,4 +562,52 @@ export async function queryRegulatoryAssistant(
     };
     throw error;
   }
+}
+
+// ============================================================================
+// 5. Query History APIs
+// ============================================================================
+
+export async function fetchQueryHistory(
+  token: string,
+  options: {
+    limit?: number;
+    offset?: number;
+    workspaceId?: string | null;
+    collectionId?: string | null;
+  } = {}
+): Promise<QueryHistoryListResponse> {
+  const params = new URLSearchParams();
+  if (options.limit !== undefined) params.set('limit', String(options.limit));
+  if (options.offset !== undefined) params.set('offset', String(options.offset));
+  if (options.workspaceId) params.set('workspace_id', options.workspaceId);
+  if (options.collectionId) params.set('collection_id', options.collectionId);
+
+  const url = `${API_BASE_URL}/api/v1/query-history${params.toString() ? `?${params.toString()}` : ''}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to fetch query history.');
+  }
+
+  return response.json();
+}
+
+export async function fetchQueryHistoryDetail(
+  historyId: string,
+  token: string
+): Promise<QueryHistoryDetail> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/query-history/${historyId}`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Query history record not found.');
+  }
+
+  return response.json();
 }

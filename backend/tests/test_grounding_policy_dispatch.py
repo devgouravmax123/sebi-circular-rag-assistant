@@ -72,7 +72,29 @@ def mock_sebi_manifest() -> CollectionManifest:
 
 def test_1_sebi_collection_retains_graph_and_temporal_behavior(mock_sebi_manifest):
     """SEBI collections invoke ConservativeGraphResolver and evaluate supersession / unresolved status."""
-    validator = CitationValidator(collection_id="sebi_cscrf")
+    test_chunk = ChunkRecord(
+        chunk_id="sebi_cscrf_2025_045_p1_0",
+        document_id="sebi_cscrf_2025_045",
+        page_start=1,
+        page_end=1,
+        text="Recognising the need for robust cybersecurity measures and protection of data and IT infrastructure",
+        collection_id="sebi_cscrf",
+    )
+    test_doc = DocumentRecord(
+        document_id="sebi_cscrf_2025_045",
+        circular_number="CIR/2025/045",
+        title="SEBI Cybersecurity and Cyber Resilience Framework",
+        issue_date="2025-03-28",
+        source_url="https://example.com/cscrf.pdf",
+        sha256="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        pdf_path="sebi_cscrf/cscrf.pdf",
+        collection_id="sebi_cscrf",
+    )
+    validator = CitationValidator(
+        collection_id="sebi_cscrf",
+        corpus_chunks={"sebi_cscrf_2025_045_p1_0": test_chunk},
+        corpus_documents={"sebi_cscrf_2025_045": test_doc},
+    )
     gate = AnswerSafetyGate(validator=validator)
     # Query with 'current' keyword testing SEBI temporal check
     exact_text = "Recognising the need for robust cybersecurity measures and protection of data and IT infrastructure"

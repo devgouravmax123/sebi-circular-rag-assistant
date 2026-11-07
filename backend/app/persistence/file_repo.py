@@ -11,7 +11,7 @@ from typing import List, Dict, Optional, Tuple, Any
 import uuid
 from pydantic import ValidationError
 
-from app.schemas.document import DocumentRecord, ChunkRecord
+from app.schemas.document import DocumentRecord, ChunkRecord, resolve_collection_identity
 from app.schemas.graph import (
     GraphEdge,
     ReviewStatus,
@@ -33,6 +33,9 @@ from app.persistence.interfaces import (
     ChunkRepository,
     GraphEdgeRepository,
     IngestionJobRepository,
+    WorkspaceRepository,
+    CollectionRepository,
+    QueryHistoryRepository,
     StorageRepositoryFactory,
     CorruptedStorageError,
     PersistenceError,
@@ -45,7 +48,7 @@ class FileDocumentRepository(DocumentRepository):
     def __init__(self, processed_dir: str | Path = "data/processed"):
         self.processed_dir = Path(processed_dir)
 
-    def get_document(self, document_id: str) -> Optional[DocumentRecord]:
+    def get_document(self, document_id: str, workspace_id: Optional[uuid.UUID] = None) -> Optional[DocumentRecord]:
         doc_dir = self.processed_dir / document_id
         if not doc_dir.exists():
             return None
@@ -59,13 +62,24 @@ class FileDocumentRepository(DocumentRepository):
         try:
             with open(doc_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            return DocumentRecord(**data)
+            rec = DocumentRecord(**data)
+            if workspace_id is not None and getattr(rec, "workspace_id", None) != workspace_id:
+                return None
+            return rec
         except json.JSONDecodeError as e:
             raise CorruptedStorageError(f"Malformed JSON in document record '{doc_file}': {e}") from e
         except (ValidationError, TypeError) as e:
             raise CorruptedStorageError(f"Invalid schema in document record '{doc_file}': {e}") from e
 
-    def list_documents(self) -> List[DocumentRecord]:
+    def list_documents(self, collection_id: str, workspace_id: Optional[uuid.UUID] = None) -> List[DocumentRecord]:
+        if not collection_id or not isinstance(collection_id, str) or not collection_id.strip():
+            raise ValueError("collection_id must be a non-empty string")
+        return self._list_documents_internal(collection_id=collection_id.strip(), workspace_id=workspace_id)
+
+    def list_all_documents_global(self) -> List[DocumentRecord]:
+        return self._list_documents_internal(collection_id=None, workspace_id=None)
+
+    def _list_documents_internal(self, collection_id: Optional[str] = None, workspace_id: Optional[uuid.UUID] = None) -> List[DocumentRecord]:
         docs: List[DocumentRecord] = []
         if not self.processed_dir.exists():
             return docs
@@ -73,7 +87,9 @@ class FileDocumentRepository(DocumentRepository):
             if item.is_dir():
                 doc = self.get_document(item.name)
                 if doc:
-                    docs.append(doc)
+                    if collection_id is None or resolve_collection_identity(doc.document_id, getattr(doc, "collection_id", None)) == collection_id:
+                        if workspace_id is None or getattr(doc, "workspace_id", None) == workspace_id:
+                            docs.append(doc)
         return docs
 
     def save_document(self, document: DocumentRecord) -> None:
@@ -83,8 +99,19 @@ class FileDocumentRepository(DocumentRepository):
         with open(doc_file, "w", encoding="utf-8") as f:
             f.write(document.model_dump_json(indent=2))
 
-    def get_document_by_sha256(self, sha256: str) -> Optional[DocumentRecord]:
-        for doc in self.list_documents():
+    def get_document_by_sha256(self, sha256: str, collection_id: str, workspace_id: Optional[uuid.UUID] = None) -> Optional[DocumentRecord]:
+        if not collection_id or not collection_id.strip():
+            raise ValueError(
+                "collection_id is required for collection-scoped SHA-256 lookup. "
+                "Use get_document_by_sha256_global() for explicit unscoped lookup."
+            )
+        for doc in self.list_documents(collection_id=collection_id.strip(), workspace_id=workspace_id):
+            if doc.sha256 == sha256:
+                return doc
+        return None
+
+    def get_document_by_sha256_global(self, sha256: str) -> Optional[DocumentRecord]:
+        for doc in self.list_all_documents_global():
             if doc.sha256 == sha256:
                 return doc
         return None
@@ -97,7 +124,7 @@ class FileChunkRepository(ChunkRepository):
         self.processed_dir = Path(processed_dir)
 
     def get_chunk(self, chunk_id: str) -> Optional[ChunkRecord]:
-        for chunk in self.list_all_chunks():
+        for chunk in self.list_all_chunks_global():
             if chunk.chunk_id == chunk_id:
                 return chunk
         return None
@@ -117,13 +144,27 @@ class FileChunkRepository(ChunkRepository):
         except (ValidationError, TypeError) as e:
             raise CorruptedStorageError(f"Invalid chunk schema in '{chunks_file}': {e}") from e
 
-    def list_all_chunks(self) -> List[ChunkRecord]:
+    def list_all_chunks(self, collection_id: str) -> List[ChunkRecord]:
+        if not collection_id or not isinstance(collection_id, str) or not collection_id.strip():
+            raise ValueError("collection_id must be a non-empty string")
+        return self._list_all_chunks_internal(collection_id=collection_id.strip())
+
+    def list_all_chunks_global(self) -> List[ChunkRecord]:
+        return self._list_all_chunks_internal(collection_id=None)
+
+    def _list_all_chunks_internal(self, collection_id: Optional[str] = None) -> List[ChunkRecord]:
         all_chunks: List[ChunkRecord] = []
         if not self.processed_dir.exists():
             return all_chunks
         for item in sorted(self.processed_dir.iterdir()):
             if item.is_dir():
-                all_chunks.extend(self.list_chunks_for_document(item.name))
+                doc_chunks = self.list_chunks_for_document(item.name)
+                if collection_id is not None:
+                    doc_chunks = [
+                        c for c in doc_chunks
+                        if resolve_collection_identity(c.document_id, getattr(c, "collection_id", None)) == collection_id
+                    ]
+                all_chunks.extend(doc_chunks)
         return all_chunks
 
     def save_chunks(self, chunks: List[ChunkRecord]) -> None:
@@ -140,8 +181,14 @@ class FileChunkRepository(ChunkRepository):
         pass
 
     def search_similar_chunks(
-        self, query_vector: Any, top_k: int = 10, model_name: str = "BAAI/bge-small-en-v1.5"
+        self,
+        collection_id: str,
+        query_vector: Any,
+        top_k: int = 10,
+        model_name: str = "BAAI/bge-small-en-v1.5",
     ) -> List[Tuple[str, float]]:
+        if not collection_id or not isinstance(collection_id, str) or not collection_id.strip():
+            raise ValueError("collection_id must be a non-empty string")
         # Supported by dense index loader
         return []
 
@@ -396,6 +443,8 @@ class FileIngestionJobRepository(IngestionJobRepository):
             created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(timezone.utc),
             started_at=datetime.fromisoformat(data["started_at"]) if data.get("started_at") else None,
             completed_at=datetime.fromisoformat(data["completed_at"]) if data.get("completed_at") else None,
+            workspace_id=uuid.UUID(data["workspace_id"]) if data.get("workspace_id") else None,
+            collection_id=data.get("collection_id"),
         )
 
     def _to_dict(self, record: IngestionJobRecord) -> Dict[str, Any]:
@@ -406,6 +455,8 @@ class FileIngestionJobRepository(IngestionJobRepository):
             "status": record.status.value,
             "stage": record.stage.value,
             "document_id": record.document_id,
+            "workspace_id": str(record.workspace_id) if record.workspace_id else None,
+            "collection_id": record.collection_id,
             "sha256": record.sha256,
             "attempt_count": record.attempt_count,
             "max_attempts": record.max_attempts,
@@ -425,6 +476,8 @@ class FileIngestionJobRepository(IngestionJobRepository):
         idempotency_key: str,
         document_id: Optional[str] = None,
         max_attempts: int = 3,
+        workspace_id: Optional[uuid.UUID] = None,
+        collection_id: Optional[str] = None,
     ) -> IngestionJobRecord:
         jobs = self._load_jobs()
         for j in jobs.values():
@@ -438,6 +491,8 @@ class FileIngestionJobRepository(IngestionJobRepository):
             source_url=source_url,
             idempotency_key=idempotency_key,
             document_id=document_id,
+            workspace_id=workspace_id,
+            collection_id=collection_id,
             max_attempts=max_attempts,
             created_at=now,
         )
@@ -645,14 +700,235 @@ class FileIngestionJobRepository(IngestionJobRepository):
         status: Optional[JobStatus] = None,
         limit: int = 50,
         offset: int = 0,
+        workspace_id: Optional[uuid.UUID] = None,
+        collection_id: Optional[str] = None,
     ) -> List[IngestionJobRecord]:
         jobs = self._load_jobs()
         records: List[IngestionJobRecord] = []
         for data in sorted(jobs.values(), key=lambda x: x.get("created_at", "")):
             rec = self._to_record(data)
-            if status is None or rec.status == status:
-                records.append(rec)
+            if status is not None and rec.status != status:
+                continue
+            if workspace_id is not None and getattr(rec, "workspace_id", None) != workspace_id:
+                continue
+            if collection_id is not None and getattr(rec, "collection_id", None) != collection_id:
+                continue
+            records.append(rec)
         return records[offset : offset + limit]
+
+    def retry_job(
+        self,
+        job_id: uuid.UUID,
+        workspace_id: Optional[uuid.UUID] = None,
+        now: Optional[datetime] = None,
+    ) -> IngestionJobRecord:
+        jobs = self._load_jobs()
+        str_id = str(job_id)
+        if str_id not in jobs:
+            raise PersistenceError(f"Ingestion job '{job_id}' not found")
+        data = jobs[str_id]
+        if workspace_id is not None and data.get("workspace_id") and uuid.UUID(str(data["workspace_id"])) != workspace_id:
+            raise PersistenceError(f"Ingestion job '{job_id}' not found in specified workspace")
+        if data.get("status") != JobStatus.FAILED.value:
+            raise PersistenceError(f"Job '{job_id}' is in status '{data.get('status')}', expected 'failed' to retry")
+
+        current_time = now or datetime.now(timezone.utc)
+        data["status"] = JobStatus.QUEUED.value
+        data["stage"] = ProcessingStage.PENDING.value
+        data["claim_token"] = None
+        data["claim_worker_id"] = None
+        data["next_retry_at"] = current_time.isoformat()
+        self._save_jobs(jobs)
+        return self._to_record(data)
+
+    def cancel_job(
+        self,
+        job_id: uuid.UUID,
+        workspace_id: Optional[uuid.UUID] = None,
+        reason: str = "cancelled_by_user",
+        now: Optional[datetime] = None,
+    ) -> IngestionJobRecord:
+        jobs = self._load_jobs()
+        str_id = str(job_id)
+        if str_id not in jobs:
+            raise PersistenceError(f"Ingestion job '{job_id}' not found")
+        data = jobs[str_id]
+        if workspace_id is not None and data.get("workspace_id") and uuid.UUID(str(data["workspace_id"])) != workspace_id:
+            raise PersistenceError(f"Ingestion job '{job_id}' not found in specified workspace")
+        if data.get("status") in (JobStatus.COMPLETED.value, JobStatus.DUPLICATE.value, JobStatus.FAILED.value):
+            raise PersistenceError(f"Job '{job_id}' is already in terminal status '{data.get('status')}'")
+
+        current_time = now or datetime.now(timezone.utc)
+        data["status"] = JobStatus.FAILED.value
+        data["stage"] = ProcessingStage.FINISHED.value
+        data["completed_at"] = current_time.isoformat()
+        data["error_details"] = {"reason": reason, "cancelled_at": current_time.isoformat()}
+        self._save_jobs(jobs)
+        return self._to_record(data)
+
+
+class FileWorkspaceRepository(WorkspaceRepository):
+    """File-mode in-memory/stub workspace repository."""
+    def __init__(self):
+        self._workspaces: Dict[uuid.UUID, Any] = {}
+        self._memberships: Dict[Tuple[uuid.UUID, uuid.UUID], Any] = {}
+
+    def get_workspace(self, workspace_id: uuid.UUID) -> Optional[Any]:
+        return self._workspaces.get(workspace_id)
+
+    def get_workspace_by_slug(self, slug: str) -> Optional[Any]:
+        for ws in self._workspaces.values():
+            if getattr(ws, "slug", "") == slug:
+                return ws
+        return None
+
+    def list_workspaces_for_user(self, user_id: uuid.UUID) -> List[Any]:
+        ws_ids = {ws_id for (ws_id, u_id) in self._memberships.keys() if u_id == user_id}
+        return [ws for ws_id, ws in self._workspaces.items() if ws_id in ws_ids]
+
+    def create_workspace(self, name: str, slug: str, owner_id: Optional[uuid.UUID] = None, is_system: bool = False) -> Any:
+        from app.models.auth import WorkspaceModel
+        ws_id = uuid.uuid4()
+        ws = WorkspaceModel(id=ws_id, name=name, slug=slug, owner_id=owner_id, is_system=is_system)
+        self._workspaces[ws_id] = ws
+        if owner_id:
+            self.add_member(ws_id, owner_id, "owner")
+        return ws
+
+    def get_membership(self, workspace_id: uuid.UUID, user_id: uuid.UUID) -> Optional[Any]:
+        return self._memberships.get((workspace_id, user_id))
+
+    def add_member(self, workspace_id: uuid.UUID, user_id: uuid.UUID, role: str) -> Any:
+        from app.models.auth import WorkspaceMembershipModel
+        mem = WorkspaceMembershipModel(id=uuid.uuid4(), workspace_id=workspace_id, user_id=user_id, role=role)
+        self._memberships[(workspace_id, user_id)] = mem
+        return mem
+
+
+class FileCollectionRepository(CollectionRepository):
+    """File-mode in-memory/stub collection repository."""
+    def __init__(self):
+        self._collections: Dict[Tuple[uuid.UUID, str], Any] = {}
+
+    def get_collection(self, collection_id: str, workspace_id: Optional[uuid.UUID] = None) -> Optional[Any]:
+        cid_lower = collection_id.lower()
+        for (ws_id, c_id), col in self._collections.items():
+            if c_id.lower() == cid_lower:
+                if workspace_id is None or ws_id == workspace_id:
+                    return col
+        return None
+
+    def list_collections(self, workspace_id: uuid.UUID, include_public: bool = True) -> List[Any]:
+        return [col for (ws_id, _), col in self._collections.items() if ws_id == workspace_id or (include_public and getattr(col, "is_public", False))]
+
+    def create_collection(
+        self,
+        id: str,
+        workspace_id: uuid.UUID,
+        name: str,
+        policy_name: str,
+        description: Optional[str] = None,
+        enforce_regulatory_graph: bool = False,
+        is_system: bool = False,
+        is_public: bool = False,
+    ) -> Any:
+        from app.models.collection import CollectionModel
+        col = CollectionModel(
+            id=id,
+            workspace_id=workspace_id,
+            name=name,
+            policy_name=policy_name,
+            description=description,
+            enforce_regulatory_graph=enforce_regulatory_graph,
+            is_system=is_system,
+            is_public=is_public,
+        )
+        self._collections[(workspace_id, id)] = col
+        return col
+
+    def update_collection(self, collection_id: str, workspace_id: uuid.UUID, name: Optional[str] = None, description: Optional[str] = None) -> Optional[Any]:
+        col = self.get_collection(collection_id, workspace_id)
+        if not col:
+            return None
+        if name is not None:
+            col.name = name
+        if description is not None:
+            col.description = description
+        return col
+
+    def delete_collection(self, collection_id: str, workspace_id: uuid.UUID) -> bool:
+        key = (workspace_id, collection_id)
+        if key in self._collections:
+            del self._collections[key]
+            return True
+        return False
+
+
+class FileQueryHistoryRepository(QueryHistoryRepository):
+    """File-mode in-memory/stub query history repository."""
+    def __init__(self):
+        self._entries: Dict[uuid.UUID, Any] = {}
+
+    def create_entry(
+        self,
+        user_id: uuid.UUID,
+        collection_id: str,
+        query_text: str,
+        disposition: str,
+        workspace_id: Optional[uuid.UUID] = None,
+        query_options: Optional[Dict[str, Any]] = None,
+        summary_narrative: Optional[str] = None,
+        answer_text: Optional[str] = None,
+        claim_citations: Optional[List[Dict[str, Any]]] = None,
+        verified_excerpts_count: int = 0,
+        technical_validation_passed: bool = False,
+    ) -> Any:
+        from app.models.query_history import QueryHistoryModel
+        entry = QueryHistoryModel(
+            id=uuid.uuid4(),
+            user_id=user_id,
+            workspace_id=workspace_id,
+            collection_id=collection_id,
+            query_text=query_text,
+            query_options=query_options or {},
+            disposition=disposition,
+            summary_narrative=summary_narrative,
+            answer_text=answer_text,
+            claim_citations=claim_citations or [],
+            verified_excerpts_count=verified_excerpts_count,
+            technical_validation_passed=technical_validation_passed,
+        )
+        self._entries[entry.id] = entry
+        return entry
+
+    def get_entry(self, history_id: uuid.UUID, user_id: uuid.UUID) -> Optional[Any]:
+        entry = self._entries.get(history_id)
+        if entry and getattr(entry, "user_id", None) == user_id:
+            return entry
+        return None
+
+    def list_entries(
+        self,
+        user_id: uuid.UUID,
+        workspace_id: Optional[uuid.UUID] = None,
+        collection_id: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[Any]:
+        results = [
+            e for e in self._entries.values()
+            if getattr(e, "user_id", None) == user_id
+            and (workspace_id is None or getattr(e, "workspace_id", None) == workspace_id)
+            and (collection_id is None or getattr(e, "collection_id", "").lower() == collection_id.lower())
+        ]
+        return results[offset : offset + limit]
+
+    def delete_entry(self, history_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+        entry = self.get_entry(history_id, user_id)
+        if entry:
+            del self._entries[history_id]
+            return True
+        return False
 
 
 class FileStorageRepositoryFactory(StorageRepositoryFactory):
@@ -660,6 +936,9 @@ class FileStorageRepositoryFactory(StorageRepositoryFactory):
 
     def __init__(self, processed_dir: str | Path = "data/processed"):
         self.processed_dir = Path(processed_dir)
+        self._workspace_repo = FileWorkspaceRepository()
+        self._collection_repo = FileCollectionRepository()
+        self._query_history_repo = FileQueryHistoryRepository()
 
     def get_document_repository(self) -> DocumentRepository:
         return FileDocumentRepository(self.processed_dir)
@@ -672,3 +951,12 @@ class FileStorageRepositoryFactory(StorageRepositoryFactory):
 
     def get_ingestion_job_repository(self) -> IngestionJobRepository:
         return FileIngestionJobRepository(self.processed_dir)
+
+    def get_workspace_repository(self) -> WorkspaceRepository:
+        return self._workspace_repo
+
+    def get_collection_repository(self) -> CollectionRepository:
+        return self._collection_repo
+
+    def get_query_history_repository(self) -> QueryHistoryRepository:
+        return self._query_history_repo

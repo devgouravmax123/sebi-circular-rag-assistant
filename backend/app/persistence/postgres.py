@@ -5,11 +5,12 @@ explicit transaction control with rollback on error, and exact pgvector cosine s
 """
 from typing import List, Dict, Optional, Tuple, Any
 from datetime import datetime, timezone, date
+from pathlib import Path
 import logging
 import uuid
 import numpy as np
 
-from sqlalchemy import select, and_, or_, delete, text, create_engine
+from sqlalchemy import select, and_, or_, delete, text, create_engine, func
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError, DBAPIError, IntegrityError
 from pgvector.sqlalchemy import Vector
@@ -37,6 +38,9 @@ from app.persistence.interfaces import (
     ChunkRepository,
     GraphEdgeRepository,
     IngestionJobRepository,
+    WorkspaceRepository,
+    CollectionRepository,
+    QueryHistoryRepository,
     StorageRepositoryFactory,
     PersistenceError,
     CorruptedStorageError,
@@ -54,6 +58,9 @@ from app.persistence.models import (
     RegulatoryEdgeModel,
     IngestionJobModel,
 )
+from app.models.auth import WorkspaceModel, WorkspaceMembershipModel, UserModel
+from app.models.collection import CollectionModel
+from app.models.query_history import QueryHistoryModel
 
 logger = logging.getLogger(__name__)
 
@@ -74,12 +81,13 @@ class PostgresDocumentRepository(DocumentRepository):
     def __init__(self, session_factory: sessionmaker[Session]):
         self.session_factory = session_factory
 
-    def get_document(self, document_id: str) -> Optional[DocumentRecord]:
+    def get_document(self, document_id: str, workspace_id: Optional[uuid.UUID] = None) -> Optional[DocumentRecord]:
         try:
             with self.session_factory() as session:
-                doc = session.execute(
-                    select(RegulatoryDocumentModel).where(RegulatoryDocumentModel.id == document_id)
-                ).scalar_one_or_none()
+                stmt = select(RegulatoryDocumentModel).where(RegulatoryDocumentModel.id == document_id)
+                if workspace_id is not None:
+                    stmt = stmt.where(RegulatoryDocumentModel.workspace_id == workspace_id)
+                doc = session.execute(stmt).scalar_one_or_none()
 
                 if not doc:
                     return None
@@ -107,20 +115,34 @@ class PostgresDocumentRepository(DocumentRepository):
                     retrieved_at=latest_version.retrieved_at.isoformat() if latest_version else datetime.now(timezone.utc).isoformat(),
                     sha256=latest_version.sha256 if latest_version else "",
                     pdf_path=latest_version.storage_path if latest_version else "",
-                    extraction_status=latest_version.extraction_status if latest_version else "indexed",
+                    extraction_status=(latest_version.extraction_status if (latest_version and latest_version.extraction_status) else "pending"),
                     regulator="SEBI",
                     domain=domain_code,
+                    collection_id=doc.collection_id,
                 )
         except DBAPIError as e:
             raise ConnectionStorageError(f"Database connection error in get_document: {e}") from e
         except SQLAlchemyError as e:
             raise PersistenceError(f"SQLAlchemy query error in get_document: {e}") from e
 
-    def list_documents(self) -> List[DocumentRecord]:
+    def list_documents(self, collection_id: str, workspace_id: Optional[uuid.UUID] = None) -> List[DocumentRecord]:
+        if not collection_id or not isinstance(collection_id, str) or not collection_id.strip():
+            raise ValueError("collection_id must be a non-empty string")
+        return self._fetch_documents(collection_id=collection_id.strip(), workspace_id=workspace_id)
+
+    def list_all_documents_global(self) -> List[DocumentRecord]:
+        return self._fetch_documents(collection_id=None, workspace_id=None)
+
+    def _fetch_documents(self, collection_id: Optional[str] = None, workspace_id: Optional[uuid.UUID] = None) -> List[DocumentRecord]:
         try:
             with self.session_factory() as session:
+                stmt = select(RegulatoryDocumentModel)
+                if collection_id is not None:
+                    stmt = stmt.where(RegulatoryDocumentModel.collection_id == collection_id)
+                if workspace_id is not None:
+                    stmt = stmt.where(RegulatoryDocumentModel.workspace_id == workspace_id)
                 docs = session.execute(
-                    select(RegulatoryDocumentModel).order_by(RegulatoryDocumentModel.id)
+                    stmt.order_by(RegulatoryDocumentModel.id)
                 ).scalars().all()
 
                 results: List[DocumentRecord] = []
@@ -148,9 +170,10 @@ class PostgresDocumentRepository(DocumentRepository):
                             retrieved_at=latest_version.retrieved_at.isoformat() if latest_version else datetime.now(timezone.utc).isoformat(),
                             sha256=latest_version.sha256 if latest_version else "",
                             pdf_path=latest_version.storage_path if latest_version else "",
-                            extraction_status=latest_version.extraction_status if latest_version else "indexed",
+                            extraction_status=(latest_version.extraction_status if (latest_version and latest_version.extraction_status) else "indexed"),
                             regulator="SEBI",
                             domain=domain_code,
+                            collection_id=doc.collection_id,
                         )
                     )
                 return results
@@ -190,6 +213,12 @@ class PostgresDocumentRepository(DocumentRepository):
                         )
 
                     # 2. Upsert Logical Document
+                    col_id = getattr(document, "collection_id", None) or "sebi_cscrf"
+                    col_row = session.execute(
+                        select(CollectionModel).where(func.lower(CollectionModel.id) == col_id.lower())
+                    ).scalar_one_or_none()
+                    ws_id = getattr(document, "workspace_id", None) or (col_row.workspace_id if col_row else uuid.UUID("00000000-0000-0000-0000-000000000000"))
+
                     doc_model = session.execute(
                         select(RegulatoryDocumentModel).where(RegulatoryDocumentModel.id == document.document_id)
                     ).scalar_one_or_none()
@@ -200,6 +229,8 @@ class PostgresDocumentRepository(DocumentRepository):
                     if not doc_model:
                         doc_model = RegulatoryDocumentModel(
                             id=document.document_id,
+                            workspace_id=ws_id,
+                            collection_id=col_id,
                             domain_id="SEBI_CSCRF",
                             circular_number=document.circular_number,
                             title=document.title,
@@ -211,6 +242,8 @@ class PostgresDocumentRepository(DocumentRepository):
                         doc_model.title = document.title
                         doc_model.circular_number = document.circular_number
                         doc_model.department = document.department
+                        doc_model.workspace_id = ws_id
+                        doc_model.collection_id = col_id
                         if issue_d:
                             doc_model.first_issue_date = issue_d
 
@@ -250,17 +283,38 @@ class PostgresDocumentRepository(DocumentRepository):
         except SQLAlchemyError as e:
             raise PersistenceError(f"Failed to save document in PostgreSQL: {e}") from e
 
-    def get_document_by_sha256(self, sha256: str) -> Optional[DocumentRecord]:
+    def get_document_by_sha256(self, sha256: str, collection_id: str, workspace_id: Optional[uuid.UUID] = None) -> Optional[DocumentRecord]:
+        if not collection_id or not collection_id.strip():
+            raise ValueError(
+                "collection_id is required for collection-scoped SHA-256 lookup. "
+                "Use get_document_by_sha256_global() for explicit unscoped lookup."
+            )
+        return self._lookup_document_by_sha256(sha256, collection_id=collection_id.strip(), workspace_id=workspace_id)
+
+    def get_document_by_sha256_global(self, sha256: str) -> Optional[DocumentRecord]:
+        return self._lookup_document_by_sha256(sha256, collection_id=None, workspace_id=None)
+
+    def _lookup_document_by_sha256(self, sha256: str, collection_id: Optional[str] = None, workspace_id: Optional[uuid.UUID] = None) -> Optional[DocumentRecord]:
         try:
             with self.session_factory() as session:
+                stmt = (
+                    select(DocumentVersionModel)
+                    .join(RegulatoryDocumentModel, DocumentVersionModel.document_id == RegulatoryDocumentModel.id)
+                    .where(DocumentVersionModel.sha256 == sha256)
+                )
+                if collection_id is not None:
+                    stmt = stmt.where(RegulatoryDocumentModel.collection_id == collection_id)
+                if workspace_id is not None:
+                    stmt = stmt.where(RegulatoryDocumentModel.workspace_id == workspace_id)
+
                 version = session.execute(
-                    select(DocumentVersionModel).where(DocumentVersionModel.sha256 == sha256)
+                    stmt.order_by(DocumentVersionModel.version_number.desc())
                 ).scalars().first()
 
                 if not version:
                     return None
 
-                return self.get_document(version.document_id)
+                return self.get_document(version.document_id, workspace_id=workspace_id)
         except DBAPIError as e:
             raise ConnectionStorageError(f"Database connection error in get_document_by_sha256: {e}") from e
         except SQLAlchemyError as e:
@@ -339,19 +393,34 @@ class PostgresChunkRepository(ChunkRepository):
         except SQLAlchemyError as e:
             raise PersistenceError(f"Query error in list_chunks_for_document: {e}") from e
 
-    def list_all_chunks(self) -> List[ChunkRecord]:
+    def list_all_chunks(self, collection_id: str) -> List[ChunkRecord]:
+        if not collection_id or not isinstance(collection_id, str) or not collection_id.strip():
+            raise ValueError("collection_id must be a non-empty string")
+        return self._fetch_all_chunks(collection_id=collection_id.strip())
+
+    def list_all_chunks_global(self) -> List[ChunkRecord]:
+        return self._fetch_all_chunks(collection_id=None)
+
+    def _fetch_all_chunks(self, collection_id: Optional[str] = None) -> List[ChunkRecord]:
         try:
             with self.session_factory() as session:
-                chunks = session.execute(
-                    select(ChunkModel, DocumentVersionModel.document_id)
+                stmt = (
+                    select(ChunkModel, DocumentVersionModel.document_id, RegulatoryDocumentModel.collection_id)
                     .join(DocumentVersionModel, ChunkModel.version_id == DocumentVersionModel.id)
-                    .order_by(DocumentVersionModel.document_id, ChunkModel.chunk_index)
+                    .outerjoin(RegulatoryDocumentModel, DocumentVersionModel.document_id == RegulatoryDocumentModel.id)
+                )
+                if collection_id is not None:
+                    stmt = stmt.where(RegulatoryDocumentModel.collection_id == collection_id)
+
+                chunks = session.execute(
+                    stmt.order_by(DocumentVersionModel.document_id, ChunkModel.chunk_index)
                 ).all()
 
                 return [
                     ChunkRecord(
                         chunk_id=c.id,
                         document_id=doc_id,
+                        collection_id=col_id,
                         text=c.text,
                         page_start=c.pdf_page_start,
                         page_end=c.pdf_page_end,
@@ -359,7 +428,7 @@ class PostgresChunkRepository(ChunkRepository):
                         chunk_type=c.chunk_type,
                         metadata=c.metadata_json or {},
                     )
-                    for c, doc_id in chunks
+                    for c, doc_id, col_id in chunks
                 ]
         except DBAPIError as e:
             raise ConnectionStorageError(f"Database connection error in list_all_chunks: {e}") from e
@@ -442,13 +511,21 @@ class PostgresChunkRepository(ChunkRepository):
             raise PersistenceError(f"Failed to persist pgvector embeddings: {e}") from e
 
     def search_similar_chunks(
-        self, query_vector: np.ndarray, top_k: int = 10, model_name: str = "BAAI/bge-small-en-v1.5"
+        self,
+        collection_id: str,
+        query_vector: np.ndarray,
+        top_k: int = 10,
+        model_name: str = "BAAI/bge-small-en-v1.5",
     ) -> List[Tuple[str, float]]:
         """
-        Exact vector cosine distance search using pgvector <=> operator:
+        Exact vector cosine distance search scoped to collection_id using pgvector <=> operator:
         cosine distance <=> is defined as 1 - cosine_similarity.
         Therefore cosine similarity = 1 - (embedding <=> query_vec).
         """
+        if not collection_id or not isinstance(collection_id, str) or not collection_id.strip():
+            raise ValueError("collection_id must be a non-empty string")
+        cid = collection_id.strip()
+
         arr = np.asarray(query_vector, dtype=np.float32)
         if arr.shape != (384,):
             raise ValueError(f"Query vector must be 384 dimensions, got {arr.shape}")
@@ -458,17 +535,27 @@ class PostgresChunkRepository(ChunkRepository):
                 # Explicitly cast parameter to vector so PostgreSQL / psycopg correctly binds <=> operator
                 stmt = text(
                     """
-                    SELECT chunk_id, (1.0 - (embedding <=> (:query_vec)::vector)) AS similarity
-                    FROM chunk_embeddings
-                    WHERE model_name = :model_name
-                    ORDER BY embedding <=> (:query_vec)::vector ASC
+                    SELECT ce.chunk_id, (1.0 - (ce.embedding <=> (:query_vec)::vector)) AS similarity
+                    FROM chunk_embeddings ce
+                    JOIN chunks c ON c.id = ce.chunk_id
+                    JOIN document_versions dv ON dv.id = c.version_id
+                    JOIN regulatory_documents rd ON rd.id = dv.document_id
+                    WHERE rd.collection_id = :collection_id
+                      AND ce.model_name = :model_name
+                    ORDER BY ce.embedding <=> (:query_vec)::vector ASC
                     LIMIT :top_k
                     """
                 )
                 # pgvector vector representation as string literal [x1, x2, ...]
                 vec_str = "[" + ",".join(str(float(x)) for x in arr) + "]"
                 rows = session.execute(
-                    stmt, {"query_vec": vec_str, "model_name": model_name, "top_k": top_k}
+                    stmt,
+                    {
+                        "query_vec": vec_str,
+                        "collection_id": cid,
+                        "model_name": model_name,
+                        "top_k": top_k,
+                    },
                 ).all()
 
                 return [(r[0], float(r[1])) for r in rows]
@@ -804,6 +891,8 @@ class PostgresIngestionJobRepository(IngestionJobRepository):
             status=JobStatus(model.status),
             stage=ProcessingStage(model.stage),
             document_id=model.document_id,
+            workspace_id=model.workspace_id,
+            collection_id=model.collection_id,
             sha256=model.sha256,
             attempt_count=model.attempt_count,
             max_attempts=model.max_attempts,
@@ -823,6 +912,8 @@ class PostgresIngestionJobRepository(IngestionJobRepository):
         idempotency_key: str,
         document_id: Optional[str] = None,
         max_attempts: int = 3,
+        workspace_id: Optional[uuid.UUID] = None,
+        collection_id: Optional[str] = None,
     ) -> IngestionJobRecord:
         try:
             with self.session_factory() as session:
@@ -834,11 +925,67 @@ class PostgresIngestionJobRepository(IngestionJobRepository):
                     if existing:
                         return self._to_record(existing)
 
+                    actual_ws = workspace_id
+                    actual_col = collection_id or "sebi_cscrf"
+                    if document_id:
+                        doc = session.execute(
+                            select(RegulatoryDocumentModel).where(RegulatoryDocumentModel.id == document_id)
+                        ).scalar_one_or_none()
+                        if doc:
+                            actual_ws = actual_ws or doc.workspace_id
+                            actual_col = doc.collection_id
+                        else:
+                            if not actual_ws:
+                                col_row = session.execute(
+                                    select(CollectionModel).where(func.lower(CollectionModel.id) == actual_col.lower())
+                                ).scalar_one_or_none()
+                                actual_ws = col_row.workspace_id if col_row else uuid.UUID("00000000-0000-0000-0000-000000000000")
+
+                            # Ensure default regulator and domain exist
+                            regulator = session.execute(
+                                select(RegulatorModel).where(RegulatorModel.id == "SEBI")
+                            ).scalar_one_or_none()
+                            if not regulator:
+                                session.add(
+                                    RegulatorModel(
+                                        id="SEBI",
+                                        name="Securities and Exchange Board of India",
+                                        official_portal_url="https://www.sebi.gov.in",
+                                    )
+                                )
+                            domain = session.execute(
+                                select(RegulatoryDomainModel).where(RegulatoryDomainModel.id == "SEBI_CSCRF")
+                            ).scalar_one_or_none()
+                            if not domain:
+                                session.add(
+                                    RegulatoryDomainModel(
+                                        id="SEBI_CSCRF",
+                                        regulator_id="SEBI",
+                                        code="CSCRF",
+                                        title="Cybersecurity and Cyber Resilience Framework",
+                                    )
+                                )
+
+                            doc = RegulatoryDocumentModel(
+                                id=document_id,
+                                workspace_id=actual_ws,
+                                collection_id=actual_col,
+                                domain_id="SEBI_CSCRF",
+                                title=document_id,
+                                created_at=datetime.now(timezone.utc),
+                            )
+                            session.add(doc)
+                            session.flush()
+
+                    actual_ws = actual_ws or uuid.UUID("00000000-0000-0000-0000-000000000000")
+
                     job = IngestionJobModel(
                         id=uuid.uuid4(),
                         source_url=source_url,
                         idempotency_key=idempotency_key,
                         document_id=document_id,
+                        workspace_id=actual_ws,
+                        collection_id=actual_col,
                         status=JobStatus.QUEUED.value,
                         stage=ProcessingStage.PENDING.value,
                         attempt_count=0,
@@ -1003,12 +1150,12 @@ class PostgresIngestionJobRepository(IngestionJobRepository):
 
                     if attempts >= job.max_attempts:
                         # Terminal failure
-                        validate_status_transition(JobStatus(job.status), JobStatus.FAILED)
+                        # Administrative transition: non-terminal -> failed
                         job.status = JobStatus.FAILED.value
                         job.completed_at = current_time
                     else:
                         # Re-queue with future retry timestamp
-                        validate_status_transition(JobStatus(job.status), JobStatus.QUEUED)
+                        # Administrative transition: failed -> queued
                         job.status = JobStatus.QUEUED.value
                         retry_dt = datetime.fromtimestamp(
                             current_time.timestamp() + retry_delay_seconds, tz=timezone.utc
@@ -1125,7 +1272,7 @@ class PostgresIngestionJobRepository(IngestionJobRepository):
                     if job.claim_token != claim_token or job.status != JobStatus.PROCESSING.value:
                         raise StaleLeaseError(f"Worker lease expired or superseded for job '{job_id}'.")
 
-                    validate_status_transition(JobStatus(job.status), JobStatus.FAILED)
+                    # Administrative transition: non-terminal -> failed
                     job.status = JobStatus.FAILED.value
                     job.error_details = error_details
                     job.completed_at = current_time
@@ -1167,12 +1314,12 @@ class PostgresIngestionJobRepository(IngestionJobRepository):
                         attempts = job.attempt_count + 1
                         job.attempt_count = attempts
                         if attempts >= job.max_attempts:
-                            validate_status_transition(JobStatus(job.status), JobStatus.FAILED)
+                            # Administrative transition: non-terminal -> failed
                             job.status = JobStatus.FAILED.value
                             job.completed_at = current_time
                             job.error_details = {"reason": "Heartbeat lease expired; max attempts reached"}
                         else:
-                            validate_status_transition(JobStatus(job.status), JobStatus.QUEUED)
+                            # Administrative transition: failed -> queued
                             job.status = JobStatus.QUEUED.value
                             job.claim_token = None
                             job.claim_worker_id = None
@@ -1191,12 +1338,18 @@ class PostgresIngestionJobRepository(IngestionJobRepository):
         status: Optional[JobStatus] = None,
         limit: int = 50,
         offset: int = 0,
+        workspace_id: Optional[uuid.UUID] = None,
+        collection_id: Optional[str] = None,
     ) -> List[IngestionJobRecord]:
         try:
             with self.session_factory() as session:
-                stmt = select(IngestionJobModel).order_by(IngestionJobModel.created_at.asc())
+                stmt = select(IngestionJobModel).order_by(IngestionJobModel.created_at.desc())
                 if status is not None:
                     stmt = stmt.where(IngestionJobModel.status == status.value)
+                if workspace_id is not None:
+                    stmt = stmt.where(IngestionJobModel.workspace_id == workspace_id)
+                if collection_id is not None:
+                    stmt = stmt.where(func.lower(IngestionJobModel.collection_id) == collection_id.lower())
                 stmt = stmt.limit(limit).offset(offset)
                 jobs = session.execute(stmt).scalars().all()
                 return [self._to_record(j) for j in jobs]
@@ -1204,6 +1357,414 @@ class PostgresIngestionJobRepository(IngestionJobRepository):
             raise ConnectionStorageError(f"Database connection error in list_jobs: {e}") from e
         except SQLAlchemyError as e:
             raise PersistenceError(f"Failed to list ingestion jobs: {e}") from e
+
+    def retry_job(
+        self,
+        job_id: uuid.UUID,
+        workspace_id: Optional[uuid.UUID] = None,
+        now: Optional[datetime] = None,
+    ) -> IngestionJobRecord:
+        current_time = now or datetime.now(timezone.utc)
+        try:
+            with self.session_factory() as session:
+                with session.begin():
+                    stmt = select(IngestionJobModel).where(IngestionJobModel.id == job_id).with_for_update()
+                    if workspace_id is not None:
+                        stmt = stmt.where(IngestionJobModel.workspace_id == workspace_id)
+                    job = session.execute(stmt).scalar_one_or_none()
+                    if not job:
+                        raise PersistenceError(f"Ingestion job '{job_id}' not found")
+                    if job.status != JobStatus.FAILED.value:
+                        raise PersistenceError(
+                            f"Job '{job_id}' is in status '{job.status}'. Only jobs in 'failed' status may be retried."
+                        )
+                    # Administrative transition: failed -> queued
+                    job.status = JobStatus.QUEUED.value
+                    job.stage = ProcessingStage.PENDING.value
+                    job.claim_token = None
+                    job.claim_worker_id = None
+                    job.next_retry_at = current_time
+                    session.flush()
+                    return self._to_record(job)
+        except PersistenceError:
+            raise
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in retry_job: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to retry job '{job_id}': {e}") from e
+
+    def cancel_job(
+        self,
+        job_id: uuid.UUID,
+        workspace_id: Optional[uuid.UUID] = None,
+        reason: str = "cancelled_by_user",
+        now: Optional[datetime] = None,
+    ) -> IngestionJobRecord:
+        current_time = now or datetime.now(timezone.utc)
+        try:
+            with self.session_factory() as session:
+                with session.begin():
+                    stmt = select(IngestionJobModel).where(IngestionJobModel.id == job_id).with_for_update()
+                    if workspace_id is not None:
+                        stmt = stmt.where(IngestionJobModel.workspace_id == workspace_id)
+                    job = session.execute(stmt).scalar_one_or_none()
+                    if not job:
+                        raise PersistenceError(f"Ingestion job '{job_id}' not found")
+                    if job.status in (JobStatus.COMPLETED.value, JobStatus.DUPLICATE.value, JobStatus.FAILED.value):
+                        raise PersistenceError(f"Job '{job_id}' is already in terminal status '{job.status}'.")
+                    # Administrative transition: non-terminal -> failed
+                    job.status = JobStatus.FAILED.value
+                    job.stage = ProcessingStage.FINISHED.value
+                    job.completed_at = current_time
+                    job.error_details = {"reason": reason, "cancelled_at": current_time.isoformat()}
+                    session.flush()
+                    return self._to_record(job)
+        except PersistenceError:
+            raise
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in cancel_job: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to cancel job '{job_id}': {e}") from e
+
+
+class PostgresWorkspaceRepository(WorkspaceRepository):
+    """PostgreSQL-backed workspace and membership repository."""
+
+    def __init__(self, session_factory: sessionmaker[Session]):
+        self.session_factory = session_factory
+
+    def get_workspace(self, workspace_id: uuid.UUID) -> Optional[WorkspaceModel]:
+        try:
+            with self.session_factory() as session:
+                return session.execute(
+                    select(WorkspaceModel).where(WorkspaceModel.id == workspace_id)
+                ).scalar_one_or_none()
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in get_workspace: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to retrieve workspace: {e}") from e
+
+    def get_workspace_by_slug(self, slug: str) -> Optional[WorkspaceModel]:
+        try:
+            with self.session_factory() as session:
+                return session.execute(
+                    select(WorkspaceModel).where(func.lower(WorkspaceModel.slug) == slug.lower())
+                ).scalar_one_or_none()
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in get_workspace_by_slug: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to retrieve workspace by slug: {e}") from e
+
+    def list_workspaces_for_user(self, user_id: uuid.UUID) -> List[WorkspaceModel]:
+        try:
+            with self.session_factory() as session:
+                stmt = (
+                    select(WorkspaceModel)
+                    .join(WorkspaceMembershipModel, WorkspaceMembershipModel.workspace_id == WorkspaceModel.id)
+                    .where(WorkspaceMembershipModel.user_id == user_id)
+                    .order_by(WorkspaceModel.name.asc())
+                )
+                return list(session.execute(stmt).scalars().all())
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in list_workspaces_for_user: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to list workspaces: {e}") from e
+
+    def create_workspace(
+        self,
+        name: str,
+        slug: str,
+        owner_id: Optional[uuid.UUID] = None,
+        is_system: bool = False,
+    ) -> WorkspaceModel:
+        try:
+            with self.session_factory() as session:
+                with session.begin():
+                    ws = WorkspaceModel(
+                        id=uuid.uuid4(),
+                        name=name.strip(),
+                        slug=slug.strip().lower(),
+                        owner_id=owner_id,
+                        is_system=is_system,
+                    )
+                    session.add(ws)
+                    session.flush()
+                    return ws
+        except IntegrityError as e:
+            raise PersistenceError(f"Workspace with slug '{slug}' already exists or violates constraint: {e}") from e
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in create_workspace: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to create workspace: {e}") from e
+
+    def get_membership(self, workspace_id: uuid.UUID, user_id: uuid.UUID) -> Optional[WorkspaceMembershipModel]:
+        try:
+            with self.session_factory() as session:
+                return session.execute(
+                    select(WorkspaceMembershipModel).where(
+                        and_(
+                            WorkspaceMembershipModel.workspace_id == workspace_id,
+                            WorkspaceMembershipModel.user_id == user_id,
+                        )
+                    )
+                ).scalar_one_or_none()
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in get_membership: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to retrieve workspace membership: {e}") from e
+
+    def add_member(self, workspace_id: uuid.UUID, user_id: uuid.UUID, role: str) -> WorkspaceMembershipModel:
+        try:
+            with self.session_factory() as session:
+                with session.begin():
+                    mem = WorkspaceMembershipModel(
+                        id=uuid.uuid4(),
+                        workspace_id=workspace_id,
+                        user_id=user_id,
+                        role=role,
+                    )
+                    session.add(mem)
+                    session.flush()
+                    return mem
+        except IntegrityError as e:
+            raise PersistenceError(f"User is already a member of workspace: {e}") from e
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in add_member: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to add workspace member: {e}") from e
+
+
+class PostgresCollectionRepository(CollectionRepository):
+    """PostgreSQL-backed collection repository enforcing multi-tenant isolation."""
+
+    def __init__(self, session_factory: sessionmaker[Session]):
+        self.session_factory = session_factory
+
+    def get_collection(self, collection_id: str, workspace_id: Optional[uuid.UUID] = None) -> Optional[CollectionModel]:
+        try:
+            with self.session_factory() as session:
+                stmt = select(CollectionModel).where(func.lower(CollectionModel.id) == collection_id.lower())
+                if workspace_id is not None:
+                    stmt = stmt.where(CollectionModel.workspace_id == workspace_id)
+                return session.execute(stmt).scalar_one_or_none()
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in get_collection: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to retrieve collection: {e}") from e
+
+    def list_collections(self, workspace_id: uuid.UUID, include_public: bool = True) -> List[CollectionModel]:
+        try:
+            with self.session_factory() as session:
+                stmt = select(CollectionModel)
+                if include_public:
+                    stmt = stmt.where(
+                        or_(
+                            CollectionModel.workspace_id == workspace_id,
+                            CollectionModel.is_public.is_(True),
+                            CollectionModel.is_system.is_(True),
+                        )
+                    )
+                else:
+                    stmt = stmt.where(CollectionModel.workspace_id == workspace_id)
+                stmt = stmt.order_by(CollectionModel.name.asc())
+                return list(session.execute(stmt).scalars().all())
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in list_collections: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to list collections: {e}") from e
+
+    def create_collection(
+        self,
+        id: str,
+        workspace_id: uuid.UUID,
+        name: str,
+        policy_name: str,
+        description: Optional[str] = None,
+        enforce_regulatory_graph: bool = False,
+        is_system: bool = False,
+        is_public: bool = False,
+    ) -> CollectionModel:
+        try:
+            with self.session_factory() as session:
+                with session.begin():
+                    col = CollectionModel(
+                        id=id.strip().lower(),
+                        workspace_id=workspace_id,
+                        name=name.strip(),
+                        policy_name=policy_name,
+                        description=description,
+                        enforce_regulatory_graph=enforce_regulatory_graph,
+                        is_system=is_system,
+                        is_public=is_public,
+                    )
+                    session.add(col)
+                    session.flush()
+                    return col
+        except IntegrityError as e:
+            raise PersistenceError(f"Collection '{id}' conflict in workspace {workspace_id}: {e}") from e
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in create_collection: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to create collection: {e}") from e
+
+    def update_collection(
+        self,
+        collection_id: str,
+        workspace_id: uuid.UUID,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> Optional[CollectionModel]:
+        try:
+            with self.session_factory() as session:
+                with session.begin():
+                    stmt = select(CollectionModel).where(
+                        and_(
+                            func.lower(CollectionModel.id) == collection_id.lower(),
+                            CollectionModel.workspace_id == workspace_id,
+                        )
+                    ).with_for_update()
+                    col = session.execute(stmt).scalar_one_or_none()
+                    if not col:
+                        return None
+                    if name is not None:
+                        col.name = name.strip()
+                    if description is not None:
+                        col.description = description
+                    session.flush()
+                    return col
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in update_collection: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to update collection: {e}") from e
+
+    def delete_collection(self, collection_id: str, workspace_id: uuid.UUID) -> bool:
+        try:
+            with self.session_factory() as session:
+                with session.begin():
+                    stmt = select(CollectionModel).where(
+                        and_(
+                            func.lower(CollectionModel.id) == collection_id.lower(),
+                            CollectionModel.workspace_id == workspace_id,
+                        )
+                    ).with_for_update()
+                    col = session.execute(stmt).scalar_one_or_none()
+                    if not col:
+                        return False
+                    if col.is_system:
+                        raise PersistenceError("System collections cannot be deleted.")
+                    session.delete(col)
+                    session.flush()
+                    return True
+        except PersistenceError:
+            raise
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in delete_collection: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to delete collection: {e}") from e
+
+
+class PostgresQueryHistoryRepository(QueryHistoryRepository):
+    """PostgreSQL-backed query history repository."""
+
+    def __init__(self, session_factory: sessionmaker[Session]):
+        self.session_factory = session_factory
+
+    def create_entry(
+        self,
+        user_id: uuid.UUID,
+        collection_id: str,
+        query_text: str,
+        disposition: str,
+        workspace_id: Optional[uuid.UUID] = None,
+        query_options: Optional[Dict[str, Any]] = None,
+        summary_narrative: Optional[str] = None,
+        answer_text: Optional[str] = None,
+        claim_citations: Optional[List[Dict[str, Any]]] = None,
+        verified_excerpts_count: int = 0,
+        technical_validation_passed: bool = False,
+    ) -> QueryHistoryModel:
+        try:
+            with self.session_factory() as session:
+                with session.begin():
+                    entry = QueryHistoryModel(
+                        id=uuid.uuid4(),
+                        user_id=user_id,
+                        workspace_id=workspace_id,
+                        collection_id=collection_id,
+                        query_text=query_text,
+                        query_options=query_options or {},
+                        disposition=disposition,
+                        summary_narrative=summary_narrative,
+                        answer_text=answer_text,
+                        claim_citations=claim_citations or [],
+                        verified_excerpts_count=verified_excerpts_count,
+                        technical_validation_passed=technical_validation_passed,
+                    )
+                    session.add(entry)
+                    session.flush()
+                    return entry
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in create_entry: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to create query history entry: {e}") from e
+
+    def get_entry(self, history_id: uuid.UUID, user_id: uuid.UUID) -> Optional[QueryHistoryModel]:
+        try:
+            with self.session_factory() as session:
+                stmt = select(QueryHistoryModel).where(
+                    and_(
+                        QueryHistoryModel.id == history_id,
+                        QueryHistoryModel.user_id == user_id,
+                    )
+                )
+                return session.execute(stmt).scalar_one_or_none()
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in get_entry: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to retrieve query history entry: {e}") from e
+
+    def list_entries(
+        self,
+        user_id: uuid.UUID,
+        workspace_id: Optional[uuid.UUID] = None,
+        collection_id: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[QueryHistoryModel]:
+        try:
+            with self.session_factory() as session:
+                stmt = select(QueryHistoryModel).where(QueryHistoryModel.user_id == user_id)
+                if workspace_id is not None:
+                    stmt = stmt.where(QueryHistoryModel.workspace_id == workspace_id)
+                if collection_id is not None:
+                    stmt = stmt.where(func.lower(QueryHistoryModel.collection_id) == collection_id.lower())
+                stmt = stmt.order_by(QueryHistoryModel.created_at.desc()).limit(limit).offset(offset)
+                return list(session.execute(stmt).scalars().all())
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in list_entries: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to list query history entries: {e}") from e
+
+    def delete_entry(self, history_id: uuid.UUID, user_id: uuid.UUID) -> bool:
+        try:
+            with self.session_factory() as session:
+                with session.begin():
+                    stmt = select(QueryHistoryModel).where(
+                        and_(
+                            QueryHistoryModel.id == history_id,
+                            QueryHistoryModel.user_id == user_id,
+                        )
+                    ).with_for_update()
+                    entry = session.execute(stmt).scalar_one_or_none()
+                    if not entry:
+                        return False
+                    session.delete(entry)
+                    session.flush()
+                    return True
+        except DBAPIError as e:
+            raise ConnectionStorageError(f"Database connection error in delete_entry: {e}") from e
+        except SQLAlchemyError as e:
+            raise PersistenceError(f"Failed to delete query history entry: {e}") from e
 
 
 class PostgresStorageRepositoryFactory(StorageRepositoryFactory):
@@ -1253,3 +1814,26 @@ class PostgresStorageRepositoryFactory(StorageRepositoryFactory):
 
     def get_ingestion_job_repository(self) -> IngestionJobRepository:
         return PostgresIngestionJobRepository(self.session_factory)
+
+    def get_workspace_repository(self) -> WorkspaceRepository:
+        return PostgresWorkspaceRepository(self.session_factory)
+
+    def get_collection_repository(self) -> CollectionRepository:
+        return PostgresCollectionRepository(self.session_factory)
+
+    def get_query_history_repository(self) -> QueryHistoryRepository:
+        return PostgresQueryHistoryRepository(self.session_factory)
+
+
+class PostgresStorageAdapter(PostgresStorageRepositoryFactory):
+    """
+    Unified PostgreSQL Storage Adapter integrating repositories for:
+    - Workspaces and memberships (PostgresWorkspaceRepository)
+    - Collections (PostgresCollectionRepository)
+    - Regulatory documents and versions (PostgresDocumentRepository)
+    - Ingestion jobs and queue lifecycle (PostgresIngestionJobRepository)
+    - Query history (PostgresQueryHistoryRepository)
+    - Graph edges (PostgresGraphEdgeRepository)
+    - Vector search over chunk embeddings (PostgresChunkRepository)
+    """
+    pass

@@ -22,6 +22,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     UniqueConstraint,
     CheckConstraint,
     Index,
@@ -95,6 +96,8 @@ class RegulatoryDocumentModel(Base):
     __tablename__ = "regulatory_documents"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)  # 'sebi_cscrf_2024_113'
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    collection_id: Mapped[str] = mapped_column(String(100), nullable=False)
     domain_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("regulatory_domains.id", ondelete="RESTRICT"), nullable=False
     )
@@ -134,6 +137,15 @@ class RegulatoryDocumentModel(Base):
         foreign_keys="RegulatoryEdgeModel.target_document_id",
         back_populates="target_document",
         cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "collection_id"],
+            ["collections.workspace_id", "collections.id"],
+            name="fk_regulatory_documents_workspace_collection",
+            ondelete="RESTRICT",
+        ),
     )
 
 
@@ -362,6 +374,8 @@ class IngestionJobModel(Base):
     )
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    collection_id: Mapped[str] = mapped_column(String(100), nullable=False)
     document_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="queued")
@@ -382,6 +396,12 @@ class IngestionJobModel(Base):
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["workspace_id", "collection_id"],
+            ["collections.workspace_id", "collections.id"],
+            name="fk_ingestion_jobs_workspace_collection",
+            ondelete="RESTRICT",
+        ),
         UniqueConstraint("idempotency_key", name="uq_ingestion_jobs_idempotency_key"),
         CheckConstraint("status IN ('queued', 'processing', 'completed', 'duplicate', 'failed')", name="chk_ingestion_job_status"),
         CheckConstraint(

@@ -8,12 +8,16 @@ Evaluates retrieval candidate passages against query intent and content anchors:
 - Emits explicit, testable relevance decision codes.
 """
 from enum import Enum
+import logging
 import re
-from typing import List, Dict, Any, Optional, Set, Tuple
+from typing import List, Dict, Any, Optional, Set, Tuple, Union
 
 from app.grounding.classifier import QueryIntent, classify_query_intent
 from app.schemas.retrieval import RetrievalResult
 from app.schemas.grounding import RegulatoryStatus
+from app.schemas.manifest import GroundingPolicyType
+
+logger = logging.getLogger(__name__)
 
 
 class RelevanceDecisionCode(str, Enum):
@@ -361,12 +365,81 @@ def assess_candidate_relevance(
     )
 
 
-def filter_relevant_candidates(
+def _filter_general_candidates(
     query: str,
     candidates: List[RetrievalResult],
 ) -> Tuple[List[RetrievalResult], QueryIntent, List[CandidateRelevanceAssessment]]:
     """
-    Evaluates and filters a list of retrieval candidates against query intent and relevance safeguards.
+    Topical relevance filtering for GENERAL_STATIC document collections.
+
+    Does not execute SEBI-specific circular regexes, deadline anchors, provision patterns,
+    or circular priority ordering. Uses substantive query term matching to filter out
+    unrelated passages, preserving hybrid retrieval ranking order.
+    """
+    intent = QueryIntent.GENERAL_REQUIREMENT
+    assessments: List[CandidateRelevanceAssessment] = []
+    relevant_candidates: List[RetrievalResult] = []
+
+    # Extract domain-neutral substantive tokens (length >= 3, excluding generic stop/meta words)
+    query_tokens = [
+        w.lower()
+        for w in re.findall(r"[a-zA-Z0-9]+", query)
+        if len(w) >= 3 and w.lower() not in STOP_WORDS and w.lower() not in META_INSTRUCTION_TERMS
+    ]
+    unique_query_tokens = list(dict.fromkeys(query_tokens))
+
+    for c in candidates:
+        text_lower = c.text.lower()
+        if unique_query_tokens:
+            matched = [t for t in unique_query_tokens if check_token_match(t, text_lower)]
+            if matched:
+                is_relevant = True
+                decision_code = RelevanceDecisionCode.RELEVANT_EVIDENCE
+                reason = f"Passage matches {len(matched)} of {len(unique_query_tokens)} query term(s): {matched[:4]}."
+            else:
+                is_relevant = False
+                decision_code = RelevanceDecisionCode.INSUFFICIENT_RELEVANCE
+                reason = f"Passage does not contain substantive query terms ({unique_query_tokens[:4]})."
+        else:
+            # Query has no substantive filter terms (e.g. very short query or only stop words)
+            # Allow retrieval results to proceed to safety gate
+            is_relevant = True
+            decision_code = RelevanceDecisionCode.RELEVANT_EVIDENCE
+            reason = "Query contains no substantive filter terms; candidate passes to safety gate."
+
+        assessment = CandidateRelevanceAssessment(
+            chunk_id=c.chunk_id,
+            is_relevant=is_relevant,
+            decision_code=decision_code,
+            reason=reason,
+        )
+        assessments.append(assessment)
+        if is_relevant:
+            relevant_candidates.append(c)
+
+    # Deterministic candidate ordering:
+    # Rank by coverage (fraction of matched unique tokens), then candidate RRF score
+    if unique_query_tokens and relevant_candidates:
+        def general_coverage_key(item: RetrievalResult) -> Tuple[float, float]:
+            txt = item.text.lower()
+            m_count = sum(1 for t in unique_query_tokens if check_token_match(t, txt))
+            cov = m_count / len(unique_query_tokens)
+            return (-cov, -item.score)
+
+        relevant_candidates.sort(key=general_coverage_key)
+
+    return relevant_candidates, intent, assessments
+
+
+def _filter_sebi_candidates(
+    query: str,
+    candidates: List[RetrievalResult],
+) -> Tuple[List[RetrievalResult], QueryIntent, List[CandidateRelevanceAssessment]]:
+    """
+    Evaluates and filters retrieval candidates under SEBI_CSCRF_STRICT policy.
+
+    Preserves 100% of existing SEBI circular matching, timeline anchors,
+    provision anchors, and deterministic candidate priority ordering.
     """
     intent = classify_query_intent(query)
     assessments: List[CandidateRelevanceAssessment] = []
@@ -537,3 +610,42 @@ def filter_relevant_candidates(
             relevant_candidates.sort(key=specificity_priority_key)
 
     return relevant_candidates, intent, assessments
+
+
+_OMITTED_POLICY = object()
+
+
+def filter_relevant_candidates(
+    query: str,
+    candidates: List[RetrievalResult],
+    policy_type: Union[GroundingPolicyType, str] = _OMITTED_POLICY,
+) -> Tuple[List[RetrievalResult], QueryIntent, List[CandidateRelevanceAssessment]]:
+    """
+    Evaluates and filters a list of retrieval candidates against query intent and relevance safeguards.
+
+    Dispatches between SEBI_CSCRF_STRICT and GENERAL_STATIC policies.
+    Callers MUST pass policy_type explicitly. An omitted policy or None fails closed with ValueError.
+    """
+    if policy_type is _OMITTED_POLICY or policy_type is None:
+        raise ValueError("grounding policy_type is required and cannot be omitted or None")
+
+    if isinstance(policy_type, GroundingPolicyType):
+        resolved_policy = policy_type
+    elif isinstance(policy_type, str):
+        try:
+            resolved_policy = GroundingPolicyType(policy_type.strip().lower())
+        except (ValueError, Exception):
+            valid_policies = [p.value for p in GroundingPolicyType]
+            raise ValueError(
+                f"Unsupported or unrecognized grounding policy_type: '{policy_type}'. "
+                f"Must be one of {valid_policies}"
+            )
+    else:
+        raise ValueError(f"Invalid policy_type argument type: {type(policy_type).__name__}")
+
+    if resolved_policy == GroundingPolicyType.SEBI_CSCRF_STRICT:
+        return _filter_sebi_candidates(query, candidates)
+    elif resolved_policy == GroundingPolicyType.GENERAL_STATIC:
+        return _filter_general_candidates(query, candidates)
+    else:
+        raise ValueError(f"Unhandled grounding policy_type: '{resolved_policy}'")

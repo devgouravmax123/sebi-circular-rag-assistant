@@ -1,49 +1,46 @@
 """
-Deterministic answer safety gate for the SEBI CSCRF Regulatory Q&A Assistant.
+Answer Safety Gate for Evidence Verification and Controlled Abstention.
 
-Enforces:
-1. Retrieval-bound verification: candidate chunks must belong to authorized server-side retrieval set.
-2. Rejection of untrusted model classifications and strict server-side quotation verification.
-3. Safe rendering of server-validated excerpts with authoritative corpus metadata.
-4. Handling of current vs. historical queries, separating superseded excerpts and abstaining when all evidence is superseded.
-5. Conservative disposition assignment (VERIFIED_HISTORICAL_EXCERPTS, QUALIFIED_HISTORICAL_EXCERPTS, CONTROLLED_ABSTENTION, REJECTED_UNSAFE).
-6. No leakage of raw untrusted draft text or unchecked model prose.
+Enforces server-side verification:
+1. Strict retrieval-candidate binding (cited chunks must be in server-side retrieval set).
+2. Verbatim quotation validation (candidate text must be an exact substring of chunk).
+3. Pluggable relationship resolution (RegulatorySupersessionPolicy vs PassthroughPolicy).
+4. Pluggable temporal applicability evaluation (RegulatoryTemporalPolicy vs PassthroughTemporalPolicy).
+5. Controlled abstention on unanswerable queries or superseded evidence without current support.
 """
-import re
-from typing import List, Dict, Optional, Any, Union, Set
+from typing import Dict, List, Optional, Set, Any, Union
 from pathlib import Path
+import json
+import logging
+import re
 
 from app.schemas.document import ChunkRecord, DocumentRecord
-from app.schemas.grounding import GroundedEvidenceItem, RegulatoryStatus
-from app.schemas.graph_collection import GraphEdgeCollection
-from app.schemas.cscrf_graph_data import create_verified_cscrf_graph
 from app.schemas.retrieval import RetrievalResult, RetrievalResponse
-from app.retrieval.service import RetrievalService
-from app.grounding.resolver import ConservativeGraphResolver
-from app.grounding.validator import CitationValidator
 from app.schemas.citation import CitationItem, CitationStatus
-from app.schemas.manifest import GroundingPolicyDeclaration, GroundingPolicyType
+from app.schemas.graph_collection import GraphEdgeCollection
+from app.schemas.grounding import RegulatoryStatus
 from app.schemas.safety_gate import (
-    AnswerDisposition,
     CandidateExcerptDraft,
     ExcerptDraftPayload,
     ValidatedExcerptItem,
     SafetyGateResponse,
+    AnswerDisposition,
+)
+from app.grounding.validator import CitationValidator
+from app.grounding.resolver import ConservativeGraphResolver
+from app.schemas.manifest import GroundingPolicyDeclaration, GroundingPolicyType
+from app.retrieval.service import RetrievalService
+from app.schemas.cscrf_graph_data import create_verified_cscrf_graph
+from app.grounding.relationship_policy import (
+    resolve_relationship_and_temporal_policies,
+    is_current_status_query,
+    RelationshipPolicy,
+    TemporalPolicy,
 )
 
+logger = logging.getLogger(__name__)
 
-def is_current_status_query(query: str) -> bool:
-    """
-    Conservative detection of queries inquiring about current compliance, active obligations,
-    present deadlines, or applicability.
-    """
-    q_lower = query.lower()
-    current_keywords = [
-        "current", "currently", "now", "today", "active", "applicable", "deadline",
-        "latest", "in force", "compliance timeline", "effective date", "mandated",
-        "mandatory", "shall", "must", "timeline", "when do", "is it required"
-    ]
-    return any(kw in q_lower for kw in current_keywords)
+_OMITTED_POLICY = object()
 
 
 class AnswerSafetyGate:
@@ -60,33 +57,61 @@ class AnswerSafetyGate:
         retrieval_service: Optional[RetrievalService] = None,
     ):
         self.processed_dir = Path(processed_dir)
-        self.graph = graph_collection if graph_collection is not None else create_verified_cscrf_graph()
+        self.retrieval_service = retrieval_service
+        self._graph = graph_collection
+        self._resolver = resolver
         self.validator = validator if validator is not None else CitationValidator(
             processed_dir=self.processed_dir,
-            graph_collection=self.graph,
+            graph_collection=self._graph,
         )
-        self.resolver = resolver if resolver is not None else ConservativeGraphResolver(
-            graph_collection=self.graph,
-        )
-        self.retrieval_service = retrieval_service
+
+    @property
+    def graph(self) -> GraphEdgeCollection:
+        """Lazily load verified CSCRF graph if not provided."""
+        if self._graph is None:
+            self._graph = create_verified_cscrf_graph()
+        return self._graph
+
+    @property
+    def resolver(self) -> ConservativeGraphResolver:
+        """Lazily load conservative graph resolver if not provided."""
+        if self._resolver is None:
+            self._resolver = ConservativeGraphResolver(graph_collection=self.graph)
+        return self._resolver
 
     def evaluate_draft(
         self,
         payload: Union[ExcerptDraftPayload, Dict[str, Any]],
         retrieval_candidates: Optional[Union[List[RetrievalResult], List[ChunkRecord], Set[str]]] = None,
-        policy: Optional[GroundingPolicyDeclaration] = None,
+        policy: Union[GroundingPolicyDeclaration, Any] = _OMITTED_POLICY,
+        collection_id: Optional[str] = None,
     ) -> SafetyGateResponse:
         """
         Evaluates untrusted draft payload, performs retrieval-candidate binding,
         server-side quotation and status validation, and constructs a deterministic SafetyGateResponse.
         Enforces policy-aware dispatch based on the collection's GroundingPolicyDeclaration.
+        Fails closed if policy is omitted or None.
         """
-        active_policy = policy or GroundingPolicyDeclaration(
-            policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT,
-            enforce_regulatory_graph=True,
-            enforce_verbatim_citation=True,
-            enforce_retrieval_binding=True,
+        if policy is _OMITTED_POLICY or policy is None:
+            raise ValueError("grounding policy declaration is required and cannot be omitted or None")
+
+        if not isinstance(policy, GroundingPolicyDeclaration):
+            raise ValueError(f"Invalid policy declaration type: {type(policy).__name__}")
+
+        # Resolve authoritative collection ID for policy binding
+        cid = (
+            collection_id.strip()
+            if collection_id
+            else ("sebi_cscrf" if policy.policy_type == GroundingPolicyType.SEBI_CSCRF_STRICT else "general_static")
         )
+
+        rel_policy, temp_policy = resolve_relationship_and_temporal_policies(
+            policy=policy,
+            collection_id=cid,
+            graph_collection=self._graph,
+            resolver=self._resolver,
+        )
+
         # 1. Parse and validate untrusted input payload structure
         if isinstance(payload, dict):
             try:
@@ -108,28 +133,46 @@ class AnswerSafetyGate:
         if not query:
             return SafetyGateResponse(
                 query="",
-                disposition=AnswerDisposition.CONTROLLED_ABSTENTION,
+                disposition=AnswerDisposition.REJECTED_UNSAFE,
                 verified_excerpts=[],
                 historical_superseded_excerpts=[],
-                summary_narrative="Query is empty.",
+                summary_narrative="Draft payload rejected: query cannot be empty.",
                 technical_validation_passed=False,
                 retrieval_candidate_count=0,
-                abstention_reason="Empty query provided.",
+                abstention_reason="Empty query in draft payload.",
                 regulatory_warnings=[],
             )
 
-        # 2. Determine authorized candidate chunk set from server-side retrieval
+        # Check for duplicate excerpt IDs
+        seen_excerpt_ids: Set[str] = set()
+        for draft in payload.excerpts:
+            if draft.excerpt_id in seen_excerpt_ids:
+                return SafetyGateResponse(
+                    query=query,
+                    disposition=AnswerDisposition.REJECTED_UNSAFE,
+                    verified_excerpts=[],
+                    historical_superseded_excerpts=[],
+                    summary_narrative=f"Draft payload rejected: duplicate excerpt_id '{draft.excerpt_id}' detected.",
+                    technical_validation_passed=False,
+                    retrieval_candidate_count=0,
+                    abstention_reason=f"Duplicate excerpt_id '{draft.excerpt_id}'.",
+                    regulatory_warnings=[],
+                )
+            seen_excerpt_ids.add(draft.excerpt_id)
+
+        # 2. Extract and index authorized candidate chunk IDs
         authorized_chunk_ids: Optional[Set[str]] = None
         candidate_count = 0
-
         if retrieval_candidates is not None:
             if isinstance(retrieval_candidates, set):
                 authorized_chunk_ids = retrieval_candidates
-            else:
+            elif isinstance(retrieval_candidates, list):
                 authorized_chunk_ids = {
-                    c.chunk_id for c in retrieval_candidates if hasattr(c, "chunk_id")
+                    c if isinstance(c, str) else c.chunk_id
+                    for c in retrieval_candidates
+                    if isinstance(c, str) or hasattr(c, "chunk_id")
                 }
-            candidate_count = len(authorized_chunk_ids)
+            candidate_count = len(authorized_chunk_ids) if authorized_chunk_ids else 0
         elif self.retrieval_service is not None:
             try:
                 # Perform server-side hybrid retrieval for the query
@@ -163,17 +206,17 @@ class AnswerSafetyGate:
                 regulatory_warnings=[],
             )
 
-
+        # If draft payload has zero excerpts: controlled abstention
         if not payload.excerpts:
             return SafetyGateResponse(
                 query=query,
                 disposition=AnswerDisposition.CONTROLLED_ABSTENTION,
                 verified_excerpts=[],
                 historical_superseded_excerpts=[],
-                summary_narrative="No candidate excerpts provided in draft payload.",
-                technical_validation_passed=False,
+                summary_narrative="Controlled Abstention: No candidate excerpts provided in draft payload.",
+                technical_validation_passed=True,
                 retrieval_candidate_count=candidate_count,
-                abstention_reason="No candidate excerpts submitted for verification.",
+                abstention_reason="Model draft contained no candidate excerpts to verify.",
                 regulatory_warnings=[],
             )
 
@@ -183,15 +226,12 @@ class AnswerSafetyGate:
         validation_errors: List[str] = []
         warnings: List[str] = []
 
-        is_general_static = (active_policy.policy_type == GroundingPolicyType.GENERAL_STATIC)
-        enforce_graph = active_policy.enforce_regulatory_graph and not is_general_static
-
         for draft in payload.excerpts:
             chunk_id = draft.source_chunk_id.strip()
             proposed_text = draft.proposed_excerpt_text
 
             # Check candidate authorization against server-side retrieval set
-            if active_policy.enforce_retrieval_binding and authorized_chunk_ids is not None and chunk_id not in authorized_chunk_ids:
+            if policy.enforce_retrieval_binding and authorized_chunk_ids is not None and chunk_id not in authorized_chunk_ids:
                 validation_errors.append(
                     f"Candidate '{draft.excerpt_id}': Chunk '{chunk_id}' is not in authorized retrieval candidate set."
                 )
@@ -231,7 +271,7 @@ class AnswerSafetyGate:
                 continue
 
             # Strict quotation validation using CitationValidator rules (verbatim substring match)
-            if active_policy.enforce_verbatim_citation:
+            if policy.enforce_verbatim_citation:
                 cit = CitationItem(
                     chunk_id=chunk_id,
                     quote=proposed_text,
@@ -254,78 +294,55 @@ class AnswerSafetyGate:
                     )
                     continue
 
-            # Policy dispatch: resolve regulatory status
-            if enforce_graph:
-                # SEBI CSCRF Strict graph resolution
-                temp_result = RetrievalResult(
-                    chunk_id=chunk.chunk_id,
-                    document_id=chunk.document_id,
-                    title=doc.title if doc else None,
-                    circular_number=doc.circular_number if doc else None,
-                    issue_date=doc.issue_date if doc else None,
-                    page_start=chunk.page_start,
-                    page_end=chunk.page_end,
-                    text=chunk.text,
-                    score=1.0,
-                    rank=1,
-                    is_ocr=chunk.is_ocr,
-                )
-                grounded_item = self.resolver.resolve_item(temp_result)
+            # Policy dispatch: resolve regulatory status using pluggable RelationshipPolicy
+            temp_result = RetrievalResult(
+                chunk_id=chunk.chunk_id,
+                document_id=chunk.document_id,
+                title=doc.title if doc else None,
+                circular_number=getattr(doc, "circular_number", None) if doc else None,
+                issue_date=getattr(doc, "issue_date", None) if doc else None,
+                page_start=chunk.page_start,
+                page_end=chunk.page_end,
+                text=chunk.text,
+                score=1.0,
+                rank=1,
+                is_ocr=chunk.is_ocr,
+            )
+            grounded_item = rel_policy.resolve_item(temp_result)
 
-                validated_item = ValidatedExcerptItem(
-                    excerpt_id=draft.excerpt_id,
-                    source_chunk_id=chunk.chunk_id,
-                    document_id=chunk.document_id,
-                    circular_number=doc.circular_number if doc else None,
-                    title=doc.title if doc else None,
-                    issue_date=doc.issue_date if doc else None,
-                    page_start=chunk.page_start,
-                    page_end=chunk.page_end,
-                    excerpt_text=proposed_text.strip(),
-                    regulatory_status=grounded_item.regulatory_status,
-                    status_reason=grounded_item.status_reason,
-                    applicable_edge_ids=grounded_item.applicable_edge_ids,
-                    acting_document_ids=grounded_item.acting_document_ids,
-                )
+            validated_item = ValidatedExcerptItem(
+                excerpt_id=draft.excerpt_id,
+                source_chunk_id=chunk.chunk_id,
+                document_id=chunk.document_id,
+                circular_number=getattr(doc, "circular_number", None) if doc else None,
+                title=getattr(doc, "title", None) if doc else None,
+                issue_date=getattr(doc, "issue_date", None) if doc else None,
+                page_start=chunk.page_start,
+                page_end=chunk.page_end,
+                excerpt_text=proposed_text.strip(),
+                regulatory_status=grounded_item.regulatory_status,
+                status_reason=grounded_item.status_reason,
+                applicable_edge_ids=grounded_item.applicable_edge_ids,
+                acting_document_ids=grounded_item.acting_document_ids,
+            )
 
-                if grounded_item.regulatory_status == RegulatoryStatus.UNRESOLVED:
-                    warnings.append(
-                        f"Excerpt '{draft.excerpt_id}' from {chunk.document_id} has UNRESOLVED status; "
-                        f"it represents historical baseline circular text whose active legal currency is not established beyond the pilot."
-                    )
-                    verified_items.append(validated_item)
-                elif grounded_item.regulatory_status == RegulatoryStatus.SUPERSEDED:
-                    warnings.append(
-                        f"Excerpt '{draft.excerpt_id}' from {chunk.document_id} is SUPERSEDED by newer circulars in the corpus."
-                    )
-                    superseded_items.append(validated_item)
-                elif grounded_item.regulatory_status == RegulatoryStatus.PARTIALLY_AMENDED:
-                    warnings.append(
-                        f"Excerpt '{draft.excerpt_id}' from {chunk.document_id} belongs to a provision subject to partial amendment."
-                    )
-                    verified_items.append(validated_item)
-                else:
-                    verified_items.append(validated_item)
+            if grounded_item.regulatory_status == RegulatoryStatus.UNRESOLVED:
+                warnings.append(
+                    f"Excerpt '{draft.excerpt_id}' from {chunk.document_id} has UNRESOLVED status; "
+                    f"it represents historical baseline circular text whose active legal currency is not established beyond the pilot."
+                )
+                verified_items.append(validated_item)
+            elif grounded_item.regulatory_status == RegulatoryStatus.SUPERSEDED:
+                warnings.append(
+                    f"Excerpt '{draft.excerpt_id}' from {chunk.document_id} is SUPERSEDED by newer circulars in the corpus."
+                )
+                superseded_items.append(validated_item)
+            elif grounded_item.regulatory_status == RegulatoryStatus.PARTIALLY_AMENDED:
+                warnings.append(
+                    f"Excerpt '{draft.excerpt_id}' from {chunk.document_id} belongs to a provision subject to partial amendment."
+                )
+                verified_items.append(validated_item)
             else:
-                # GENERAL_STATIC: General document collection with no SEBI graph or temporal-supersession.
-                # Section 3: Do not automatically label general document excerpts as ACTIVE_CURRENT merely
-                # because their quotations match the source. Verified quotation establishes textual provenance;
-                # it does not establish active legal currency.
-                validated_item = ValidatedExcerptItem(
-                    excerpt_id=draft.excerpt_id,
-                    source_chunk_id=chunk.chunk_id,
-                    document_id=chunk.document_id,
-                    circular_number=getattr(doc, "circular_number", None) if doc else None,
-                    title=getattr(doc, "title", None) if doc else None,
-                    issue_date=getattr(doc, "issue_date", None) if doc else None,
-                    page_start=chunk.page_start,
-                    page_end=chunk.page_end,
-                    excerpt_text=proposed_text.strip(),
-                    regulatory_status=RegulatoryStatus.INFORMATIONAL,
-                    status_reason="Static document excerpt verified verbatim from registered collection; textual provenance established without legal currency evaluation.",
-                    applicable_edge_ids=[],
-                    acting_document_ids=[],
-                )
                 verified_items.append(validated_item)
 
         # Deduplicate warnings
@@ -350,82 +367,11 @@ class AnswerSafetyGate:
                 regulatory_warnings=unique_warnings,
             )
 
-        if is_general_static:
-            # Under GENERAL_STATIC policy, return verified historical excerpts without SEBI supersession separation
-            return SafetyGateResponse(
-                query=query,
-                disposition=AnswerDisposition.VERIFIED_HISTORICAL_EXCERPTS,
-                verified_excerpts=verified_items,
-                historical_superseded_excerpts=[],
-                summary_narrative=f"Verified Excerpts: {len(verified_items)} excerpt(s) verified verbatim from registered document collection.",
-                technical_validation_passed=True,
-                retrieval_candidate_count=candidate_count,
-                abstention_reason=None,
-                regulatory_warnings=unique_warnings,
-            )
-
-        # Handle queries asking about current status / obligations (SEBI-specific)
-        asks_current = is_current_status_query(query)
-
-        # If all surviving excerpts are superseded
-        if len(verified_items) == 0 and len(superseded_items) > 0:
-            if asks_current:
-                return SafetyGateResponse(
-                    query=query,
-                    disposition=AnswerDisposition.CONTROLLED_ABSTENTION,
-                    verified_excerpts=[],
-                    historical_superseded_excerpts=superseded_items,
-                    summary_narrative=(
-                        "Controlled Abstention: All relevant excerpts in the corpus for this current-compliance query "
-                        "are SUPERSEDED by subsequent circulars."
-                    ),
-                    technical_validation_passed=True,
-                    retrieval_candidate_count=candidate_count,
-                    abstention_reason="Query asks for current obligations, but all matching corpus provisions are superseded.",
-                    regulatory_warnings=unique_warnings,
-                )
-            else:
-                # Historical query where superseded text is explicitly labeled
-                return SafetyGateResponse(
-                    query=query,
-                    disposition=AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS,
-                    verified_excerpts=[],
-                    historical_superseded_excerpts=superseded_items,
-                    summary_narrative=(
-                        f"Historical Excerpts: {len(superseded_items)} excerpt(s) verified from earlier circulars, "
-                        f"which are superseded in the current framework."
-                    ),
-                    technical_validation_passed=True,
-                    retrieval_candidate_count=candidate_count,
-                    abstention_reason=None,
-                    regulatory_warnings=unique_warnings,
-                )
-
-        # Check for UNRESOLVED status
-        has_unresolved = any(v.regulatory_status == RegulatoryStatus.UNRESOLVED for v in verified_items)
-
-        if not has_unresolved:
-            disposition = AnswerDisposition.VERIFIED_HISTORICAL_EXCERPTS
-            narrative = (
-                f"Verified Historical Excerpts: {len(verified_items)} excerpt(s) verified against authoritative SEBI CSCRF corpus "
-                f"with fully resolved graph status."
-            )
-        else:
-            disposition = AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS
-            narrative = (
-                f"Qualified Historical Excerpts: {len(verified_items)} excerpt(s) verified as authentic text from SEBI CSCRF circulars. "
-                f"Provisions with UNRESOLVED status reflect historical baseline circular content; active legal currency "
-                f"is not independently established beyond the 5-document pilot."
-            )
-
-        return SafetyGateResponse(
+        # Delegate disposition evaluation to pluggable TemporalPolicy
+        return temp_policy.evaluate_disposition(
             query=query,
-            disposition=disposition,
-            verified_excerpts=verified_items,
-            historical_superseded_excerpts=superseded_items,
-            summary_narrative=narrative,
-            technical_validation_passed=True,
-            retrieval_candidate_count=candidate_count,
-            abstention_reason=None,
-            regulatory_warnings=unique_warnings,
+            verified_items=verified_items,
+            superseded_items=superseded_items,
+            candidate_count=candidate_count,
+            warnings=unique_warnings,
         )

@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 import logging
 import os
 from pathlib import Path
+import shutil
+import tempfile
 import threading
 import time
 from typing import Optional, Dict, Any, Tuple, List, Union
@@ -24,6 +26,7 @@ import uuid
 
 import numpy as np
 
+from app.core.config import get_settings
 from app.schemas.document import DocumentRecord, PageContent, ChunkRecord
 from app.schemas.ingestion_job import (
     IngestionJobRecord,
@@ -45,6 +48,14 @@ from app.ingestion.downloader import (
 from app.ingestion.extractor import PDFExtractor, compute_sha256
 from app.ingestion.chunker import TextChunker
 from app.retrieval.dense_embedder import DenseEmbedder, DEFAULT_MODEL_NAME
+from app.retrieval.publisher import IndexPublisher
+from app.storage import (
+    BaseStorageAdapter,
+    LocalStorageAdapter,
+    get_storage_adapter,
+    StorageFileNotFoundError,
+    StorageError,
+)
 from app.persistence.interfaces import (
     StorageRepositoryFactory,
     IngestionJobRepository,
@@ -53,10 +64,14 @@ from app.persistence.interfaces import (
     PersistenceError,
     ConnectionStorageError,
 )
-from app.persistence.worker_procedure_repo import (
-    PostgresWorkerProcedureRepository,
-    ChunkBatchItem,
-)
+try:
+    from app.persistence.worker_procedure_repo import (
+        PostgresWorkerProcedureRepository,
+        ChunkBatchItem,
+    )
+except ImportError:
+    PostgresWorkerProcedureRepository = None  # type: ignore[assignment, misc]
+    ChunkBatchItem = None  # type: ignore[assignment, misc]
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +195,10 @@ class IngestionOrchestrator:
         heartbeat_interval_seconds: float = 15.0,
         worker_procedure_repo: Optional[PostgresWorkerProcedureRepository] = None,
         chunk_batch_size: int = 100,
+        indexes_dir: Optional[Union[str, Path]] = None,
+        processed_dir: Optional[Union[str, Path]] = None,
+        storage_adapter: Optional[BaseStorageAdapter] = None,
+        publish_snapshots: bool = True,
     ):
         self.factory = repository_factory
         self.job_repo: IngestionJobRepository = repository_factory.get_ingestion_job_repository()
@@ -189,7 +208,7 @@ class IngestionOrchestrator:
         # Wire stored procedure repository if provided or if repository_factory is PostgresStorageRepositoryFactory
         if worker_procedure_repo is not None:
             self.worker_procedure_repo: Optional[PostgresWorkerProcedureRepository] = worker_procedure_repo
-        elif hasattr(repository_factory, "session_factory"):
+        elif hasattr(repository_factory, "session_factory") and PostgresWorkerProcedureRepository is not None:
             self.worker_procedure_repo = PostgresWorkerProcedureRepository(repository_factory.session_factory)
         else:
             self.worker_procedure_repo = None
@@ -200,6 +219,15 @@ class IngestionOrchestrator:
         self.chunker = chunker or TextChunker()
         self.embedder = embedder or DenseEmbedder()
         self.heartbeat_interval_seconds = heartbeat_interval_seconds
+
+        settings = get_settings()
+        self.indexes_dir = Path(indexes_dir or settings.indexes_dir).resolve()
+        self.processed_dir = Path(processed_dir or settings.processed_dir).resolve()
+        if storage_adapter is not None:
+            self.storage_adapter = storage_adapter
+        else:
+            self.storage_adapter = get_storage_adapter(settings)
+        self.publish_snapshots = publish_snapshots
 
     def process_job(
         self,
@@ -245,19 +273,92 @@ class IngestionOrchestrator:
                 )
 
         try:
-            # Stage 1: Downloading
+            # Resolve authoritative collection scope upfront
+            authoritative_collection: Optional[str] = (
+                job.collection_id.strip() if job.collection_id and job.collection_id.strip() else None
+            )
+            if not authoritative_collection and job.document_id:
+                try:
+                    existing_doc_rec = self.doc_repo.get_document(job.document_id)
+                    if existing_doc_rec and getattr(existing_doc_rec, "collection_id", None):
+                        authoritative_collection = existing_doc_rec.collection_id.strip()
+                except Exception:
+                    pass
+            if not authoritative_collection and job.document_id:
+                from app.schemas.document import resolve_collection_identity
+                inferred = resolve_collection_identity(job.document_id)
+                if inferred:
+                    authoritative_collection = inferred
+
+            if not authoritative_collection:
+                raise NonRetryableIngestionError(
+                    f"Cannot determine authoritative collection scope for ingestion job '{job_id}'. "
+                    "Every ingestion job must specify an explicit collection_id or map to a known collection identity."
+                )
+
+            # Stage 1: Downloading / Sourcing
             _update_stage(ProcessingStage.DOWNLOADING)
-            try:
-                download_res: DownloadResult = self.downloader.fetch_pdf(source_url)
-                downloaded_file = download_res.staging_path
-                sha256 = download_res.sha256
-            except (SSRFValidationError, InvalidPDFError, DownloadLimitExceededError) as e:
-                raise NonRetryableIngestionError(f"Download rejected by security policy: {e}") from e
-            except (DownloadHTTPError, DownloadSecurityError) as e:
-                # HTTP errors (timeouts, 502, 503) are transient
-                raise RetryableIngestionError(f"Transient download error: {e}") from e
-            except Exception as e:
-                raise RetryableIngestionError(f"Unexpected network error: {e}") from e
+            is_local_upload = (
+                source_url.startswith("upload://")
+                or source_url.startswith("s3://")
+                or source_url.startswith("file://")
+                or "data/uploads" in source_url
+                or (self.storage_adapter is not None and self.storage_adapter.exists(source_url))
+            )
+
+            if is_local_upload:
+                staging_dir = Path(tempfile.gettempdir()) / "sebi_ingestion_staging"
+                staging_dir.mkdir(parents=True, exist_ok=True)
+                downloaded_file = staging_dir / f"staged_{uuid.uuid4().hex[:12]}.pdf"
+
+                try:
+                    if self.storage_adapter is not None and (source_url.startswith("upload://") or source_url.startswith("s3://") or self.storage_adapter.exists(source_url)):
+                        with self.storage_adapter.materialize_to_local(source_url) as resolved_file:
+                            file_size = resolved_file.stat().st_size
+                            max_bytes = getattr(self.storage_adapter, "max_upload_bytes", 30 * 1024 * 1024)
+                            if file_size > max_bytes:
+                                raise NonRetryableIngestionError(f"Uploaded source file exceeds maximum size limit ({file_size} bytes)")
+
+                            with open(resolved_file, "rb") as f_chk:
+                                hdr = f_chk.read(5)
+                                if hdr != b"%PDF-":
+                                    raise NonRetryableIngestionError("Invalid file signature: uploaded source file is not a valid PDF")
+
+                            sha256 = compute_sha256(resolved_file)
+                            shutil.copy2(resolved_file, downloaded_file)
+                    else:
+                        clean_path = source_url.replace("file://", "").strip()
+                        resolved_file = Path(clean_path).resolve()
+                        if not resolved_file.is_file():
+                            raise NonRetryableIngestionError(f"Uploaded source file not found or inaccessible: {source_url}")
+
+                        file_size = resolved_file.stat().st_size
+                        if file_size > 30 * 1024 * 1024:
+                            raise NonRetryableIngestionError(f"Uploaded source file exceeds maximum size limit ({file_size} bytes)")
+
+                        with open(resolved_file, "rb") as f_chk:
+                            hdr = f_chk.read(5)
+                            if hdr != b"%PDF-":
+                                raise NonRetryableIngestionError("Invalid file signature: uploaded source file is not a valid PDF")
+
+                        sha256 = compute_sha256(resolved_file)
+                        shutil.copy2(resolved_file, downloaded_file)
+                except StorageFileNotFoundError as e:
+                    raise NonRetryableIngestionError(f"Uploaded source file not found or inaccessible: {source_url}") from e
+                except StorageError as e:
+                    raise RetryableIngestionError(f"Storage error accessing source file {source_url}: {e}") from e
+            else:
+                try:
+                    download_res: DownloadResult = self.downloader.fetch_pdf(source_url)
+                    downloaded_file = download_res.staging_path
+                    sha256 = download_res.sha256
+                except (SSRFValidationError, InvalidPDFError, DownloadLimitExceededError) as e:
+                    raise NonRetryableIngestionError(f"Download rejected by security policy: {e}") from e
+                except (DownloadHTTPError, DownloadSecurityError) as e:
+                    # HTTP errors (timeouts, 502, 503) are transient
+                    raise RetryableIngestionError(f"Transient download error: {e}") from e
+                except Exception as e:
+                    raise RetryableIngestionError(f"Unexpected network error: {e}") from e
 
             # Stage 2: Validating
             _update_stage(ProcessingStage.VALIDATING)
@@ -271,8 +372,8 @@ class IngestionOrchestrator:
                     f"Checksum mismatch on downloaded file: expected {sha256}, got {computed_sha}"
                 )
 
-            # Check if identical content SHA-256 is already persisted in the document repository
-            existing_doc = self.doc_repo.get_document_by_sha256(sha256)
+            # Check if identical content SHA-256 is already persisted in the document repository for THIS collection
+            existing_doc = self.doc_repo.get_document_by_sha256(sha256, collection_id=authoritative_collection)
             if existing_doc:
                 heartbeat.stop()
                 # Crash recovery case: if the persisted document has the exact document_id requested by this job,
@@ -300,6 +401,36 @@ class IngestionOrchestrator:
                     expected_count = len(expected_chunks)
                     if expected_count == 0:
                         raise NonRetryableIngestionError("Document produced 0 text chunks during crash recovery")
+
+                    # If snapshot publishing is enabled, ensure index snapshot is built and published
+                    collection_to_publish = authoritative_collection
+                    if self.publish_snapshots and collection_to_publish:
+                        _update_stage(ProcessingStage.INDEXING)
+                        try:
+                            publisher = IndexPublisher(
+                                repository_factory=self.factory,
+                                indexes_dir=self.indexes_dir,
+                                processed_dir=self.processed_dir,
+                                embedder=self.embedder,
+                                collection_id=collection_to_publish,
+                                storage_adapter=self.storage_adapter,
+                            )
+                            pub_res = publisher.build_and_publish_snapshot()
+                            if not pub_res.success:
+                                if pub_res.error_details in ("ConcurrentPublicationConflict", "StaleSnapshotWriterError"):
+                                    raise RetryableIngestionError(
+                                        f"Publication conflict for collection '{collection_to_publish}': {pub_res.message}. Job will retry with backoff."
+                                    )
+                                raise NonRetryableIngestionError(f"Index snapshot publication failed: {pub_res.message}")
+                            logger.info(
+                                f"Published search index snapshot '{pub_res.snapshot_id}' for collection '{collection_to_publish}' during crash recovery "
+                                f"({pub_res.total_documents} documents, {pub_res.total_chunks} chunks)"
+                            )
+                        except (NonRetryableIngestionError, RetryableIngestionError):
+                            raise
+                        except Exception as e:
+                            logger.error(f"Error publishing index snapshot for collection '{collection_to_publish}' during crash recovery: {e}", exc_info=True)
+                            raise RetryableIngestionError(f"Index snapshot publication failed during crash recovery: {e}") from e
 
                     heartbeat.stop()
 
@@ -329,13 +460,14 @@ class IngestionOrchestrator:
                         message=f"Crash recovery: Document '{existing_doc.document_id}' was already persisted; marked completed with verified chunk count {expected_count}.",
                     )
                 else:
-                    # Content deduplication: different job/document registered with identical content
-                    dup_message = f"Identical content SHA-256 already ingested as '{existing_doc.document_id}'"
+                    # Content deduplication within the same collection: different job/document registered with identical content
+                    dup_message = f"Identical content SHA-256 already ingested in collection '{authoritative_collection}'"
+                    safe_doc_id = existing_doc.document_id
                     if self.worker_procedure_repo is not None:
                         error_details = {
                             "code": "DUPLICATE_DOCUMENT",
                             "reason": dup_message,
-                            "original_document_id": existing_doc.document_id,
+                            "collection_id": authoritative_collection,
                             "sha256": sha256,
                             "detected_at": datetime.now(timezone.utc).isoformat(),
                         }
@@ -350,18 +482,19 @@ class IngestionOrchestrator:
                             job_id=job_id,
                             claim_token=job_claim_uuid,
                             sha256=sha256,
-                            document_id=existing_doc.document_id,
+                            document_id=safe_doc_id,
                         )
 
                     return JobExecutionResult(
                         job_id=job_id,
                         status=JobStatus.DUPLICATE,
-                        document_id=existing_doc.document_id,
+                        document_id=safe_doc_id,
                         sha256=sha256,
                         message=dup_message,
                         error_details={
                             "code": "DUPLICATE_DOCUMENT",
-                            "original_document_id": existing_doc.document_id,
+                            "reason": dup_message,
+                            "collection_id": authoritative_collection,
                             "sha256": sha256,
                         },
                     )
@@ -387,6 +520,8 @@ class IngestionOrchestrator:
             _update_stage(ProcessingStage.CHUNKING)
             try:
                 chunks: List[ChunkRecord] = self.chunker.chunk_document(doc_id, pages)
+                for c in chunks:
+                    c.collection_id = authoritative_collection
             except Exception as e:
                 raise NonRetryableIngestionError(f"Chunking failed: {e}") from e
 
@@ -415,10 +550,21 @@ class IngestionOrchestrator:
                 try:
                     # 1. Stored Procedure: Create immutable document version (status: 'processing')
                     raw_token_str = str(claim_token)
+                    target_version = 1
+                    if job.document_id and hasattr(self.worker_procedure_repo, "get_next_version_number"):
+                        try:
+                            target_version = self.worker_procedure_repo.get_next_version_number(
+                                document_id=job.document_id,
+                                sha256_hash=sha256,
+                            )
+                        except Exception as e:
+                            logger.warning(f"Could not compute next version number for {job.document_id}: {e}")
+                            target_version = 1
+
                     version_id = self.worker_procedure_repo.create_version(
                         job_id=job_id,
                         raw_claim_token=raw_token_str,
-                        version_number=1,
+                        version_number=target_version,
                         sha256_hash=sha256,
                         source_url=source_url,
                         storage_path=str(downloaded_file),
@@ -457,8 +603,36 @@ class IngestionOrchestrator:
                             chunks=b_slice,
                         )
 
-                    # Stage 7: Indexing boundary
+                    # Stage 7: Indexing & Publication
                     _update_stage(ProcessingStage.INDEXING)
+
+                    if self.publish_snapshots:
+                        collection_to_publish = authoritative_collection
+                        try:
+                            publisher = IndexPublisher(
+                                repository_factory=self.factory,
+                                indexes_dir=self.indexes_dir,
+                                processed_dir=self.processed_dir,
+                                embedder=self.embedder,
+                                collection_id=collection_to_publish,
+                                storage_adapter=self.storage_adapter,
+                            )
+                            pub_res = publisher.build_and_publish_snapshot()
+                            if not pub_res.success:
+                                if pub_res.error_details in ("ConcurrentPublicationConflict", "StaleSnapshotWriterError"):
+                                    raise RetryableIngestionError(
+                                        f"Publication conflict for collection '{collection_to_publish}': {pub_res.message}. Job will retry with backoff."
+                                    )
+                                raise NonRetryableIngestionError(f"Index snapshot publication failed: {pub_res.message}")
+                            logger.info(
+                                f"Published search index snapshot '{pub_res.snapshot_id}' for collection '{collection_to_publish}' "
+                                f"({pub_res.total_documents} documents, {pub_res.total_chunks} chunks)"
+                            )
+                        except (NonRetryableIngestionError, RetryableIngestionError):
+                            raise
+                        except Exception as e:
+                            logger.error(f"Error publishing index snapshot for collection '{collection_to_publish}': {e}", exc_info=True)
+                            raise RetryableIngestionError(f"Index snapshot publication failed: {e}") from e
 
                     # Final: Complete job via stored procedure
                     heartbeat.stop()
@@ -483,6 +657,7 @@ class IngestionOrchestrator:
                     sha256=sha256,
                     pdf_path=str(downloaded_file),
                     extraction_status="extracted",
+                    collection_id=authoritative_collection,
                 )
 
                 try:
@@ -496,8 +671,36 @@ class IngestionOrchestrator:
                 except Exception as e:
                     raise RetryableIngestionError(f"Unexpected error during persistence: {e}") from e
 
-                # Stage 7: Indexing boundary
+                # Stage 7: Indexing & Publication
                 _update_stage(ProcessingStage.INDEXING)
+
+                if self.publish_snapshots:
+                    collection_to_publish = authoritative_collection
+                    try:
+                        publisher = IndexPublisher(
+                            repository_factory=self.factory,
+                            indexes_dir=self.indexes_dir,
+                            processed_dir=self.processed_dir,
+                            embedder=self.embedder,
+                            collection_id=collection_to_publish,
+                            storage_adapter=self.storage_adapter,
+                        )
+                        pub_res = publisher.build_and_publish_snapshot()
+                        if not pub_res.success:
+                            if pub_res.error_details in ("ConcurrentPublicationConflict", "StaleSnapshotWriterError"):
+                                raise RetryableIngestionError(
+                                    f"Publication conflict for collection '{collection_to_publish}': {pub_res.message}. Job will retry with backoff."
+                                )
+                            raise NonRetryableIngestionError(f"Index snapshot publication failed: {pub_res.message}")
+                        logger.info(
+                            f"Published search index snapshot '{pub_res.snapshot_id}' for collection '{collection_to_publish}' "
+                            f"({pub_res.total_documents} documents, {pub_res.total_chunks} chunks)"
+                        )
+                    except (NonRetryableIngestionError, RetryableIngestionError):
+                        raise
+                    except Exception as e:
+                        logger.error(f"Error publishing index snapshot for collection '{collection_to_publish}': {e}", exc_info=True)
+                        raise RetryableIngestionError(f"Index snapshot publication failed: {e}") from e
 
                 # Final: Mark Completed
                 heartbeat.stop()
@@ -676,7 +879,7 @@ class IngestionWorker:
 
         if worker_procedure_repo is not None:
             self.worker_procedure_repo: Optional[PostgresWorkerProcedureRepository] = worker_procedure_repo
-        elif hasattr(repository_factory, "session_factory"):
+        elif hasattr(repository_factory, "session_factory") and PostgresWorkerProcedureRepository is not None:
             self.worker_procedure_repo = PostgresWorkerProcedureRepository(repository_factory.session_factory)
         else:
             self.worker_procedure_repo = None
@@ -788,14 +991,24 @@ class IngestionWorker:
             if not claimed:
                 return None
 
-            job_rec = IngestionJobRecord(
-                id=claimed.job_id,
-                source_url=claimed.source_url,
-                idempotency_key=f"key_{claimed.job_id}",
-                document_id=claimed.document_id,
-                status=JobStatus.PROCESSING,
-                stage=ProcessingStage.PENDING,
-            )
+            job_rec: Optional[IngestionJobRecord] = None
+            try:
+                job_rec = self.job_repo.get_job(claimed.job_id)
+            except Exception as e:
+                logger.warning(f"Could not hydrate job record for {claimed.job_id}: {e}")
+
+            if job_rec is None:
+                from app.schemas.document import resolve_collection_identity
+                inferred_col = resolve_collection_identity(claimed.document_id) if claimed.document_id else None
+                job_rec = IngestionJobRecord(
+                    id=claimed.job_id,
+                    source_url=claimed.source_url,
+                    idempotency_key=f"key_{claimed.job_id}",
+                    document_id=claimed.document_id,
+                    collection_id=inferred_col or "sebi_cscrf",
+                    status=JobStatus.PROCESSING,
+                    stage=ProcessingStage.PENDING,
+                )
             logger.info(f"Worker {self.worker_id} claimed job {claimed.job_id} (URL: {claimed.source_url})")
             with self._active_job_lock:
                 self._current_job_id = claimed.job_id

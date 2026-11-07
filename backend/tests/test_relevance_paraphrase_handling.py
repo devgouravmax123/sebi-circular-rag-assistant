@@ -30,6 +30,7 @@ from app.grounding.relevance import (
     RelevanceDecisionCode,
 )
 from app.schemas.retrieval import RetrievalResult
+from app.schemas.manifest import GroundingPolicyType
 from app.grounding.classifier import classify_query_intent, QueryIntent
 
 
@@ -67,7 +68,7 @@ def test_a_original_conditional_query_survives_filter(contractor_credential_chun
 
     # Check candidate relevance evaluation
     relevant_candidates, intent, assessments = filter_relevant_candidates(
-        query, [contractor_credential_chunk]
+        query, [contractor_credential_chunk], policy_type=GroundingPolicyType.GENERAL_STATIC
     )
 
     assert len(relevant_candidates) == 1
@@ -94,7 +95,7 @@ def test_b_expiry_paraphrase_survives(contractor_credential_chunk):
     assert set(sub_tokens) == {"contractor", "credentials", "expire"}
 
     relevant_candidates, intent, assessments = filter_relevant_candidates(
-        query, [contractor_credential_chunk]
+        query, [contractor_credential_chunk], policy_type=GroundingPolicyType.GENERAL_STATIC
     )
 
     assert len(relevant_candidates) == 1
@@ -114,7 +115,7 @@ def test_c_extension_paraphrase_survives(contractor_credential_chunk):
     assert "credentials" in sub_tokens
 
     relevant_candidates, intent, assessments = filter_relevant_candidates(
-        query, [contractor_credential_chunk]
+        query, [contractor_credential_chunk], policy_type=GroundingPolicyType.GENERAL_STATIC
     )
 
     assert len(relevant_candidates) == 1
@@ -164,7 +165,7 @@ def test_e_unanswerable_salary_bands_fails_closed(contractor_credential_chunk):
     assert "employees" in sub_tokens
 
     relevant_candidates, intent, assessments = filter_relevant_candidates(
-        query, [contractor_credential_chunk]
+        query, [contractor_credential_chunk], policy_type=GroundingPolicyType.GENERAL_STATIC
     )
 
     assert len(relevant_candidates) == 0
@@ -204,6 +205,8 @@ def test_g_sebi_regression_queries_unaffected():
         rank=1,
     )
     q_sebi = "What compliance deadline extension was announced in circular 2025/096?"
-    rel, intent, assessments = filter_relevant_candidates(q_sebi, [sebi_chunk])
+    rel, intent, assessments = filter_relevant_candidates(
+        q_sebi, [sebi_chunk], policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT
+    )
     assert len(rel) == 1
     assert assessments[0].is_relevant is True

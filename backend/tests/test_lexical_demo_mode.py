@@ -60,6 +60,7 @@ def test_2_retrieval_mode_validation():
 def test_3_lexical_only_readiness_probe(client, monkeypatch):
     """Verify that GET /ready succeeds in lexical_only mode without database."""
     monkeypatch.setenv("RETRIEVAL_MODE", "lexical_only")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
     get_settings(force_reload=True)
 
     resp = client.get("/ready")
@@ -174,8 +175,8 @@ def test_9_demo_requirements_contains_numpy():
     assert "numpy" in req_text, "requirements-demo.txt must include numpy"
 
 
-def test_10_app_startup_without_sqlalchemy():
-    """Verify app imports and startup succeed cleanly when sqlalchemy is completely unavailable."""
+def test_10_app_startup_without_heavy_ml():
+    """Verify app imports and startup succeed cleanly when heavy ML / PyTorch dependencies are completely unavailable."""
     import sys
     import subprocess
     from pathlib import Path
@@ -195,9 +196,10 @@ def test_10_app_startup_without_sqlalchemy():
             f"os.environ['SYNTHESIS_PROVIDER'] = 'mock'\n"
             f"os.environ['APP_ENV'] = 'production'\n"
             f"os.environ['ADMIN_API_KEY'] = 'test_secret_key_at_least_16_chars'\n"
+            f"os.environ['AUTH_SECRET_KEY'] = 'test_secret_key_at_least_32_chars_long'\n"
             f"sys.path.insert(0, r'{backend_dir}')\n"
-            f"# Block all database dependencies\n"
-            f"for mod in ['sqlalchemy', 'sqlalchemy.orm', 'sqlalchemy.exc', 'asyncpg', 'psycopg', 'psycopg2', 'alembic', 'pgvector']:\n"
+            f"# Block heavy ML and ingestion-only dependencies\n"
+            f"for mod in ['sentence_transformers', 'torch', 'transformers', 'fitz']:\n"
             f"    sys.modules[mod] = None\n"
             f"import app.main\n"
             f"from fastapi.testclient import TestClient\n"
@@ -339,6 +341,12 @@ def test_12_end_to_end_query_safety_gate_with_snapshot_only(tmp_path):
         retrieval_service=retrieval,
     )
 
+    from app.schemas.manifest import GroundingPolicyDeclaration, GroundingPolicyType
+    sebi_policy = GroundingPolicyDeclaration(
+        policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT,
+        enforce_regulatory_graph=True,
+    )
+
     # 1. Verify that genuine chunk ID passes safety gate verification
     real_chunk = retrieval.chunks[0]
     valid_payload = ExcerptDraftPayload(
@@ -354,6 +362,8 @@ def test_12_end_to_end_query_safety_gate_with_snapshot_only(tmp_path):
     gate_res = safety_gate.evaluate_draft(
         payload=valid_payload,
         retrieval_candidates={real_chunk.chunk_id},
+        policy=sebi_policy,
+        collection_id="sebi_cscrf",
     )
     assert gate_res.disposition in (
         AnswerDisposition.VERIFIED_HISTORICAL_EXCERPTS,
@@ -375,6 +385,8 @@ def test_12_end_to_end_query_safety_gate_with_snapshot_only(tmp_path):
     bad_res = safety_gate.evaluate_draft(
         payload=fabricated_payload,
         retrieval_candidates={"sebi_cscrf_fake_chunk_99999"},
+        policy=sebi_policy,
+        collection_id="sebi_cscrf",
     )
     assert bad_res.disposition == AnswerDisposition.CONTROLLED_ABSTENTION
     assert len(bad_res.verified_excerpts) == 0
@@ -409,6 +421,7 @@ def test_13_definition_retrieval_relevance_and_answer_sufficiency():
     """
     from app.retrieval.service import RetrievalService
     from app.grounding.relevance import filter_relevant_candidates
+    from app.schemas.manifest import GroundingPolicyType
     from app.synthesis.mock_provider import MockSynthesisProvider
     from app.schemas.synthesis import SynthesisInput, SynthesisStatus, SynthesisEvidenceItem
     from pathlib import Path
@@ -430,7 +443,7 @@ def test_13_definition_retrieval_relevance_and_answer_sufficiency():
     assert retrieval_resp.total_results > 0
 
     # 2. Relevance filtering and definition intent prioritization
-    filtered, intent, assessments = filter_relevant_candidates("What is CSCRF?", retrieval_resp.results)
+    filtered, intent, assessments = filter_relevant_candidates("What is CSCRF?", retrieval_resp.results, policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     assert len(filtered) > 0
 
     # Foundational definition chunks containing formulation/goals content must be prioritized in top results
@@ -494,6 +507,6 @@ def test_13_definition_retrieval_relevance_and_answer_sufficiency():
 
     # 5. Procedural query regression: verify deadline query still prioritizes latest circular (CIR/2025/096)
     deadline_resp = service.search_hybrid("What is the compliance deadline for CSCRF?", top_k=50, candidate_k=50)
-    deadline_filtered, deadline_intent, _ = filter_relevant_candidates("What is the compliance deadline for CSCRF?", deadline_resp.results)
+    deadline_filtered, deadline_intent, _ = filter_relevant_candidates("What is the compliance deadline for CSCRF?", deadline_resp.results, policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     assert len(deadline_filtered) > 0
     assert "2025_096" in deadline_filtered[0].document_id

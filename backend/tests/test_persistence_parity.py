@@ -19,10 +19,11 @@ import shutil
 import tempfile
 from pathlib import Path
 from typing import Dict, Any, List, Generator, Tuple, Sequence, cast
+import uuid
 import numpy as np
 import pytest
 
-from sqlalchemy import create_engine, Table
+from sqlalchemy import create_engine, Table, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -59,6 +60,8 @@ from app.persistence.models import (
     RegulatoryEdgeModel,
     IngestionJobModel,
 )
+from app.models.auth import UserModel, WorkspaceModel
+from app.models.collection import CollectionModel
 
 
 # SQLite dialect compilers for isolated Postgres adapter tests
@@ -75,6 +78,15 @@ def compile_uuid_sqlite(type_, compiler, **kw):
 @compiles(Vector, "sqlite")
 def compile_vector_sqlite(type_, compiler, **kw):
     return "BLOB"
+
+
+@event.listens_for(RegulatoryDocumentModel, "before_insert")
+def _set_doc_workspace_collection_defaults(mapper, connection, target):
+    """Mirror Postgres database trigger trg_default_document_workspace_collection for SQLite tests."""
+    if target.workspace_id is None:
+        target.workspace_id = uuid.UUID("00000000-0000-0000-0000-000000000000")
+    if target.collection_id is None:
+        target.collection_id = "sebi_cscrf" if target.domain_id == "SEBI_CSCRF" else "general_synthetic"
 
 
 @pytest.fixture
@@ -97,6 +109,9 @@ def parity_fixtures(tmp_path) -> Tuple[StorageRepositoryFactory, StorageReposito
     importer_tables = cast(
         Sequence[Table],
         [
+            UserModel.__table__,
+            WorkspaceModel.__table__,
+            CollectionModel.__table__,
             RegulatorModel.__table__,
             RegulatoryDomainModel.__table__,
             RegulatoryDocumentModel.__table__,
@@ -109,6 +124,23 @@ def parity_fixtures(tmp_path) -> Tuple[StorageRepositoryFactory, StorageReposito
     )
     Base.metadata.create_all(bind=engine, tables=importer_tables)
     session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+    with session_factory() as session:
+        system_ws = WorkspaceModel(
+            id=uuid.UUID("00000000-0000-0000-0000-000000000000"),
+            name="System Workspace",
+            slug="system",
+            is_system=True,
+        )
+        system_col = CollectionModel(
+            id="sebi_cscrf",
+            workspace_id=system_ws.id,
+            name="SEBI CSCRF",
+            policy_name="sebi_cscrf_strict",
+            is_system=True,
+        )
+        session.add(system_ws)
+        session.add(system_col)
+        session.commit()
 
     class TestablePostgresFactory(StorageRepositoryFactory):
         def __init__(self, s_factory):
@@ -138,8 +170,10 @@ class TestDualEngineParity:
         # Nonexistent lookup parity
         assert file_repo.get_document("nonexistent_doc") is None
         assert pg_repo.get_document("nonexistent_doc") is None
-        assert file_repo.get_document_by_sha256("nonexistent_hash") is None
-        assert pg_repo.get_document_by_sha256("nonexistent_hash") is None
+        assert file_repo.get_document_by_sha256("nonexistent_hash", collection_id="sebi_cscrf") is None
+        assert pg_repo.get_document_by_sha256("nonexistent_hash", collection_id="sebi_cscrf") is None
+        assert file_repo.get_document_by_sha256_global("nonexistent_hash") is None
+        assert pg_repo.get_document_by_sha256_global("nonexistent_hash") is None
 
         # Sample document with Unicode & dates
         doc = DocumentRecord(
@@ -175,17 +209,20 @@ class TestDualEngineParity:
         assert doc_file.source_url == doc_pg.source_url == doc.source_url
 
         # Check lookup by SHA-256 parity
-        by_sha_file = file_repo.get_document_by_sha256(doc.sha256)
-        by_sha_pg = pg_repo.get_document_by_sha256(doc.sha256)
+        by_sha_file = file_repo.get_document_by_sha256(doc.sha256, collection_id="sebi_cscrf")
+        by_sha_pg = pg_repo.get_document_by_sha256(doc.sha256, collection_id="sebi_cscrf")
         assert by_sha_file is not None
         assert by_sha_pg is not None
         assert by_sha_file.document_id == by_sha_pg.document_id
+        assert file_repo.get_document_by_sha256_global(doc.sha256) is not None
+        assert pg_repo.get_document_by_sha256_global(doc.sha256) is not None
 
         # List documents parity
-        all_file = file_repo.list_documents()
-        all_pg = pg_repo.list_documents()
+        all_file = file_repo.list_documents("sebi_cscrf")
+        all_pg = pg_repo.list_documents("sebi_cscrf")
         assert len(all_file) == len(all_pg) == 1
         assert all_file[0].document_id == all_pg[0].document_id
+        assert len(file_repo.list_all_documents_global()) == len(pg_repo.list_all_documents_global()) == 1
 
     def test_chunk_parity_ordering_and_provenance(self, parity_fixtures):
         file_factory, pg_factory = parity_fixtures
@@ -264,10 +301,11 @@ class TestDualEngineParity:
             assert cf.page_end == cp.page_end
 
         # list_all_chunks parity
-        all_chunks_file = file_chunk_repo.list_all_chunks()
-        all_chunks_pg = pg_chunk_repo.list_all_chunks()
+        all_chunks_file = file_chunk_repo.list_all_chunks("sebi_cscrf")
+        all_chunks_pg = pg_chunk_repo.list_all_chunks("sebi_cscrf")
         assert len(all_chunks_file) == len(all_chunks_pg) == 2
         assert [c.chunk_id for c in all_chunks_file] == [c.chunk_id for c in all_chunks_pg]
+        assert len(file_chunk_repo.list_all_chunks_global()) == len(pg_chunk_repo.list_all_chunks_global()) == 2
 
     def test_graph_edge_parity_and_conservative_defaults(self, parity_fixtures):
         file_factory, pg_factory = parity_fixtures
@@ -439,8 +477,8 @@ class TestDualEngineParity:
         pg_doc_repo.save_document(doc)
         pg_doc_repo.save_document(doc)
 
-        docs_file = file_doc_repo.list_documents()
-        docs_pg = pg_doc_repo.list_documents()
+        docs_file = file_doc_repo.list_all_documents_global()
+        docs_pg = pg_doc_repo.list_all_documents_global()
 
         assert len(docs_file) == 1
         assert len(docs_pg) == 1
@@ -459,11 +497,13 @@ class TestDualEngineParity:
         chunk_repo = file_factory.get_chunk_repository()
         edge_repo = file_factory.get_graph_edge_repository()
 
-        docs = doc_repo.list_documents()
+        docs = doc_repo.list_documents("sebi_cscrf")
         assert len(docs) == 5, f"Expected 5 pilot documents, got {len(docs)}"
+        assert len(doc_repo.list_all_documents_global()) >= 5
 
-        chunks = chunk_repo.list_all_chunks()
+        chunks = chunk_repo.list_all_chunks("sebi_cscrf")
         assert len(chunks) == 168, f"Expected 168 chunks in pilot corpus, got {len(chunks)}"
+        assert len(chunk_repo.list_all_chunks_global()) >= 168
 
         edges = edge_repo.list_all_edges()
         assert len(edges) == 9, f"Expected 9 graph edges in pilot corpus, got {len(edges)}"

@@ -49,6 +49,8 @@ class IngestionJobRecord:
     status: JobStatus = JobStatus.QUEUED
     stage: ProcessingStage = ProcessingStage.PENDING
     document_id: Optional[str] = None
+    workspace_id: Optional[uuid.UUID] = None
+    collection_id: Optional[str] = None
     sha256: Optional[str] = None
     attempt_count: int = 0
     max_attempts: int = 3

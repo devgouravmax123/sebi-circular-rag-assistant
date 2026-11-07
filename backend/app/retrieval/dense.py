@@ -219,3 +219,128 @@ class DenseIndex:
             total_results=len(results),
             results=results,
         )
+
+
+class PostgresDenseIndex:
+    """
+    pgvector-backed dense vector index using exact cosine distance (<=>)
+    scoped strictly to a collection via PostgresChunkRepository.
+    Enforces exact 384-dimensional query vector check and pre-ranking metadata filtering.
+    """
+
+    def __init__(
+        self,
+        chunk_repo: Any,
+        collection_id: str,
+        embedder: Optional[DenseEmbedder] = None,
+        chunks: Optional[List[ChunkRecord]] = None,
+        documents: Optional[Dict[str, DocumentRecord]] = None,
+        model_name: str = DEFAULT_MODEL_NAME,
+    ):
+        self.chunk_repo = chunk_repo
+        self.collection_id = collection_id
+        self.embedder = embedder or DenseEmbedder()
+        self.chunks_map: Dict[str, ChunkRecord] = {c.chunk_id: c for c in (chunks or [])}
+        self.doc_metadata: Dict[str, DocumentRecord] = dict(documents or {})
+        self.model_name = getattr(self.embedder, "model_name", model_name)
+
+    def update_corpus(
+        self,
+        chunks: List[ChunkRecord],
+        documents: Dict[str, DocumentRecord],
+    ) -> None:
+        self.chunks_map = {c.chunk_id: c for c in chunks}
+        self.doc_metadata = dict(documents)
+
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        query_vector: Optional[np.ndarray] = None,
+        filters: Optional[RetrievalFilter] = None,
+    ) -> RetrievalResponse:
+        """
+        Execute dense vector search against pgvector chunk embeddings scoped strictly to collection_id.
+        """
+        if top_k <= 0:
+            return RetrievalResponse(query=query, total_results=0, results=[])
+
+        if query_vector is not None:
+            q_vec = np.asarray(query_vector, dtype=np.float32).flatten()
+        else:
+            if not query or not query.strip():
+                return RetrievalResponse(query=query, total_results=0, results=[])
+            q_vec = self.embedder.embed_query(query)
+
+        if q_vec.size == 0 or not np.all(np.isfinite(q_vec)):
+            return RetrievalResponse(query=query, total_results=0, results=[])
+
+        if q_vec.shape != (DEFAULT_EMBEDDING_DIM,):
+            raise ValueError(
+                f"Query vector must be {DEFAULT_EMBEDDING_DIM} dimensions, got {q_vec.shape}"
+            )
+
+        # Normalize query vector for cosine similarity consistency
+        norm = np.linalg.norm(q_vec)
+        if norm > 0:
+            q_vec = q_vec / norm
+
+        candidate_multiplier = 4 if filters else 1
+        fetch_k = max(top_k * candidate_multiplier, 20)
+
+        similar_chunks = self.chunk_repo.search_similar_chunks(
+            collection_id=self.collection_id,
+            query_vector=q_vec,
+            top_k=fetch_k,
+            model_name=self.model_name,
+        )
+
+        results: List[RetrievalResult] = []
+        rank = 1
+        for chunk_id, sim_score in similar_chunks:
+            chunk = self.chunks_map.get(chunk_id)
+            if chunk is None:
+                try:
+                    chunk = self.chunk_repo.get_chunk(chunk_id)
+                    if chunk is not None:
+                        self.chunks_map[chunk_id] = chunk
+                except Exception:
+                    chunk = None
+
+            if chunk is None:
+                continue
+
+            doc_meta = self.doc_metadata.get(chunk.document_id)
+            if not _matches_filter(chunk, doc_meta, filters):
+                continue
+
+            results.append(
+                RetrievalResult(
+                    chunk_id=chunk.chunk_id,
+                    document_id=chunk.document_id,
+                    title=doc_meta.title if doc_meta else None,
+                    circular_number=doc_meta.circular_number if doc_meta else None,
+                    issue_date=doc_meta.issue_date if doc_meta else None,
+                    effective_date=doc_meta.effective_date if doc_meta else None,
+                    regulator=getattr(doc_meta, "regulator", "SEBI") if doc_meta else "SEBI",
+                    domain=getattr(doc_meta, "domain", "CSCRF") if doc_meta else "CSCRF",
+                    sha256=doc_meta.sha256 if doc_meta else None,
+                    page_start=chunk.page_start,
+                    page_end=chunk.page_end,
+                    text=chunk.text,
+                    score=round(float(sim_score), 6),
+                    rank=rank,
+                    is_ocr=chunk.is_ocr,
+                    metadata=chunk.metadata,
+                )
+            )
+            rank += 1
+            if len(results) >= top_k:
+                break
+
+        return RetrievalResponse(
+            query=query,
+            total_results=len(results),
+            results=results,
+        )
+

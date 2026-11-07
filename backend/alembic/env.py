@@ -2,6 +2,7 @@ from logging.config import fileConfig
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -16,6 +17,7 @@ if str(backend_path) not in sys.path:
 
 from app.persistence.models import Base
 from app.core.config import get_settings
+from app.core.migration_guard import verify_migration_identity
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -33,8 +35,11 @@ target_metadata = Base.metadata
 
 
 def get_url():
-    """Get database URL from environment settings or alembic.ini fallback."""
+    """Get database URL from environment settings or alembic.ini fallback.
+    Prioritizes DIRECT_DATABASE_URL / direct_database_url for unpooled migration execution."""
     settings = get_settings()
+    if settings.direct_database_url:
+        return settings.direct_database_url
     if settings.database_url:
         return settings.database_url
     return config.get_main_option("sqlalchemy.url", "postgresql://user:pass@localhost:5432/sebi_rag")
@@ -80,6 +85,26 @@ def _ensure_version_table_capacity(connection) -> None:
         pass
 
 
+def _assert_migration_identity(connection) -> None:
+    """Fail-closed assertion: verify connection identity before applying migrations in PostgreSQL."""
+    from sqlalchemy import text
+    if connection.dialect.name == "postgresql":
+        result = connection.execute(
+            text("SELECT current_database(), current_user, session_user, inet_server_addr();")
+        ).fetchone()
+        if result:
+            cur_db, cur_user, sess_user, srv_addr = result[0], result[1], result[2], result[3]
+            url_host = connection.engine.url.host
+            allow_env = os.getenv("ALLOW_NON_OWNER_MIGRATIONS")
+            verify_migration_identity(
+                cur_user=cur_user,
+                cur_db=cur_db,
+                url_host=url_host,
+                srv_addr=srv_addr,
+                allow_non_owner_env=allow_env,
+            )
+
+
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
     configuration = config.get_section(config.config_ini_section, {})
@@ -92,6 +117,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        _assert_migration_identity(connection)
         _ensure_version_table_capacity(connection)
         connection.commit()
 

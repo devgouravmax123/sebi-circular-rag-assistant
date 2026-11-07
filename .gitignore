@@ -93,3 +93,8 @@ data/indexes/*/snapshots/*/.publish.lock
 logs/
 .DS_Store
 Thumbs.db
+scratch/
+
+# Local runtime data and uploads
+data/uploads/
+

@@ -41,16 +41,28 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
 
 from app.api.v1.query import router as query_router
 from app.api.v1.admin import router as admin_router
+from app.api.v1.auth import router as auth_router
+from app.api.v1.workspaces import router as workspaces_router
+from app.api.v1.collections import (
+    workspace_collections_router,
+    collections_router,
+)
+from app.api.v1.query_history import router as query_history_router
 
 app.include_router(query_router)
 app.include_router(admin_router)
+app.include_router(auth_router)
+app.include_router(workspaces_router)
+app.include_router(workspace_collections_router)
+app.include_router(collections_router)
+app.include_router(query_history_router)
 
 
 @app.get("/health")
@@ -115,12 +127,25 @@ def get_readiness(current_settings: "Settings" = Depends(get_settings)) -> dict:
     # 2. Database readiness if configured
     if current_settings.is_database_enabled and current_settings.database_url:
         try:
+            from app.api.deps import _db_engine, get_db_session
             from sqlalchemy import create_engine, text
-            engine = create_engine(current_settings.database_url, pool_pre_ping=True)
-            with engine.connect() as conn:
+            global _readiness_engine
+            if "_readiness_engine" not in globals() or _readiness_engine is None:
+                _readiness_engine = create_engine(
+                    current_settings.database_url,
+                    pool_pre_ping=True,
+                    pool_size=1,
+                    max_overflow=0,
+                    pool_timeout=current_settings.db_pool_timeout,
+                    pool_recycle=current_settings.db_pool_recycle,
+                )
+            with _readiness_engine.connect() as conn:
                 conn.execute(text("SELECT 1;"))
         except Exception as e:
-            errors.append(f"Database connectivity failed: {str(e)}")
+            logger.error(
+                f"Database readiness probe failed for target '{current_settings.sanitized_database_url}': {type(e).__name__}"
+            )
+            errors.append("Database connectivity check failed.")
 
     if errors:
         raise HTTPException(

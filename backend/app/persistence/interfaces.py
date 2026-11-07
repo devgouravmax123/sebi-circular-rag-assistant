@@ -38,17 +38,29 @@ class DocumentRepository(ABC):
     """Abstract interface for managing regulatory documents and versions."""
 
     @abstractmethod
-    def get_document(self, document_id: str) -> Optional[DocumentRecord]:
+    def get_document(self, document_id: str, workspace_id: Optional[uuid.UUID] = None) -> Optional[DocumentRecord]:
         """
-        Retrieve document metadata by document_id.
+        Retrieve document metadata by document_id with optional workspace_id scoping.
         Raises CorruptedStorageError if record file is malformed or fails schema validation.
         """
         pass
 
     @abstractmethod
-    def list_documents(self) -> List[DocumentRecord]:
+    def list_documents(self, collection_id: str, workspace_id: Optional[uuid.UUID] = None) -> List[DocumentRecord]:
         """
-        List all registered regulatory documents.
+        List registered regulatory documents strictly scoped to the specified collection_id
+        and optional workspace_id.
+        Raises ValueError if collection_id is None, empty, or whitespace-only.
+        For explicit unscoped global listing across all collections, use list_all_documents_global().
+        Raises CorruptedStorageError if any record file is corrupted.
+        """
+        pass
+
+    @abstractmethod
+    def list_all_documents_global(self) -> List[DocumentRecord]:
+        """
+        Explicit unscoped global listing of all registered regulatory documents across all collections/tenants.
+        Intended solely for administrative, deduplication, diagnostics, and testing operations.
         Raises CorruptedStorageError if any record file is corrupted.
         """
         pass
@@ -59,8 +71,18 @@ class DocumentRepository(ABC):
         pass
 
     @abstractmethod
-    def get_document_by_sha256(self, sha256: str) -> Optional[DocumentRecord]:
-        """Retrieve document by source PDF checksum for duplicate detection."""
+    def get_document_by_sha256(self, sha256: str, collection_id: str, workspace_id: Optional[uuid.UUID] = None) -> Optional[DocumentRecord]:
+        """
+        Retrieve document by source PDF checksum for duplicate detection,
+        scoped to the specified collection_id and optional workspace_id.
+        Raises ValueError if collection_id is None, empty, or whitespace-only.
+        For explicit unscoped global lookup across all collections, use get_document_by_sha256_global().
+        """
+        pass
+
+    @abstractmethod
+    def get_document_by_sha256_global(self, sha256: str) -> Optional[DocumentRecord]:
+        """Explicit global SHA-256 lookup across all collections/tenants."""
         pass
 
 
@@ -84,9 +106,20 @@ class ChunkRepository(ABC):
         pass
 
     @abstractmethod
-    def list_all_chunks(self) -> List[ChunkRecord]:
+    def list_all_chunks(self, collection_id: str) -> List[ChunkRecord]:
         """
-        Retrieve all chunks across the indexed corpus.
+        Retrieve all chunks across the indexed corpus strictly scoped to the specified collection_id.
+        Raises ValueError if collection_id is None, empty, or whitespace-only.
+        For explicit unscoped global retrieval across all collections, use list_all_chunks_global().
+        Raises CorruptedStorageError if any document's chunks are corrupted.
+        """
+        pass
+
+    @abstractmethod
+    def list_all_chunks_global(self) -> List[ChunkRecord]:
+        """
+        Explicit unscoped global listing of all chunks across all collections/tenants.
+        Intended solely for administrative, diagnostics, maintenance, and testing operations.
         Raises CorruptedStorageError if any document's chunks are corrupted.
         """
         pass
@@ -106,10 +139,14 @@ class ChunkRepository(ABC):
 
     @abstractmethod
     def search_similar_chunks(
-        self, query_vector: np.ndarray, top_k: int = 10, model_name: str = "BAAI/bge-small-en-v1.5"
+        self,
+        collection_id: str,
+        query_vector: np.ndarray,
+        top_k: int = 10,
+        model_name: str = "BAAI/bge-small-en-v1.5",
     ) -> List[Tuple[str, float]]:
         """
-        Exact cosine similarity search over chunk vectors.
+        Exact cosine similarity search over chunk vectors scoped to a specific collection.
         Returns ordered list of (chunk_id, cosine_similarity_score).
         """
         pass
@@ -224,6 +261,8 @@ class IngestionJobRepository(ABC):
         idempotency_key: str,
         document_id: Optional[str] = None,
         max_attempts: int = 3,
+        workspace_id: Optional[uuid.UUID] = None,
+        collection_id: Optional[str] = None,
     ) -> IngestionJobRecord:
         """
         Create a new ingestion job or return an existing job matching the idempotency key.
@@ -348,8 +387,151 @@ class IngestionJobRepository(ABC):
         status: Optional[JobStatus] = None,
         limit: int = 50,
         offset: int = 0,
+        workspace_id: Optional[uuid.UUID] = None,
+        collection_id: Optional[str] = None,
     ) -> List[IngestionJobRecord]:
-        """List ingestion jobs with bounded pagination and optional status filter."""
+        """List ingestion jobs with bounded pagination, optional status filter, and optional tenant scope."""
+        pass
+
+    @abstractmethod
+    def retry_job(
+        self,
+        job_id: uuid.UUID,
+        workspace_id: Optional[uuid.UUID] = None,
+        now: Optional[datetime] = None,
+    ) -> IngestionJobRecord:
+        """
+        Manually re-queue an eligible failed job.
+        Raises PersistenceError if job not found or not in failed state.
+        """
+        pass
+
+    @abstractmethod
+    def cancel_job(
+        self,
+        job_id: uuid.UUID,
+        workspace_id: Optional[uuid.UUID] = None,
+        reason: str = "cancelled_by_user",
+        now: Optional[datetime] = None,
+    ) -> IngestionJobRecord:
+        """
+        Cancel a queued or processing job, transitioning it to failed status.
+        Raises PersistenceError if job is already in terminal state.
+        """
+        pass
+
+
+class WorkspaceRepository(ABC):
+    """Abstract interface for managing workspaces and memberships."""
+
+    @abstractmethod
+    def get_workspace(self, workspace_id: uuid.UUID) -> Optional[Any]:
+        pass
+
+    @abstractmethod
+    def get_workspace_by_slug(self, slug: str) -> Optional[Any]:
+        pass
+
+    @abstractmethod
+    def list_workspaces_for_user(self, user_id: uuid.UUID) -> List[Any]:
+        pass
+
+    @abstractmethod
+    def create_workspace(
+        self,
+        name: str,
+        slug: str,
+        owner_id: Optional[uuid.UUID] = None,
+        is_system: bool = False,
+    ) -> Any:
+        pass
+
+    @abstractmethod
+    def get_membership(self, workspace_id: uuid.UUID, user_id: uuid.UUID) -> Optional[Any]:
+        pass
+
+    @abstractmethod
+    def add_member(self, workspace_id: uuid.UUID, user_id: uuid.UUID, role: str) -> Any:
+        pass
+
+
+class CollectionRepository(ABC):
+    """Abstract interface for managing collections and tenant asset partitioning."""
+
+    @abstractmethod
+    def get_collection(self, collection_id: str, workspace_id: Optional[uuid.UUID] = None) -> Optional[Any]:
+        pass
+
+    @abstractmethod
+    def list_collections(self, workspace_id: uuid.UUID, include_public: bool = True) -> List[Any]:
+        pass
+
+    @abstractmethod
+    def create_collection(
+        self,
+        id: str,
+        workspace_id: uuid.UUID,
+        name: str,
+        policy_name: str,
+        description: Optional[str] = None,
+        enforce_regulatory_graph: bool = False,
+        is_system: bool = False,
+        is_public: bool = False,
+    ) -> Any:
+        pass
+
+    @abstractmethod
+    def update_collection(
+        self,
+        collection_id: str,
+        workspace_id: uuid.UUID,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> Optional[Any]:
+        pass
+
+    @abstractmethod
+    def delete_collection(self, collection_id: str, workspace_id: uuid.UUID) -> bool:
+        pass
+
+
+class QueryHistoryRepository(ABC):
+    """Abstract interface for managing persistent query history records."""
+
+    @abstractmethod
+    def create_entry(
+        self,
+        user_id: uuid.UUID,
+        collection_id: str,
+        query_text: str,
+        disposition: str,
+        workspace_id: Optional[uuid.UUID] = None,
+        query_options: Optional[Dict[str, Any]] = None,
+        summary_narrative: Optional[str] = None,
+        answer_text: Optional[str] = None,
+        claim_citations: Optional[List[Dict[str, Any]]] = None,
+        verified_excerpts_count: int = 0,
+        technical_validation_passed: bool = False,
+    ) -> Any:
+        pass
+
+    @abstractmethod
+    def get_entry(self, history_id: uuid.UUID, user_id: uuid.UUID) -> Optional[Any]:
+        pass
+
+    @abstractmethod
+    def list_entries(
+        self,
+        user_id: uuid.UUID,
+        workspace_id: Optional[uuid.UUID] = None,
+        collection_id: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[Any]:
+        pass
+
+    @abstractmethod
+    def delete_entry(self, history_id: uuid.UUID, user_id: uuid.UUID) -> bool:
         pass
 
 
@@ -370,4 +552,16 @@ class StorageRepositoryFactory(ABC):
 
     @abstractmethod
     def get_ingestion_job_repository(self) -> IngestionJobRepository:
+        pass
+
+    @abstractmethod
+    def get_workspace_repository(self) -> WorkspaceRepository:
+        pass
+
+    @abstractmethod
+    def get_collection_repository(self) -> CollectionRepository:
+        pass
+
+    @abstractmethod
+    def get_query_history_repository(self) -> QueryHistoryRepository:
         pass

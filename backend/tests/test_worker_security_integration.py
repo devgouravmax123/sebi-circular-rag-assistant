@@ -29,19 +29,12 @@ from sqlalchemy.orm import sessionmaker
 from app.persistence.models import Base
 
 
-def get_live_test_db_url() -> str:
-    db_url = os.getenv("TEST_DATABASE_URL") or os.getenv("DATABASE_URL")
-    if not db_url or not db_url.strip():
-        return ""
-    if "test" not in db_url.lower() and os.getenv("ALLOW_TEST_DATABASE_PURGE") != "1":
-        return ""
-    return db_url.strip()
+from tests.db_test_guard import get_approved_test_db_url
 
-
-LIVE_TEST_DB_URL = get_live_test_db_url()
+LIVE_TEST_DB_URL = get_approved_test_db_url()
 pytestmark = pytest.mark.skipif(
     not LIVE_TEST_DB_URL,
-    reason="No live PostgreSQL test database available (set TEST_DATABASE_URL to enable live DB integration tests).",
+    reason="No approved local PostgreSQL test database configured (set TEST_DATABASE_URL=postgresql+psycopg://.../sebi_rag_test).",
 )
 
 

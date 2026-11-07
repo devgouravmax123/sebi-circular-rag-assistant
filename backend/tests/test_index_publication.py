@@ -148,7 +148,7 @@ def test_3_validation_rejects_nan_and_dimension_mismatch(pub_env):
     publisher = pub_env["publisher"]
     factory = pub_env["factory"]
 
-    chunks = factory.get_chunk_repository().list_all_chunks()
+    chunks = factory.get_chunk_repository().list_all_chunks(collection_id=publisher.collection_id)
 
     # Case A: NaN vectors
     nan_matrix = np.full((len(chunks), 384), np.nan, dtype=np.float32)

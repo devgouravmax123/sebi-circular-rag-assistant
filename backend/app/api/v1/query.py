@@ -26,12 +26,19 @@ from app.grounding.scope import evaluate_query_collection_scope, ScopeMatchStatu
 from app.core.config import Settings, get_settings
 from app.ingestion.collection_registry import CollectionRegistry, UnknownCollectionError
 from app.schemas.manifest import (
+    CollectionManifest,
     CollectionStatus,
     CollectionSummary,
     GroundingPolicyDeclaration,
     GroundingPolicyType,
 )
 from app.schemas.document import resolve_collection_identity
+from app.api.deps import get_db_session_optional, get_current_user_optional
+from app.models.auth import UserModel, WorkspaceMembershipModel
+from app.models.collection import CollectionModel
+from app.models.query_history import QueryHistoryModel
+from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +273,8 @@ async def query_cscrf(
     safety_gate: Optional[AnswerSafetyGate] = Depends(get_safety_gate),
     synthesis_service: Optional[SynthesisService] = Depends(get_synthesis_service),
     collection_registry: Optional[CollectionRegistry] = Depends(get_collection_registry),
+    current_user: Optional[UserModel] = Depends(get_current_user_optional),
+    db: Optional[Session] = Depends(get_db_session_optional),
 ) -> QueryResponse:
     # Phase 10.1.20: Enforce in-memory sliding-window rate limit on public query endpoint
     limiter = get_query_rate_limiter()
@@ -280,43 +289,129 @@ async def query_cscrf(
     if collection_registry is None or not hasattr(collection_registry, "has_collection"):
         collection_registry = get_collection_registry()
 
-    # Phase 2.2B.1: Validate and resolve collection identity against CollectionRegistry
+    # Step 1 & 2: Authoritative Collection & Multi-Tenant Authorization Resolution
     requested_cid = request.collection_id.strip() if request.collection_id else "sebi_cscrf"
-    if not collection_registry.has_collection(requested_cid):
+
+    # Enforce database catalog check first to determine multi-tenant ownership
+    db_col = (
+        db.query(CollectionModel)
+        .filter(func.lower(CollectionModel.id) == requested_cid.lower())
+        .first()
+        if db is not None
+        else None
+    )
+
+    # Internal system collection: system_legacy_jobs is strictly unavailable for queries
+    if requested_cid.lower() == "system_legacy_jobs" or (db_col and db_col.id == "system_legacy_jobs"):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Collection '{requested_cid}' is not registered.",
+            detail="Collection not found.",
         )
 
-    coll_status = collection_registry.get_collection_status(requested_cid)
-    if coll_status == CollectionStatus.DISABLED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Collection '{requested_cid}' is disabled.",
+    # If collection is known in the DB as private (not public / not system), authorize strictly
+    if db_col and (not db_col.is_public and not db_col.is_system):
+        if current_user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required to access private collection.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        # Check active workspace membership for current_user
+        membership = (
+            db.query(WorkspaceMembershipModel)
+            .filter(
+                WorkspaceMembershipModel.workspace_id == db_col.workspace_id,
+                WorkspaceMembershipModel.user_id == current_user.id,
+            )
+            .first()
         )
-    if coll_status == CollectionStatus.UNPUBLISHED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Collection '{requested_cid}' is unpublished; no active published index snapshot was found.",
-        )
+        if not membership:
+            logger.warning(
+                f"Unauthorized private collection query attempt: user={current_user.id} col={db_col.id} ws={db_col.workspace_id}"
+            )
+            # Generic 404 to eliminate tenant enumeration
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Collection not found.",
+            )
+
+    grounding_policy: Optional[GroundingPolicyDeclaration] = None
+
+    # Check declarative collection registry for manifest & published snapshot existence
+    if not collection_registry.has_collection(requested_cid):
+        if db_col is not None:
+            has_data = False
+            if hasattr(retrieval_service, "has_collection_data"):
+                has_data = retrieval_service.has_collection_data(requested_cid)
+            else:
+                snap_dir = retrieval_service.get_active_snapshot_dir(requested_cid)
+                has_data = snap_dir is not None and snap_dir.exists()
+
+            if not has_data:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Collection '{requested_cid}' is unpublished; no active published index snapshot was found.",
+                )
+            policy_type_val = (
+                GroundingPolicyType.SEBI_CSCRF_STRICT
+                if db_col.policy_name == "sebi_cscrf_strict"
+                else GroundingPolicyType.GENERAL_STATIC
+            )
+            enforce_graph_flag = bool(getattr(db_col, "enforce_regulatory_graph", False) or False)
+            grounding_policy = GroundingPolicyDeclaration(
+                policy_type=policy_type_val,
+                policy_version="1.0.0",
+                enforce_regulatory_graph=enforce_graph_flag,
+                abstain_on_graph_unresolved=enforce_graph_flag,
+                require_temporal_coherence=False,
+            )
+            collection_manifest = CollectionManifest(
+                collection_id=db_col.id,
+                name=db_col.name,
+                description=db_col.description or f"Private collection {db_col.name}",
+                domain="GENERAL",
+                regulator="INTERNAL",
+                policy=grounding_policy,
+                enabled=True,
+            )
+            collection_name = db_col.name
+        else:
+            # If it's not in the registry and not in DB, fail closed with 404
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Collection '{requested_cid}' is not registered.",
+            )
+    else:
+        coll_status = collection_registry.get_collection_status(requested_cid)
+        if coll_status == CollectionStatus.DISABLED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Collection '{requested_cid}' is disabled.",
+            )
+        if coll_status == CollectionStatus.UNPUBLISHED:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Collection '{requested_cid}' is unpublished; no active published index snapshot was found.",
+            )
+        try:
+            collection_manifest = collection_registry.get_collection(requested_cid)
+            collection_name = collection_manifest.name if collection_manifest else requested_cid
+        except Exception:
+            collection_manifest = None
+            collection_name = requested_cid
 
     resolved_cid = requested_cid
-    try:
-        collection_manifest = collection_registry.get_collection(resolved_cid)
-        collection_name = collection_manifest.name if collection_manifest else resolved_cid
-    except Exception:
-        collection_manifest = None
-        collection_name = resolved_cid
 
     # Phase 2.2B.2: Authoritatively resolve collection's grounding policy from validated manifest
-    try:
-        grounding_policy = collection_registry.get_grounding_policy(resolved_cid)
-    except Exception as e:
-        logger.error(f"Failed to resolve grounding policy for collection '{resolved_cid}': {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Collection '{resolved_cid}' has an invalid or unresolvable grounding policy.",
-        )
+    if grounding_policy is None:
+        try:
+            grounding_policy = collection_registry.get_grounding_policy(resolved_cid)
+        except Exception as e:
+            logger.error(f"Failed to resolve grounding policy for collection '{resolved_cid}': {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Collection '{resolved_cid}' has an invalid or unresolvable grounding policy.",
+            )
 
     if grounding_policy is None or grounding_policy.policy_type not in (
         GroundingPolicyType.SEBI_CSCRF_STRICT,
@@ -377,7 +472,11 @@ async def query_cscrf(
         )
 
     # 2. Filter candidates through relevance safeguards
-    relevant_results, intent, assessments = filter_relevant_candidates(query, retrieval_response.results)
+    relevant_results, intent, assessments = filter_relevant_candidates(
+        query=query,
+        candidates=retrieval_response.results,
+        policy_type=grounding_policy.policy_type,
+    )
 
     # Enforce strict collection ownership on retrieved candidates before evidence assembly
     isolated_relevant_results = []
@@ -444,6 +543,80 @@ async def query_cscrf(
         candidate_excerpts_text=candidate_texts,
     )
 
+    def _persist_history_if_authenticated(resp: QueryResponse) -> None:
+        if current_user is not None:
+            try:
+                ws_id = db_col.workspace_id if db_col else None
+                opts = {
+                    "top_k": top_k,
+                    "include_superseded": include_superseded,
+                }
+                if request.regulator:
+                    opts["regulator"] = request.regulator
+                if request.domain:
+                    opts["domain"] = request.domain
+                if request.document_id:
+                    opts["document_id"] = request.document_id
+                if request.start_date:
+                    opts["start_date"] = request.start_date
+                if request.end_date:
+                    opts["end_date"] = request.end_date
+
+                serialized_claims = []
+                for c in (resp.claim_citations or []):
+                    if hasattr(c, "model_dump"):
+                        serialized_claims.append(c.model_dump())
+                    elif isinstance(c, dict):
+                        serialized_claims.append(c)
+
+                disp_val = (
+                    resp.disposition.value
+                    if hasattr(resp.disposition, "value")
+                    else str(resp.disposition)
+                )
+
+                if hasattr(retrieval_service, "repository_factory") and retrieval_service.repository_factory is not None:
+                    h_getter = getattr(retrieval_service.repository_factory, "get_query_history_repository", getattr(retrieval_service.repository_factory, "create_query_history_repository", None))
+                    history_repo = h_getter() if h_getter else None
+                    entry = history_repo.create_entry(
+                        user_id=current_user.id,
+                        workspace_id=ws_id,
+                        collection_id=resolved_cid,
+                        query_text=query,
+                        query_options=opts,
+                        disposition=disp_val,
+                        summary_narrative=resp.summary_narrative,
+                        answer_text=resp.answer_text,
+                        claim_citations=serialized_claims,
+                        verified_excerpts_count=len(resp.verified_excerpts),
+                        technical_validation_passed=resp.technical_validation_passed,
+                    )
+                    logger.info(f"Persisted query history: id={entry.id} user={current_user.id} col={resolved_cid}")
+                elif db is not None:
+                    history_entry = QueryHistoryModel(
+                        user_id=current_user.id,
+                        workspace_id=ws_id,
+                        collection_id=resolved_cid,
+                        query_text=query,
+                        query_options=opts,
+                        disposition=disp_val,
+                        summary_narrative=resp.summary_narrative,
+                        answer_text=resp.answer_text,
+                        claim_citations=serialized_claims,
+                        verified_excerpts_count=len(resp.verified_excerpts),
+                        technical_validation_passed=resp.technical_validation_passed,
+                    )
+                    db.add(history_entry)
+                    db.commit()
+                    logger.info(f"Persisted query history: id={history_entry.id} user={current_user.id} col={resolved_cid}")
+            except Exception as e:
+                if db is not None:
+                    try:
+                        db.rollback()
+                    except Exception:
+                        pass
+                logger.error(f"Failed to persist query history for user={current_user.id} col={resolved_cid}: {e}")
+
     if scope_eval.status == ScopeMatchStatus.EXPLICIT_MISMATCH or intent == QueryIntent.OUT_OF_SCOPE_OR_UNESTABLISHED:
         abstention_msg = scope_eval.reason or f"Query subject is outside the scope of the {corpus_label}."
         narrative_msg = (
@@ -451,7 +624,7 @@ async def query_cscrf(
             if scope_eval.status == ScopeMatchStatus.EXPLICIT_MISMATCH and scope_eval.reason
             else f"Controlled Abstention: The query is outside the demonstrated regulatory scope of the {corpus_label}."
         )
-        return QueryResponse(
+        early_resp = QueryResponse(
             query=query,
             disposition=AnswerDisposition.CONTROLLED_ABSTENTION,
             verified_excerpts=[],
@@ -468,6 +641,8 @@ async def query_cscrf(
             unresolved_subquestions=[],
             synthesis_failure_reason=abstention_msg,
         )
+        _persist_history_if_authenticated(early_resp)
+        return early_resp
 
     authorized_chunk_ids: Set[str] = {r.chunk_id for r in relevant_results}
 
@@ -491,7 +666,7 @@ async def query_cscrf(
                 abstention_reason = f"No relevant circular passages identified in the registered {corpus_label}."
             narrative = f"Controlled Abstention: Zero candidate passages found in {corpus_label} for this query."
 
-        return QueryResponse(
+        zero_cand_resp = QueryResponse(
             query=query,
             disposition=AnswerDisposition.CONTROLLED_ABSTENTION,
             verified_excerpts=[],
@@ -508,6 +683,8 @@ async def query_cscrf(
             unresolved_subquestions=[],
             synthesis_failure_reason=abstention_reason,
         )
+        _persist_history_if_authenticated(zero_cand_resp)
+        return zero_cand_resp
 
     # 4. Form deterministic excerpt draft from authorized relevant candidates
     candidate_excerpts = []
@@ -531,6 +708,7 @@ async def query_cscrf(
             payload=draft_payload,
             retrieval_candidates=authorized_chunk_ids,
             policy=grounding_policy,
+            collection_id=resolved_cid,
         )
     except Exception as e:
         logger.error(f"Safety gate evaluation failure for query length {len(query)}: {str(e)}")
@@ -583,7 +761,7 @@ async def query_cscrf(
         policy_type=policy_str,
     )
 
-    return QueryResponse(
+    final_resp = QueryResponse(
         query=gate_response.query,
         disposition=gate_response.disposition,
         verified_excerpts=gate_response.verified_excerpts,
@@ -600,3 +778,7 @@ async def query_cscrf(
         unresolved_subquestions=synthesis_result.unresolved_subquestions,
         synthesis_failure_reason=synthesis_result.failure_reason,
     )
+
+    # Step 7: Persist final user-visible query/answer record for authenticated users
+    _persist_history_if_authenticated(final_resp)
+    return final_resp

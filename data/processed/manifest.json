@@ -39,6 +39,14 @@
       "page_count": 11,
       "chunk_count": 8,
       "processed_path": "data/processed/sebi_cscrf_2025_119"
+    },
+    "cisa_ir_playbook_2021": {
+      "document_id": "cisa_ir_playbook_2021",
+      "title": "Federal Government Cybersecurity Incident and Vulnerability Response Playbooks",
+      "sha256": "2277247542d844d2258c0f6892d649d6885f783fc629664924e60638086f47f0",
+      "page_count": 44,
+      "chunk_count": 46,
+      "processed_path": "data/processed/cisa_ir_playbook_2021"
     }
   },
   "sha256_index": {
@@ -46,6 +54,7 @@
     "d04db094f5c66332ad5ac9eaa532f3103896443ef0d55f48da82965e082a04f6": "sebi_cscrf_2025_045",
     "bd7105a2f1e2b985d9e34aec02c8760549c3b54629b3771b9f8ee80949a6875d": "sebi_cscrf_2025_060",
     "1cfe435dc21149027bad0ddb0ed7c156dbe000b01b29e72faa05935c71561465": "sebi_cscrf_2025_096",
-    "7eb58ae065db764eec8a118c35777c8d4fb3a3b4ceee15878c28cb9599f1c31d": "sebi_cscrf_2025_119"
+    "7eb58ae065db764eec8a118c35777c8d4fb3a3b4ceee15878c28cb9599f1c31d": "sebi_cscrf_2025_119",
+    "2277247542d844d2258c0f6892d649d6885f783fc629664924e60638086f47f0": "cisa_ir_playbook_2021"
   }
 }

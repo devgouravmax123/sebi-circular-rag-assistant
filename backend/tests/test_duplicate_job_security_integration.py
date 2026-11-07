@@ -29,21 +29,12 @@ from app.persistence.worker_procedure_repo import (
 from app.persistence.interfaces import PersistenceError, ConnectionStorageError
 
 
-def _get_admin_db_url() -> str:
-    db_url = (
-        os.getenv("TEST_DATABASE_URL")
-        or os.getenv("WORKER_DATABASE_URL")
-        or os.getenv("DATABASE_URL")
-    )
-    if not db_url or not db_url.strip():
-        return "postgresql+psycopg://postgres:test_pass@localhost:5432/sebi_rag_test"
-    return db_url.strip()
+from tests.db_test_guard import get_approved_test_db_url
 
-
-ADMIN_DB_URL = _get_admin_db_url()
+ADMIN_DB_URL = get_approved_test_db_url()
 pytestmark = pytest.mark.skipif(
     not ADMIN_DB_URL,
-    reason="No PostgreSQL test database available.",
+    reason="No approved local PostgreSQL test database configured (set TEST_DATABASE_URL=postgresql+psycopg://.../sebi_rag_test).",
 )
 
 

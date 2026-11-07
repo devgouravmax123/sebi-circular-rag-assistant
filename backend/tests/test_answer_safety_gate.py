@@ -32,6 +32,7 @@ from app.schemas.grounding import RegulatoryStatus
 from app.grounding.safety_gate import AnswerSafetyGate, is_current_status_query
 from app.schemas.graph import GraphEdge, RelationshipType, ScopeType, ReviewStatus
 from app.schemas.graph_collection import GraphEdgeCollection
+from app.schemas.manifest import GroundingPolicyDeclaration, GroundingPolicyType
 from app.schemas.retrieval import RetrievalResult, RetrievalResponse
 
 
@@ -40,7 +41,17 @@ def gate():
     return AnswerSafetyGate(processed_dir="data/processed")
 
 
-def test_1_valid_exact_excerpt_within_retrieval_set(gate):
+@pytest.fixture
+def sebi_policy():
+    return GroundingPolicyDeclaration(
+        policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT,
+        enforce_regulatory_graph=True,
+        enforce_verbatim_citation=True,
+        enforce_retrieval_binding=True,
+    )
+
+
+def test_1_valid_exact_excerpt_within_retrieval_set(gate, sebi_policy):
     # Valid excerpt from CIR/2025/045 chunk sebi_cscrf_2025_045_p1_0
     exact_text = "Recognising the need for robust cybersecurity measures and protection of data and IT infrastructure"
     payload = ExcerptDraftPayload(
@@ -54,7 +65,7 @@ def test_1_valid_exact_excerpt_within_retrieval_set(gate):
         ],
     )
     # Authorized retrieval set containing chunk
-    resp = gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"})
+    resp = gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"}, policy=sebi_policy)
     assert resp.technical_validation_passed is True
     assert resp.disposition in (AnswerDisposition.VERIFIED_HISTORICAL_EXCERPTS, AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS)
     assert len(resp.verified_excerpts) == 1
@@ -63,7 +74,7 @@ def test_1_valid_exact_excerpt_within_retrieval_set(gate):
     assert resp.retrieval_candidate_count == 1
 
 
-def test_2_candidate_chunk_absent_from_retrieval_set_rejected(gate):
+def test_2_candidate_chunk_absent_from_retrieval_set_rejected(gate, sebi_policy):
     # Chunk exists in corpus, but was NOT retrieved for this query
     exact_text = "Recognising the need for robust cybersecurity measures"
     payload = ExcerptDraftPayload(
@@ -77,14 +88,14 @@ def test_2_candidate_chunk_absent_from_retrieval_set_rejected(gate):
         ],
     )
     # Server-side retrieval candidate set does NOT contain sebi_cscrf_2025_045_p1_0
-    resp = gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2024_113_p1_0"})
+    resp = gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2024_113_p1_0"}, policy=sebi_policy)
     assert resp.disposition == AnswerDisposition.CONTROLLED_ABSTENTION
     assert resp.technical_validation_passed is False
     assert len(resp.verified_excerpts) == 0
     assert "not in authorized retrieval candidate set" in resp.summary_narrative
 
 
-def test_3_retrieval_returns_no_candidates(gate):
+def test_3_retrieval_returns_no_candidates(gate, sebi_policy):
     payload = ExcerptDraftPayload(
         query="Query returning 0 results",
         excerpts=[
@@ -96,13 +107,13 @@ def test_3_retrieval_returns_no_candidates(gate):
         ],
     )
     # Empty set from retrieval
-    resp = gate.evaluate_draft(payload, retrieval_candidates=set())
+    resp = gate.evaluate_draft(payload, retrieval_candidates=set(), policy=sebi_policy)
     assert resp.disposition == AnswerDisposition.CONTROLLED_ABSTENTION
     assert resp.technical_validation_passed is False
     assert "Zero candidate chunks retrieved" in resp.summary_narrative
 
 
-def test_4_retrieval_service_execution_error():
+def test_4_retrieval_service_execution_error(sebi_policy):
     mock_service = MagicMock()
     mock_service.search_hybrid.side_effect = RuntimeError("Index connection timeout")
 
@@ -120,13 +131,13 @@ def test_4_retrieval_service_execution_error():
             )
         ],
     )
-    resp = gate_with_service.evaluate_draft(payload)
+    resp = gate_with_service.evaluate_draft(payload, policy=sebi_policy)
     assert resp.disposition == AnswerDisposition.CONTROLLED_ABSTENTION
     assert resp.technical_validation_passed is False
     assert "Server-side retrieval failed" in resp.summary_narrative
 
 
-def test_5_only_superseded_evidence_for_current_compliance_query():
+def test_5_only_superseded_evidence_for_current_compliance_query(sebi_policy):
     # Setup custom graph where doc_old is SUPERSEDED by doc_new
     custom_graph = GraphEdgeCollection()
     custom_graph.add_edge(
@@ -152,7 +163,7 @@ def test_5_only_superseded_evidence_for_current_compliance_query():
             )
         ],
     )
-    resp = custom_gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"})
+    resp = custom_gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"}, policy=sebi_policy)
     assert resp.disposition == AnswerDisposition.CONTROLLED_ABSTENTION
     assert len(resp.verified_excerpts) == 0
     assert len(resp.historical_superseded_excerpts) == 1
@@ -160,7 +171,7 @@ def test_5_only_superseded_evidence_for_current_compliance_query():
     assert "all matching corpus provisions are superseded" in resp.abstention_reason.lower()
 
 
-def test_6_historical_query_with_superseded_evidence_separated():
+def test_6_historical_query_with_superseded_evidence_separated(sebi_policy):
     custom_graph = GraphEdgeCollection()
     custom_graph.add_edge(
         GraphEdge(
@@ -185,14 +196,14 @@ def test_6_historical_query_with_superseded_evidence_separated():
             )
         ],
     )
-    resp = custom_gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"})
+    resp = custom_gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"}, policy=sebi_policy)
     # Non-current query returns separated historical excerpts under QUALIFIED_HISTORICAL_EXCERPTS
     assert resp.disposition == AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS
     assert len(resp.verified_excerpts) == 0
     assert len(resp.historical_superseded_excerpts) == 1
 
 
-def test_7_unresolved_evidence_with_draft_untrusted_flags(gate):
+def test_7_unresolved_evidence_with_draft_untrusted_flags(gate, sebi_policy):
     exact_text = "The reporting of the CISO of the MII and Qualified REs shall be directly to the MD & CEO of their organization."
     payload = ExcerptDraftPayload(
         query="To whom does the CISO report?",
@@ -204,7 +215,7 @@ def test_7_unresolved_evidence_with_draft_untrusted_flags(gate):
             )
         ],
     )
-    resp = gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2024_113_p80_67"})
+    resp = gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2024_113_p80_67"}, policy=sebi_policy)
     assert resp.disposition == AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS
     assert any("UNRESOLVED" in w for w in resp.regulatory_warnings)
     assert resp.verified_excerpts[0].regulatory_status == RegulatoryStatus.UNRESOLVED
@@ -219,7 +230,7 @@ def test_8_partial_amendment_with_unmatched_provision_is_unresolved(gate):
     assert len(provisions) == 0
 
 
-def test_9_references_edge_never_implies_supersession():
+def test_9_references_edge_never_implies_supersession(sebi_policy):
     custom_graph = GraphEdgeCollection()
     custom_graph.add_edge(
         GraphEdge(
@@ -244,12 +255,12 @@ def test_9_references_edge_never_implies_supersession():
             )
         ],
     )
-    resp = custom_gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"})
+    resp = custom_gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"}, policy=sebi_policy)
     assert resp.verified_excerpts[0].regulatory_status == RegulatoryStatus.INFORMATIONAL
     assert resp.verified_excerpts[0].regulatory_status != RegulatoryStatus.SUPERSEDED
 
 
-def test_10_unknown_top_level_and_per_excerpt_fields_rejected(gate):
+def test_10_unknown_top_level_and_per_excerpt_fields_rejected(gate, sebi_policy):
     # Unknown top-level field
     malformed_top = {
         "query": "Test query",
@@ -262,7 +273,7 @@ def test_10_unknown_top_level_and_per_excerpt_fields_rejected(gate):
             }
         ],
     }
-    resp = gate.evaluate_draft(malformed_top)
+    resp = gate.evaluate_draft(malformed_top, policy=sebi_policy)
     assert resp.disposition == AnswerDisposition.REJECTED_UNSAFE
     assert resp.technical_validation_passed is False
 
@@ -278,11 +289,11 @@ def test_10_unknown_top_level_and_per_excerpt_fields_rejected(gate):
             }
         ],
     }
-    resp2 = gate.evaluate_draft(malformed_excerpt)
+    resp2 = gate.evaluate_draft(malformed_excerpt, policy=sebi_policy)
     assert resp2.disposition == AnswerDisposition.REJECTED_UNSAFE
 
 
-def test_11_cross_chunk_quotation_stitching_rejected(gate):
+def test_11_cross_chunk_quotation_stitching_rejected(gate, sebi_policy):
     # Attempting to stitch text from p1_0 and p2_1 together as a single excerpt
     stitched_text = (
         "Recognising the need for robust cybersecurity measures "
@@ -298,12 +309,12 @@ def test_11_cross_chunk_quotation_stitching_rejected(gate):
             )
         ],
     )
-    resp = gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"})
+    resp = gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"}, policy=sebi_policy)
     assert resp.disposition == AnswerDisposition.CONTROLLED_ABSTENTION
     assert len(resp.verified_excerpts) == 0
 
 
-def test_12_genuine_source_text_with_markup_looking_characters(gate):
+def test_12_genuine_source_text_with_markup_looking_characters(gate, sebi_policy):
     # CSCRF circular contains section numbers, parentheses, and colons: e.g. "3.1. Bring the provisions of this circulars"
     exact_text = "3.1. Bring the provisions of this circulars to the notice of their members/ participants"
     payload = ExcerptDraftPayload(
@@ -316,13 +327,13 @@ def test_12_genuine_source_text_with_markup_looking_characters(gate):
             )
         ],
     )
-    resp = gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"})
+    resp = gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"}, policy=sebi_policy)
     assert resp.technical_validation_passed is True
     assert len(resp.verified_excerpts) == 1
     assert resp.verified_excerpts[0].excerpt_text == exact_text
 
 
-def test_13_valid_quotation_insufficient_for_unrelated_query(gate):
+def test_13_valid_quotation_insufficient_for_unrelated_query(gate, sebi_policy):
     exact_text = "Recognising the need for robust cybersecurity measures"
     payload = ExcerptDraftPayload(
         query="What are the specific penalties for non-compliance with CSCRF?",
@@ -334,13 +345,13 @@ def test_13_valid_quotation_insufficient_for_unrelated_query(gate):
             )
         ],
     )
-    resp = gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"})
+    resp = gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"}, policy=sebi_policy)
     # Excerpt is verified as historical circular text, but disposition explicitly specifies historical excerpts, NOT a proven answer
     assert resp.disposition in (AnswerDisposition.VERIFIED_HISTORICAL_EXCERPTS, AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS)
     assert "Excerpts represent technical document grounding only" in resp.pilot_corpus_scope_limitation
 
 
-def test_14_no_untrusted_draft_narrative_or_metadata_leaking(gate):
+def test_14_no_untrusted_draft_narrative_or_metadata_leaking(gate, sebi_policy):
     exact_text = "Recognising the need for robust cybersecurity measures"
     payload = ExcerptDraftPayload(
         query="Test query",
@@ -352,7 +363,7 @@ def test_14_no_untrusted_draft_narrative_or_metadata_leaking(gate):
             )
         ],
     )
-    resp = gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"})
+    resp = gate.evaluate_draft(payload, retrieval_candidates={"sebi_cscrf_2025_045_p1_0"}, policy=sebi_policy)
     data = resp.model_dump()
     assert "free_form_prose" not in data
     assert "raw_llm_markdown" not in data
@@ -361,6 +372,7 @@ def test_14_no_untrusted_draft_narrative_or_metadata_leaking(gate):
 
 
 def test_15_relevance_safeguard_filters_low_coverage_out_of_domain_candidates():
+    from app.schemas.manifest import GroundingPolicyType
     from app.grounding.relevance import filter_relevant_candidates, RelevanceDecisionCode
     from app.grounding.classifier import QueryIntent
 
@@ -378,7 +390,7 @@ def test_15_relevance_safeguard_filters_low_coverage_out_of_domain_candidates():
         score=0.0306,
         rank=1,
     )
-    relevant, intent, assessments = filter_relevant_candidates(query, [cand])
+    relevant, intent, assessments = filter_relevant_candidates(query, [cand], policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     assert len(relevant) == 0
     assert len(assessments) == 1
     assert assessments[0].is_relevant is False
@@ -387,6 +399,7 @@ def test_15_relevance_safeguard_filters_low_coverage_out_of_domain_candidates():
 
 
 def test_16_relevance_safeguard_accepts_substantive_in_scope_candidates():
+    from app.schemas.manifest import GroundingPolicyType
     from app.grounding.relevance import filter_relevant_candidates, RelevanceDecisionCode
 
     query = "What is the mandatory compliance deadline extension under circular CIR/2025/045?"
@@ -402,13 +415,14 @@ def test_16_relevance_safeguard_accepts_substantive_in_scope_candidates():
         score=0.038,
         rank=1,
     )
-    relevant, intent, assessments = filter_relevant_candidates(query, [cand])
+    relevant, intent, assessments = filter_relevant_candidates(query, [cand], policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     assert len(relevant) == 1
     assert assessments[0].is_relevant is True
     assert assessments[0].decision_code == RelevanceDecisionCode.RELEVANT_EVIDENCE
 
 
 def test_17_relevance_safeguard_ciso_reporting_paraphrase():
+    from app.schemas.manifest import GroundingPolicyType
     from app.grounding.relevance import filter_relevant_candidates, RelevanceDecisionCode
     from app.schemas.retrieval import RetrievalResult
 
@@ -429,13 +443,14 @@ def test_17_relevance_safeguard_ciso_reporting_paraphrase():
         score=0.035,
         rank=1,
     )
-    relevant, intent, assessments = filter_relevant_candidates(query, [cand])
+    relevant, intent, assessments = filter_relevant_candidates(query, [cand], policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     assert len(relevant) == 1
     assert assessments[0].is_relevant is True
     assert assessments[0].decision_code == RelevanceDecisionCode.RELEVANT_EVIDENCE
 
 
 def test_18_relevance_safeguard_hsm_and_soc_coverage():
+    from app.schemas.manifest import GroundingPolicyType
     from app.grounding.relevance import filter_relevant_candidates, RelevanceDecisionCode
     from app.schemas.retrieval import RetrievalResult
 
@@ -453,7 +468,7 @@ def test_18_relevance_safeguard_hsm_and_soc_coverage():
         score=0.033,
         rank=1,
     )
-    rel_hsm, _, ass_hsm = filter_relevant_candidates(query_hsm, [cand_hsm])
+    rel_hsm, _, ass_hsm = filter_relevant_candidates(query_hsm, [cand_hsm], policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     assert len(rel_hsm) == 1
     assert ass_hsm[0].is_relevant is True
 
@@ -471,7 +486,7 @@ def test_18_relevance_safeguard_hsm_and_soc_coverage():
         score=0.031,
         rank=1,
     )
-    rel_soc, _, ass_soc = filter_relevant_candidates(query_soc, [cand_soc])
+    rel_soc, _, ass_soc = filter_relevant_candidates(query_soc, [cand_soc], policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     assert len(rel_soc) == 1
     assert ass_soc[0].is_relevant is True
 
@@ -487,6 +502,7 @@ def test_19_guarded_specificity_aware_reranking():
     6. ISO 27001, definition, and audit-report queries retain specialized priorities.
     7. Existing rejected candidates remain rejected.
     """
+    from app.schemas.manifest import GroundingPolicyType
     from app.grounding.relevance import filter_relevant_candidates
     from app.schemas.retrieval import RetrievalResult
 
@@ -516,7 +532,7 @@ def test_19_guarded_specificity_aware_reranking():
         score=0.016,  # Lower raw RRF score
         rank=2,
     )
-    rel_hsm, _, _ = filter_relevant_candidates(query_hsm, [cand_generic_cloud, cand_hsm_mandate])
+    rel_hsm, _, _ = filter_relevant_candidates(query_hsm, [cand_generic_cloud, cand_hsm_mandate], policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     assert len(rel_hsm) == 2
     # Even with lower RRF score, cand_hsm_mandate has 100% specific coverage (matching hsm) and must rank 1
     assert rel_hsm[0].chunk_id == "sebi_cscrf_2025_060_p5_3"
@@ -536,7 +552,7 @@ def test_19_guarded_specificity_aware_reranking():
         score=0.030,
         rank=1,
     )
-    rel_gen, _, ass_gen = filter_relevant_candidates(query_generic, [cand_gen])
+    rel_gen, _, ass_gen = filter_relevant_candidates(query_generic, [cand_gen], policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     # Rejected because no distinguishing specific tokens exist
     assert len(rel_gen) == 0
     assert ass_gen[0].is_relevant is False
@@ -567,7 +583,7 @@ def test_19_guarded_specificity_aware_reranking():
         score=0.025,
         rank=2,
     )
-    rel_rep, _, _ = filter_relevant_candidates(query_repeated, [cand_rep2, cand_rep1])
+    rel_rep, _, _ = filter_relevant_candidates(query_repeated, [cand_rep2, cand_rep1], policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     assert len(rel_rep) == 2
     # c_rep1 has higher specific coverage (cloud, services, hsm = 3/3) vs c_rep2 (cloud, services = 2/3)
     assert rel_rep[0].chunk_id == "c_rep1"
@@ -597,7 +613,7 @@ def test_19_guarded_specificity_aware_reranking():
         score=0.028,
         rank=2,
     )
-    rel_tie, _, _ = filter_relevant_candidates(query_repeated, [cand_tie_low, cand_tie_high])
+    rel_tie, _, _ = filter_relevant_candidates(query_repeated, [cand_tie_low, cand_tie_high], policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     assert len(rel_tie) == 2
     assert rel_tie[0].chunk_id == "c_tie_high"
     assert rel_tie[1].chunk_id == "c_tie_low"
@@ -628,7 +644,7 @@ def test_19_guarded_specificity_aware_reranking():
         score=0.020,
         rank=2,
     )
-    rel_dl, _, _ = filter_relevant_candidates(query_deadline, [cand_older_high_match, cand_newer_ext])
+    rel_dl, _, _ = filter_relevant_candidates(query_deadline, [cand_older_high_match, cand_newer_ext], policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     assert len(rel_dl) == 2
     # Recency must prevail: CIR/2025/096 ranks first regardless of specificity or RRF
     assert rel_dl[0].chunk_id == "cand_newer_096"
@@ -660,7 +676,7 @@ def test_19_guarded_specificity_aware_reranking():
         score=0.022,
         rank=2,
     )
-    rel_iso, _, _ = filter_relevant_candidates(query_iso, [cand_iso_baseline, cand_iso_clarif])
+    rel_iso, _, _ = filter_relevant_candidates(query_iso, [cand_iso_baseline, cand_iso_clarif], policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     assert len(rel_iso) == 2
     assert rel_iso[0].chunk_id == "cand_iso_clarif"
     assert rel_iso[1].chunk_id == "cand_iso_baseline"
@@ -678,6 +694,6 @@ def test_19_guarded_specificity_aware_reranking():
         score=0.050,
         rank=1,
     )
-    rel_irrel, _, ass_irrel = filter_relevant_candidates(query_hsm, [cand_irrel])
+    rel_irrel, _, ass_irrel = filter_relevant_candidates(query_hsm, [cand_irrel], policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     assert len(rel_irrel) == 0
     assert ass_irrel[0].is_relevant is False

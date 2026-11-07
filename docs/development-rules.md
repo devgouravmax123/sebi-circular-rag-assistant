@@ -1,89 +1,99 @@
 # Development Rules for Humans & AI Coding Agents
 
-## 1. Work Protocol & Engineering Standards
+## 1. Engineering Principles & Operating Protocols
+
 1. **Inspect Before Modifying:** Always inspect existing code, schema definitions, test suites, and Git status before making changes. Never assume an implementation exists based on documentation alone.
-2. **Single-Task Focus:** Implement one scoped task or milestone at a time. Do not jump across roadmap phases in a single engineering session.
-3. **Smallest Coherent Change:** Keep diffs minimal, clean, and tightly targeted to the specific objective. Never reformat entire files or run repository-wide formatters.
+2. **Single-Task Focus:** Implement one scoped task or milestone at a time. Do not jump across roadmap milestones in a single engineering turn.
+3. **Smallest Coherent Change:** Keep diffs minimal, clean, and tightly targeted to the specific objective. Never run repository-wide formatters or touch unrelated modules.
 4. **Mandatory Test Verification:** Run relevant test suites before and after modifications. Always report exact test execution commands, exit codes, and test counts. Never fabricate or extrapolate test results.
-5. **Accurate Tracking & Documentation:** Keep documentation aligned with actual code. Clearly differentiate `IMPLEMENTED AND VERIFIED`, `IMPLEMENTED, VERIFICATION INCOMPLETE`, `PARTIALLY IMPLEMENTED`, `PLANNED`, `PROPOSED / REQUIRES APPROVAL`, and `DEFERRED` capabilities.
-6. **Stop & Clarify:** If ambiguous requirements, contradictory documentation, or architectural crossroads arise, pause and request user guidance before proceeding.
-7. **Preserve User Modifications:** Never overwrite, revert, or discard unrelated pre-existing working-tree changes.
+5. **Preserve User Modifications:** Never overwrite, revert, reset, or discard unrelated pre-existing working-tree changes.
+6. **Strict Secret Isolation:** Never commit `.env` files, API keys, database connection passwords, or cloud credentials. Never output secrets in CLI logs, test failures, or error responses.
+7. **Stop and Clarify:** When encountering ambiguous requirements, conflicting architectural choices, or unbudgeted cloud infrastructure, pause and request user clarification before proceeding.
 
 ---
 
-## 2. Explicit Approvals Required Before
-The following actions are strictly prohibited without prior explicit user authorization:
-- Changing core system architectures or replacing foundational technologies.
-- Introducing paid cloud services, billable APIs, or requiring credit card authorization.
-- Making external database services (e.g. Neon, PostgreSQL) or caching services (e.g. Redis, Upstash) mandatory for running the application locally or executing tests.
-- Migrating vector embeddings or index storage from local snapshots to external databases.
-- Downloading models exceeding 500MB or running broad web-scraping spiders.
-- Deleting, renaming, or modifying existing tests, test fixtures, or baseline corpus documents.
-- Modifying the permanent SEBI CSCRF evaluation baseline (`evaluation/data/gold_evaluation_dataset.json`).
-- Weakening the `AnswerSafetyGate` refusal rubric, grounding checks, or citation validation standards.
-- Making backward-incompatible changes to public API request/response schemas.
-- Staging, committing, pushing, or triggering production deployments.
+## 2. Multi-Tenant Security & Authorization Rules
+
+1. **Non-Bypassable Workspace Authorization:**
+   - Every API endpoint accessing or modifying non-public resources must enforce workspace membership verification (`require_workspace_reader` or `require_workspace_writer`).
+   - Never trust client-supplied user IDs or tenant IDs passed in query parameters or request bodies. Resolve user identity strictly from cryptographically verified JWT claims.
+2. **Non-Enumerating Fail-Closed Responses:**
+   - Unauthorized attempts to read, query, update, or delete a private workspace or collection must return **HTTP 404 Not Found** (not HTTP 403 Forbidden). This completely prevents unauthorized callers from enumerating valid workspace IDs or collection names.
+   - Unauthenticated requests must return **HTTP 401 Unauthorized**.
+3. **Mandatory Storage Path Partitioning:**
+   - All uploaded documents and generated artifacts in object storage (Backblaze B2 or local disk) must be strictly partitioned by workspace:
+     `uploads/{workspace_id}/{collection_id}/{document_id}.pdf`
+     `indexes/{collection_id}/snapshots/{snapshot_id}/`
+   - Cross-workspace path traversal or bucket-level directory listing by users is strictly prohibited.
+4. **Zero Cross-Tenant Evidence Leakage:**
+   - Queries scoped to Collection $A$ must never retrieve, evaluate, rerank, or cite candidate passages from Collection $B$.
+   - Any multi-tenant pull request must include negative test cases proving that User $B$ receives HTTP 404 when querying User $A$'s private collections.
+5. **System Demonstration Collection Protection:**
+   - Demonstration collections (`sebi_cscrf`, `cisa_playbooks`) are system-managed and read-only.
+   - Any user upload, modification, or deletion attempt targeting system collections must be rejected with **HTTP 403 Forbidden**.
 
 ---
 
-## 3. Platform & Domain Invariants
+## 3. Evidence Grounding & Citation Integrity Rules
 
-### 3.1. Official Source Provenance & Hash Integrity
-- Every ingested document must retain its source identifier, file path, and SHA-256 cryptographic hash.
-- Every chunk must preserve both 1-indexed PDF page numbers and printed page strings.
-- Missing metadata must remain missing: never invent publication dates, effective dates, section codes, or URLs.
-
-### 3.2. Collection Abstraction & Mandatory Isolation
-- Collections represent independent document groups governed by their own metadata and policies.
-- **Strict Collection Isolation:** Queries scoped to a specific `collection_id` must NEVER retrieve, evaluate, rerank, or cite candidate passages from another collection. Cross-collection evidence leakage is a fatal architectural defect.
-- If a query provides an invalid, unknown, or ambiguous `collection_id`, the system must fail closed (HTTP 404 or 422), never fall back to an unconstrained multi-collection search.
-
-### 3.3. Directed Graph & Temporal Invariants
-- For collections enforcing regulatory relationships (e.g. SEBI CSCRF), all relationship edges are strictly directed:
-  $$\text{source\_document\_id (acting / newer)} \xrightarrow{\text{RELATIONSHIP}} \text{target\_document\_id (affected / older)}$$
-- No self-loops are permitted (`source != target`).
-- **Currency is never inferred from dates alone:** A newer publication date does not imply supersession without an explicit, verified relationship edge.
-- **Provision-Level Scoping:** Partial amendments must specify `affected_provisions` so unaffected clauses retain base validity.
-- Collections without supersession graphs (e.g. general technical manuals) use a `PassthroughPolicy` where all active documents are searchable without requiring amendment edges.
-
-### 3.4. Grounding & Fail-Closed Abstention
-- Every answer claim that requires factual support must be mechanically verified against retrieved context chunks.
-- The system must abstain with a structured refusal (`refuse: true` or `disposition: CONTROLLED_ABSTENTION`) when evidence is missing, conflicting, out of domain, or superseded.
-- For extractive responses, claims must match source chunk text with 100% character identity.
-- External LLM synthesis (Gemini, Groq) must fail-closed to verified extractive excerpts or structured refusals if citation validation fails.
-
-### 3.5. Persistence & Ingestion Safety
-- **Zero-Cost Local Default:** Ingestion and retrieval must operate fully using local file paths and snapshot directories (`data/manifests/`, `data/processed/`, `data/indexes/snapshots/`) without requiring an active PostgreSQL or Redis instance.
-- **Deterministic Chunking:** Chunks must be deterministically generated with persistent, reproducible chunk IDs (`{doc_id}_p{page_start}_{chunk_idx}`).
-- **Immutable Versioning:** Ingested documents with changed PDF checksums must produce new immutable version records rather than mutating historical extractions in-place.
-- **Safe Test Purging:** Destructive database operations (`drop_all`) must strictly require that the database name contains `test` (e.g. `sebi_rag_test`) or that `ALLOW_TEST_DATABASE_PURGE=1` is explicitly set in the execution environment.
+1. **Strict Evidence Provenance:**
+   - Every factual claim assertion in a synthesized answer must map to one or more verified text chunks retrieved from the target collection.
+   - Every citation must preserve physical 1-indexed PDF page numbers and printed page strings.
+2. **Zero Hallucinated Citations:**
+   - The platform strictly forbids generating answers with fabricated citations or imaginary circular reference codes.
+   - If citation validation fails, the system must fail closed to verified verbatim excerpts or issue a structured controlled abstention.
+3. **Fail-Closed Controlled Abstention:**
+   - When evidence is insufficient, contradictory, out-of-domain, or ambiguous, the system must return `disposition: CONTROLLED_ABSTENTION` with an explicit reason from the 5-point refusal rubric.
+   - Never weaken the refusal rubric or similarity thresholds to artificially inflate answer rates.
+4. **Preservation of SEBI CSCRF Baseline:**
+   - The 32 golden queries in `evaluation/data/gold_evaluation_dataset.json` constitute a permanent regression anchor. Any change that causes a regression on this benchmark is rejected.
+   - General document collections use `PassthroughPolicy`; do not apply SEBI-specific circular amendment rules to non-regulatory documents.
 
 ---
 
-## 4. Secrets, Privacy & Security
-- Keep `.env` strictly excluded from Git tracking via `.gitignore`.
-- Keep `.env.example` free of real API keys or sensitive connection strings.
-- Never expose LLM provider API keys, database credentials, or admin keys in client bundles or API error responses.
-- Do not log raw prompt text, sensitive user queries, or database credentials.
-- Treat extracted PDF text as untrusted content; ensure retrieved context cannot override system instructions or alter tool execution.
+## 4. Database Migration & PostgreSQL Security Rules
+
+1. **Versioned Alembic Migrations:**
+   - All schema modifications must be codified in reproducible Alembic migration scripts under `backend/alembic/versions/`.
+   - Never execute manual or unversioned DDL statements against development or production databases.
+2. **Role Segregation Triad:**
+   - **`DIRECT_DATABASE_URL` (`neondb_owner`):** Direct unpooled connection (port 5432) reserved strictly for operator-run migrations and role bootstrap. Strictly prohibited in runtime containers.
+   - **`DATABASE_URL` (`sebi_api`):** Pooled connection (port 6543) for the web API runtime. Granted CRUD on tenant entities and SELECT on chunks. Direct chunk insertion and worker procedure execution are revoked.
+   - **`WORKER_DATABASE_URL` (`sebi_worker`):** Direct unpooled connection (port 5432) for the ingestion worker. Zero direct table write permissions; all state changes must execute through `SECURITY DEFINER` stored procedures owned by `worker_proc_owner`.
+3. **No Silent URL Cross-Fallback:**
+   - If `WORKER_DATABASE_URL` is missing, the worker must fail fast with an explicit error. Silent fallback to `DATABASE_URL` is strictly prohibited.
+4. **Safe Test Database Purging:**
+   - Destructive operations (`drop_all`) must strictly verify that the target database name contains `test` or that `ALLOW_TEST_DATABASE_PURGE=1` is explicitly set.
 
 ---
 
-## 5. Local Reproducibility & Shared Roadmap (Phases 0–4)
-- All engineering tasks must align with the standardized shared roadmap:
-  - **Phase 0:** Documentation, baseline reconciliation, and invariant definition.
-  - **Phase 1:** Manifest-driven local ingestion (JSON manifests, SHA-256 deduplication, zero external DB dependencies).
-  - **Phase 2:** Collection-aware retrieval, index partitioning, and mandatory isolation.
-  - **Phase 3:** Generalized relationships, pluggable temporal policies, and conditional metadata persistence.
-  - **Phase 4:** Multi-collection evaluation, reliability hardening, and deployment alignment.
-- The 5-document SEBI CSCRF corpus serves as a permanent local regression baseline and must remain passing at 100%.
+## 5. Free-Tier Compatibility & Dependency Management
+
+1. **Strict 512 MB RAM Discipline on Render Free:**
+   - The deployed web container runs under Render Free's 512 MB memory limit.
+   - Do not add heavy machine learning frameworks (`torch`, `tensorflow`, `transformers`) to `backend/requirements-demo.txt` for the web service.
+   - The deployed image must run in lightweight lexical retrieval mode (`RETRIEVAL_MODE=lexical_only`), which consumes ~80 MB RAM.
+2. **Avoid Broad ImportError Masking:**
+   - Never wrap core production dependencies (such as `sqlalchemy`, `alembic`, `pydantic`, `boto3`) in broad `try...except ImportError` blocks that silently fall back to mock objects or disable features in production.
+   - If a dependency is required for a production feature, it must be explicitly declared in the container requirements. Broad import error handling masks missing dependencies and leads to deployment crashes.
+3. **$0/Month Cost Discipline:**
+   - Never introduce paid cloud services, billable API dependencies, or paid Render background workers.
+   - Ingestion worker execution must use free compute (local CLI runner or external free runner like GitHub Actions).
+   - Backblaze B2 and Neon usage must stay strictly within free-tier quotas.
 
 ---
 
-## 6. Milestone Completion Report Standard
-At the conclusion of each engineering milestone, report:
-1. Executive summary of actions performed.
-2. List of modified and created files with rationale.
-3. Exact commands run, exit codes, and test execution outputs.
-4. Implementation status labels for all affected components.
-5. Known limitations, unresolved questions, and next recommended steps.
+## 6. Git Discipline & Safe Deployment Rules
+
+1. **Explicit Preflight Inspections:**
+   - Before staging or committing, inspect `git status` and review diffs file by file.
+   - Verify that no untracked secrets, credentials, or unintended debug files are staged.
+2. **No Unilateral Pushes or Deployments:**
+   - Do not push to remote repositories or trigger production deployments without explicit user authorization.
+   - Never force-push (`git push --force`) to remote branches.
+3. **Sequential Staged Rollout:**
+   - Follow the migration and release sequence:
+     1. Migrate database schema first.
+     2. Verify environment variables in cloud dashboards.
+     3. Deploy and verify backend API.
+     4. Deploy frontend UI to Vercel.

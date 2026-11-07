@@ -2,121 +2,240 @@
 
 ## 1. Executive Summary & Product Vision
 
-The **Document Regulatory & Intelligence Platform** is an evidence-grounded, collection-aware question-answering system designed to discover, ingest, search, and understand official regulatory frameworks and structured documentation collections.
+The **Document Intelligence & Research Platform** is a generalized, multi-user, self-service document research system with trustworthy, evidence-grounded AI answers. It empowers individuals and teams to create private workspaces, organize documents into custom collections, upload arbitrary PDF files from the browser, and query them with rigorous citation tracking, strict data isolation, and controlled abstention.
 
-The platform began as a focused, high-stakes pilot for the **Securities and Exchange Board of India (SEBI) Cybersecurity and Cyber Resilience Framework (CSCRF)** across five circulars. It is evolving into a **general-purpose, collection-aware document question-answering platform** capable of managing diverse document corpora (e.g., broader financial regulations, corporate policies, technical standards, research specifications) without requiring developers to hardcode new documents into Python application code.
+The platform originated as a specialized regulatory assistant for the Securities and Exchange Board of India (SEBI) Cybersecurity and Cyber Resilience Framework (CSCRF). While the original **SEBI CSCRF collection remains permanently supported as a specialized regulatory collection and foundational regression baseline**, the platform is fully generalized: any user can upload previously unseen PDF documents—such as corporate policies, technical specifications, research papers, or compliance manuals—and immediately perform evidence-grounded research.
 
-### Core Distinguishing Principles
-1. **Evidence-Grounded Question Answering:** Every answer assertion is mechanically verified against authentic retrieved text excerpts with 1-indexed PDF and printed page provenance.
-2. **Fail-Closed Safety & Explicit Abstention:** When evidence is missing, conflicting, out-of-domain, or superseded, the system returns a structured refusal rather than fabricating compliance advice.
-3. **Supersession-Aware Temporal Resolution:** Where collections define regulatory relationships (such as SEBI circulars), amendment chains and clause-level modifications are resolved dynamically as of any requested date (`as_of`).
-4. **Strict Collection Isolation:** Queries scoped to a specific collection are guaranteed never to retrieve, evaluate, cite, or leak candidate passages from another collection.
-5. **Zero-Cost Local Reproducibility:** The entire platform remains fully operable, testable, and demonstrable in local development without mandatory paid APIs, hosted vector databases, or commercial subscriptions.
-
----
-
-## 2. Problem Statement & Core Value
-
-Legal analysts, compliance officers, risk managers, and auditors face operational friction when navigating dense regulatory corpora and technical documentation:
-
-1. **Circular Proliferation & Amendment Chaining:** Master frameworks are frequently amended, extended, or partially superseded by subsequent circulars. Naive semantic search retrieves out-of-date circulars, presenting obsolete compliance deadlines or revoked mandates as active law.
-2. **Provision-Level Granularity:** New circulars rarely repeal master frameworks in whole; instead, specific clauses, tables, or applicability thresholds are modified while the remainder of the base circular remains strictly in force.
-3. **Temporal Ambiguity:** Compliance obligations vary depending on the historical date in question, especially during phased transition periods (glide paths).
-4. **LLM Hallucination & Citation Inaccuracy:** Standard generative AI frequently invents circular numbers, dates, or legal mandates. In regulatory compliance, an ungrounded answer is far worse than no answer.
-5. **Rigid Corpus Architecture:** Hardcoding document IDs, token expansions, and graph edges in application source code prevents compliance teams from adding new circulars or managing non-regulatory documentation collections.
+### Core Architectural Pillars
+1. **Self-Service Multi-Tenancy:** Authenticated users manage private workspaces, invite collaborators, create custom collections, and upload documents without touching code, manifests, or configuration files.
+2. **Trustworthy, Grounded Answers:** Every factual assertion in an AI-generated answer is mechanically verified against retrieved source text chunks, complete with 1-indexed PDF page and printed page citations.
+3. **Controlled Fail-Closed Abstention:** When evidence is missing, contradictory, or insufficient, the platform explicitly abstains from answering rather than hallucinating facts or fabricating citations.
+4. **Pluggable Grounding Policies:** Specialized collections (such as SEBI CSCRF) enforce strict regulatory supersession and amendment graph traversal (`RegulatorySupersessionPolicy`). General document collections operate under an evidence-focused passthrough policy (`PassthroughPolicy`).
+5. **Strict Tenant & Collection Isolation:** Data, storage objects, vector embeddings, lexical indices, and query histories are strictly segregated by workspace and collection. Cross-tenant leakage is zero-tolerance ($0.0\%$).
+6. **Zero-Cost Hosting Architecture ($0/month):** Designed to operate within the free tiers of Render (Docker Web Service), Vercel (Frontend SPA), Neon (Serverless PostgreSQL), Backblaze B2 (S3-compatible Object Storage), and Groq (LLM Synthesis).
 
 ---
 
-## 3. Product Goals & Architectural Scope
+## 2. Target Users & Core Personas
 
-### 3.1. Primary Goals
-- **Official Source Provenance:** Every response, excerpt, and citation traces directly to an official source PDF, with dual page numbers (PDF page and printed page) and cryptographic document hashes (SHA-256).
-- **Collection Awareness & Boundary Isolation:** Support multiple independently managed collections (e.g. `sebi_cscrf`, `sebi_lodr`, `internal_policies`), guaranteeing that retrieval and synthesis never leak cross-collection evidence.
-- **Data-Driven Ingestion:** Ingest new documents and collections via declarative manifests without modifying application code.
-- **Pluggable Relationship Policies:** Provide supersession-aware temporal resolution for regulatory corpora while supporting collections that have no amendment relationships via a passthrough policy.
-- **Fail-Closed Grounding:** Verifiable claim attribution with automated fallback to verbatim extracted excerpts or explicit abstention (`refuse: true`) when evidence is inconclusive or contradictory.
-- **Permanent Regression Anchoring:** The validated 5-document SEBI CSCRF corpus, its 9 verified edges, and 32 golden benchmark queries serve as a permanent regression anchor across all platform evolutions.
-
-### 3.2. Scope Staging (Phases 0–4)
-1. **Phase 0 — Documentation & Baseline:** Reconcile documentation with verified codebase state; define shared roadmap, architectural invariants, and approval boundaries.
-2. **Phase 1 — Manifest-Driven Ingestion:** Introduce declarative JSON/YAML manifests (`data/manifests/*.json`) for local, zero-cost document ingestion without editing Python files.
-3. **Phase 2 — Collection-Aware Retrieval & Isolation:** Introduce `collection_id` across API contracts and retrieval filters; enforce collection-scoped index partitioning and zero cross-collection evidence leakage.
-4. **Phase 3 — Generalized Relationships & Conditional Metadata Persistence:** Support pluggable relationship policies (supersession vs. passthrough); evaluate relational database adoption for metadata/audit history conditional on demonstrated need.
-5. **Phase 4 — Broader Evaluation, Reliability & Deployment:** Expand benchmarks across multi-collection workloads, test failure recovery, and align zero-cost production hosting.
-
-### 3.3. Non-Goals & Disclaimers
-- **Not Legal Advice:** The platform provides information discovery and regulatory intelligence; it does not replace professional legal counsel or formal compliance audits.
-- **No Autonomous Legal Interpretation:** The system extracts, synthesizes, and attributes text based on explicit evidence; it does not adjudicate legal disputes or speculate on unstated regulatory intent.
-- **No Hallucinated Fallback:** The system will never fabricate an answer to avoid showing an abstention.
-- **No Mandatory Paid Infrastructure:** The platform will not require paid vector databases, paid API subscriptions, or mandatory hosted cloud infrastructure to operate.
-
----
-
-## 4. User Personas & Core Journeys
-
-| Persona | Primary Goal | Critical Need | Supported Phase |
+| Persona | Primary Goal | Critical Need | Platform Experience |
 | :--- | :--- | :--- | :--- |
-| **Compliance Officer** | Verify current applicable mandates for their specific entity category (e.g. Qualified RE vs. MII). | Must see current amended requirements and effective deadlines, not superseded initial drafts. | Implemented for SEBI CSCRF; Generalized in Phase 2. |
-| **Legal / Policy Analyst** | Trace regulatory evolution over time across circular amendment chains. | Needs historical `as_of` date querying and clear side-by-side citations of amending clauses. | Implemented for SEBI CSCRF; Pluggable in Phase 3. |
-| **Internal Auditor** | Verify statutory basis of compliance controls against official circular text. | Requires exact page-level citations, direct PDF links, and cryptographic document hashes. | Implemented and Verified. |
-| **Platform Administrator** | Ingest new circulars or entire document collections without redeploying code. | Needs declarative manifest ingestion, automated validation, and repeatable indexing. | Phase 1 (Local Manifest) & Phase 3 (Admin API). |
+| **Research Analyst / Associate** | Analyze internal corporate manuals, policy drafts, or technical whitepapers. | Needs instant upload, automatic indexing, and accurate page-referenced citations. | Private workspace, custom collection creation, drag-and-drop PDF upload, grounded Q&A. |
+| **Compliance Officer / Legal Auditor** | Review regulatory mandates, compliance timelines, and amendment histories. | Requires tracking whether a specific provision was amended, superseded, or remains in force. | Access to the specialized `sebi_cscrf` collection with temporal graph evaluation. |
+| **Engineering / DevOps Lead** | Query infrastructure playbooks, incident response guides, and architectural standards. | Needs exact operational checklists, command snippets, and source page provenance. | Access to technical collections (e.g. `cisa_playbooks` or internal team manuals). |
+| **Returning Researcher** | Audit past findings, review previous Q&A sessions, and export citations. | Requires persistent, workspace-isolated query history and citation ledgers. | Query history drawer, session revisitation, and citation verification logs. |
+| **Platform Administrator** | Maintain system demonstration collections, inspect ingestion queues, and audit health. | Needs administrative APIs, job status telemetry, and snapshot publication control. | Admin endpoints (`/api/v1/admin/*`), worker procedure inspection, and system metrics. |
 
 ---
 
-## 5. Functional Requirements (FR)
+## 3. End-to-End User Journeys
 
-### Collection & Document Ingestion
-- **FR-1 Manifest-Driven Registration (Phase 1):** Ingest documents from declarative manifests (`data/manifests/{collection_id}.json`) specifying document ID, title, relative PDF path, optional dates, and source metadata without editing Python code.
-- **FR-2 Provenance & Integrity (Implemented and Verified):** Automatically compute SHA-256 hash, record retrieval timestamp, extract text/tables via PyMuPDF, and log page-level extraction quality (`OK`, `SPARSE`, `EMPTY`).
-- **FR-3 Deterministic Chunking (Implemented and Verified):** Split document text into bounded chunks with persistent chunk IDs (`{doc_id}_p{page_start}_{chunk_idx}`), dual-page provenance (PDF page and printed page), and word-count boundaries (350 words, 40 overlap).
-- **FR-4 Malformed PDF & Path Traversal Protection (Phase 1):** Validate that PDF paths resolve within approved corpus roots and reject path traversal attempts (`../`), unreadable files, or malformed payloads with clean error reporting.
+The platform supports 13 core user workflow capabilities:
 
-### Collection Scoping & Retrieval
-- **FR-5 Collection-Scoped Querying (Phase 2):** Accept `collection_id` as a required parameter on query contracts. Reject unknown or ambiguous collections with HTTP 404 or 422.
-- **FR-6 Mandatory Collection Isolation (Phase 2):** Enforce strict collection filtering during lexical search, dense vector retrieval, RRF candidate fusion, reranking, and context injection. Under no circumstances may chunks from collection $B$ appear in results for collection $A$.
-- **FR-7 Hybrid Retrieval (Implemented and Verified):** Combine BM25 lexical ranking and dense vector similarity (`BAAI/bge-small-en-v1.5`) using Reciprocal Rank Fusion ($k=60$) over atomic index snapshots.
+```mermaid
+flowchart TD
+    A["1. Open Deployed Web App"] --> B["2. Register or Log In"]
+    B --> C["3. Create or Select Private Workspace"]
+    C --> D["4. Create Custom Collection"]
+    D --> E["5. Upload Unseen PDF Documents"]
+    E --> F["6. Asynchronous Ingestion & Indexing"]
+    F --> G["7. Monitor Ingestion Status & Retries"]
+    G --> H["8. Select Authorized Collection"]
+    H --> I["9. Ask Research Question"]
+    I --> J{"10. Sufficient Evidence?"}
+    J -- "Yes" --> K["10. Receive Grounded Answer + Citations"]
+    J -- "No" --> L["11. Receive Controlled Abstention"]
+    K --> M["12. View Query History & Previous Results"]
+    L --> M
+    M --> N["13. Manage Documents & Collections (Zero Code Changes)"]
+```
 
-### Regulatory Relationships & Temporal Resolution
-- **FR-8 Directed Relationship Modeling (Implemented for CSCRF):** Enforce directed edges (`source_document_id -> RELATIONSHIP -> target_document_id`) supporting `AMENDS`, `RESCINDS`, and `REFERENCES`.
-- **FR-9 Provision Scoping (Implemented for CSCRF):** Enforce `affected_provisions` for partial modifications so unaffected provisions retain their base validity.
-- **FR-10 Pluggable Policy Selection (Phase 3):** Support collections enforcing regulatory supersession via `RegulatorySupersessionPolicy`, while supporting non-regulatory collections (manuals, whitepapers) via `PassthroughPolicy` without forcing `UNRESOLVED` warnings or spurious abstentions.
-
-### Grounding, Synthesis & Safety Gate
-- **FR-11 Fail-Closed Grounding & Citation Validation (Implemented and Verified):** Mechanically verify that every cited chunk ID and asserted claim matches retrieved candidate passages.
-- **FR-12 Structured Refusal Rubric (Implemented and Verified):** Return `refuse: true` / `disposition: CONTROLLED_ABSTENTION` when evidence is missing (`insufficient_evidence`), citations fail (`citation_verification_failed`), provisions conflict (`conflicting_evidence`), questions are out-of-domain (`out_of_domain`), or temporal dates are ambiguous (`temporal_uncertainty`).
-- **FR-13 Extractive Fallback (Implemented and Verified):** If hosted LLM synthesis fails, times out, or generates ungrounded claims, fall back seamlessly to verified verbatim extracted excerpts or controlled abstention.
+1. **Access Web Application:** User visits the Vercel-hosted web interface.
+2. **Authentication:** User creates a new account or logs in with email and password, receiving a secure session token.
+3. **Workspace Management:** User selects an existing private workspace or creates a new one (e.g., "Risk Advisory Team").
+4. **Collection Creation:** User creates a collection with a custom identifier, name, description, and grounding policy (e.g., `policy_name="general_static"`).
+5. **Document Upload:** User uploads one or more PDF files via the web UI without modifying configuration files, manifests, or repository code.
+6. **Automated Processing:** The backend validates file format, saves binaries to Backblaze B2, queues durable ingestion jobs, extracts text, chunks content, and builds search indices.
+7. **Ingestion Monitoring:** User observes live ingestion status (`queued`, `processing`, `completed`, `failed`), review stage progress, and trigger retries on transient errors.
+8. **Collection Selection:** User navigates to the Q&A interface and selects any authorized collection (private or public system demo).
+9. **Question Submission:** User submits a natural language question scoped to the selected collection.
+10. **Grounded Answer Synthesis:** The engine retrieves evidence, verifies citations, and generates a structured answer citing exact documents, chunk IDs, and page numbers.
+11. **Controlled Abstention:** If the collection does not contain substantive evidence to answer the question, the system returns a structured `CONTROLLED_ABSTENTION` with an explicit reason.
+12. **Query History:** The user reviews previous questions, answers, and verified excerpts in a persistent, private query history drawer.
+13. **Lifecycle Management:** User manages documents and collections entirely through web UI actions.
 
 ---
 
-## 6. Implementation Status Matrix
+## 4. Functional Requirements
 
-The features below have been audited against the repository codebase as of **October 21, 2026** (supported by 445 passing tests, 9 skipped, 0 failed in `backend/tests/` via pytest):
+### 4.1. Identity, Access & Workspaces (AUTH)
+- **FR-AUTH-1 (User Registration & Login):** Secure registration and authentication using Argon2id password hashing and HS256/RS256 JWT session tokens.
+- **FR-AUTH-2 (Automatic Personal Workspace):** Registration automatically provisions a default private workspace owned by the user.
+- **FR-AUTH-3 (Workspace Memberships & Roles):** Support workspace roles (`owner`, `admin`, `member`, `viewer`) controlling creation, ingestion, and query permissions.
+- **FR-AUTH-4 (Session Profile):** Provide `/api/v1/auth/me` returning user identity and accessible workspaces.
 
-| Subsystem / Feature | Implementation Status | Code Evidence & Technical Notes |
+### 4.2. Workspace Collections & Ingestion (COLLECT)
+- **FR-COLLECT-1 (Dynamic Collection Provisioning):** Authenticated users can create, list, and view private collections scoped to their workspace.
+- **FR-COLLECT-2 (PDF Upload Streaming):** Accept multipart PDF uploads up to 30 MiB, validate `%PDF-` magic bytes, calculate SHA-256 digests, and stream directly to object storage.
+- **FR-COLLECT-3 (Deduplication):** Reject or idempotently handle duplicate document uploads within a collection matching existing SHA-256 hashes.
+- **FR-COLLECT-4 (Durable Job Enqueueing):** Enqueue ingestion tasks in PostgreSQL with initial status `queued` and stage `pending`.
+- **FR-COLLECT-5 (Job Status Inspection):** Provide endpoints to inspect job processing status, stages, error summaries, and retry counters.
+- **FR-COLLECT-6 (System Demonstration Collections):** Preserve `sebi_cscrf` and `cisa_playbooks` as read-only system collections accessible to all users for public demonstration and regression auditing. Modification of system collections by users is strictly forbidden (HTTP 403).
+
+### 4.3. Document Processing Pipeline (INGEST)
+- **FR-INGEST-1 (Text Extraction):** Extract text and page layout using PyMuPDF, recording text density quality (`OK`, `SPARSE`, `EMPTY`).
+- **FR-INGEST-2 (Deterministic Chunking):** Chunk text using a 350-word sliding window with 40-word overlap, recording 1-indexed PDF page and printed page numbers.
+- **FR-INGEST-3 (Durable Snapshot Publication):** Assemble published collections into atomic snapshots containing `chunks.json`, `documents.json`, lexical BM25 token tables, and dense vector matrices.
+- **FR-INGEST-4 (Safe Leases & Retries):** Worker claims jobs atomically via `FOR UPDATE SKIP LOCKED` / procedure `app.claim_ingestion_job`, maintaining periodic heartbeats and supporting exponential backoff retries.
+
+### 4.4. Retrieval, Grounding & Synthesis (RAG)
+- **FR-RAG-1 (Collection-Scoped Search):** Every query must target a single explicit `collection_id`. Unscoped cross-collection search is strictly blocked.
+- **FR-RAG-2 (Pluggable Grounding Policies):**
+  - `REGULATORY_TEMPORAL`: Traverses directed amendment graphs (`AMENDS`, `RESCINDS`, `REFERENCES`) and evaluates `as_of` temporal dates (used for `sebi_cscrf`).
+  - `GENERAL_STATIC`: Passthrough policy evaluating candidate relevance and citation overlap without regulatory supersession (used for general collections).
+- **FR-RAG-3 (Mechanical Citation Verification):** Every claim assertion is verified against retrieved chunks. If citation validation fails, the system fails closed to verified extractive excerpts or controlled abstention.
+- **FR-RAG-4 (Controlled Abstention):** Issue structured abstention (`disposition: CONTROLLED_ABSTENTION`) under the 5-point rubric: `insufficient_evidence`, `citation_verification_failed`, `conflicting_evidence`, `out_of_domain`, `temporal_uncertainty`.
+- **FR-RAG-5 (Groq LLM Synthesis):** Generate natural language answers using Groq (`llama-3.3-70b-versatile`) via direct REST API with strict context prompt boundaries.
+
+### 4.5. Query History & Audit (HIST)
+- **FR-HIST-1 (Audit Persistence):** Record all authenticated query executions, dispositions, confidence metrics, citation counts, and latency in PostgreSQL table `query_history`.
+- **FR-HIST-2 (Workspace Partitioning):** Users can only access query history belonging to their authenticated user account and authorized workspaces.
+- **FR-HIST-3 (Session Revisitation):** Re-inspect past questions, answers, and verified excerpts from the web interface.
+
+---
+
+## 5. Non-Functional Requirements & System Constraints
+
+1. **Strict Multi-Tenant Isolation:**
+   - Database queries enforce workspace membership filters on all private tables.
+   - Object storage keys are partitioned by `uploads/{workspace_id}/{collection_id}/{doc_id}.pdf`.
+   - Unauthorized requests to private resources fail closed with HTTP 404 (preventing workspace/collection enumeration).
+2. **Zero-Cost Hosting Target ($0/Month):**
+   - Must operate within the free tiers of Render, Vercel, Neon, Backblaze B2, and Groq.
+   - No paid Render background workers or paid Render web services.
+   - No paid vector databases or external caching subscriptions.
+3. **Resource & Memory Bounds:**
+   - Render Free Web Service memory ceiling is strictly **512 MB RAM**.
+   - Deployed web runtime uses lightweight lexical BM25 retrieval to ensure container stability.
+   - Idle containers spin down after 15 minutes of inactivity; application startup must complete within Render health-check timeout (~30s).
+4. **Deterministic Security & Secrets:**
+   - Credentials (API keys, database URLs, B2 secrets) reside strictly in server environment variables and are never transmitted to the browser or printed to logs.
+   - Password hashing uses Argon2id with recommended memory and iteration parameters.
+5. **Documentation & Regression Integrity:**
+   - The SEBI CSCRF 32-query golden evaluation suite (`evaluation/data/gold_evaluation_dataset.json`) remains a permanent regression anchor and must maintain 100% test pass fidelity.
+
+---
+
+## 6. Implementation Gap & Current Status
+
+| Capability | Current State | Implementation Gap |
 | :--- | :--- | :--- |
-| **CSCRF 5-Circular Baseline Corpus** | `IMPLEMENTED AND VERIFIED` | 5 PDFs in `data/raw/`, 168 chunks in `data/processed/`, 9 verified edges in `docs/cscrf-relationship-audit.md`. Permanent regression anchor. |
-| **Deterministic PDF Extractor & Chunker** | `IMPLEMENTED AND VERIFIED` | `backend/app/ingestion/extractor.py` (PyMuPDF) and `chunker.py` (sliding window 350 words, 40 overlap). Dual-page provenance and SHA-256 verified. |
-| **In-Memory Hybrid Search (BM25 + BGE-Small + RRF)** | `IMPLEMENTED AND VERIFIED` | `backend/app/retrieval/service.py` and `rrf.py`. BM25Okapi + NumPy cosine similarity on 384-dim normalized vectors from `BAAI/bge-small-en-v1.5`. |
-| **Snapshot Index Publication Engine** | `IMPLEMENTED AND VERIFIED` | `backend/app/retrieval/index_pipeline.py`. Atomic swap of `active_snapshot.json` with hot-reload in `RetrievalService.reload_if_stale()`. |
-| **Temporal Supersession Graph Resolver** | `IMPLEMENTED AND VERIFIED` | `backend/app/grounding/graph_resolver.py` and `backend/app/schemas/cscrf_graph_data.py`. Directed multi-hop traversal with provision-scoped amendments. |
-| **Specificity-Aware Relevance Filter** | `IMPLEMENTED AND VERIFIED` | `backend/app/grounding/relevance.py`. Specific query token coverage scoring and candidate filtering for compliance queries. |
-| **Answer Safety Gate & Refusal Rubric** | `IMPLEMENTED AND VERIFIED` | `backend/app/grounding/safety_gate.py` and `validator.py`. Mechanical claim verification, verbatim substring matching, and 5-point refusal rubric. |
-| **FastAPI REST API (`/query`, `/health`, `/ready`)** | `IMPLEMENTED AND VERIFIED` | `backend/app/main.py` and `backend/app/api/v1/query.py`. Fully typed Pydantic contracts with rate limiting and structured error handling. |
-| **In-Memory Rate Limiter** | `IMPLEMENTED AND VERIFIED` | `backend/app/core/rate_limiter.py`. Fixed-window sliding token limiter for zero-cost single-instance execution. |
-| **Grounded LLM Synthesis & Fallback** | `PARTIALLY IMPLEMENTED` | `backend/app/synthesis/groq_provider.py` and `gemini_provider.py` implemented with fail-closed extractive fallback. Verified in unit tests. |
-| **Dual-Engine Relational Persistence (PostgreSQL)** | `IMPLEMENTED, VERIFICATION INCOMPLETE` | `backend/app/persistence/` contains SQLAlchemy models and Alembic migrations. Verified in parity tests, but NOT active runtime default. |
-| **Manifest-Driven Ingestion Engine** | `PLANNED (Phase 1)` | Declarative JSON manifests replacing hardcoded `corpus_registry.py` without requiring database services. |
-| **Collection-Aware Retrieval & Isolation** | `PLANNED (Phase 2)` | Explicit `collection_id` scoping in query contracts and strict index partitioning to prevent cross-collection leakage. |
-| **Pluggable Relationship Policy Engine** | `PLANNED (Phase 3)` | Dynamic policy configuration separating regulatory supersession from passthrough collections. |
-| **Conditional Metadata Persistence (Neon DB)** | `PROPOSED / REQUIRES APPROVAL` | Relational persistence for dynamic multi-user ingestion, edge curation, and query audit ledgers (Phase 3). |
-| **Distributed Cache & Queue (Redis / Upstash)** | `DEFERRED / REQUIRES APPROVAL` | Celery background queues and distributed caching. Deferred while single-instance in-memory limiter suffices. |
+| **Authentication & Users** | Implemented locally (`backend/app/api/v1/auth.py`) | Blocked on applying Alembic migration `0006` to Neon and configuring `AUTH_SECRET_KEY` on Render. |
+| **Private Workspaces** | Implemented locally (`backend/app/api/v1/workspaces.py`) | Blocked on migration `0006` and mounting UI components in `frontend/src/App.tsx`. |
+| **Custom Collections** | Implemented locally (`backend/app/api/v1/collections.py`) | Blocked on migration `0006` and UI integration. |
+| **PDF Document Upload** | Implemented locally (`collections.py:384-412`) | Blocked on configuring B2 credentials on Render and resolving worker execution. |
+| **Worker Execution** | Daemon exists (`backend/app/ingestion/worker.py`) | **Open Architecture Gap:** Render background workers cost $7+/mo. Need a $0/mo execution strategy (external GitHub Actions runner, local CLI, or bounded execution). |
+| **Live Web Deployment** | Active on Render (`71dc1ae`) | Currently running single-tenant demo in lexical mode; frontend on Vercel shows backend offline. |
+| **Database Migrations** | Present locally (`0006`–`0009`) | Unapplied on live Neon production database (currently at revision `0005`). |
+| **Frontend Integration** | Components exist in `frontend/src/components/*` | Untracked and unmounted in `App.tsx`; only default SEBI search form is visible. |
 
 ---
 
-## 7. Non-Functional & Security Requirements
+## 7. Definition of Minimum Viable Product (MVP)
 
-1. **Server-Side Secret Isolation:** All API credentials, admin keys, and optional provider keys reside strictly in backend environment variables (`.env`). No credentials are ever transmitted to the frontend or exposed in API errors.
-2. **Data Privacy & Minimal Logging:** Query texts are processed in memory and never persisted with personally identifiable information (PII). Model prompts are bounded by retrieved context.
-3. **Local Determinism & Zero-Cost Execution:** The entire platform must remain fully runnable, testable, and demonstrable on standard local workstations without requiring paid subscriptions, cloud accounts, or live internet connections.
-4. **Input Sanitization & Untrusted Text:** Extracted PDF content and user queries are treated as untrusted input. Prompt injection attempts inside retrieved evidence are isolated and prevented from overriding safety policies.
-5. **Graceful Infrastructure Degradation:** Upstream failures (e.g. LLM timeouts, network errors) return clean HTTP 5xx codes and are never disguised as successful regulatory refusals (`refuse: true`).
+The Generalized Document Intelligence Platform achieves **MVP Completion** when:
+1. An unauthenticated user can register a new account on the deployed website.
+2. The user is automatically assigned a private workspace and can create a custom collection.
+3. The user can upload an unfamiliar PDF document (up to 30 MiB) via the browser.
+4. The uploaded PDF is processed, chunked, and published into a searchable index.
+5. The user can ask questions against their private collection and receive grounded answers with document/page citations.
+6. Queries with insufficient evidence trigger a clean `CONTROLLED_ABSTENTION`.
+7. Past queries and citations are visible in the user's private query history drawer.
+8. A separate user account cannot view, access, or query the first user's collections or history (100% isolation).
+9. The original SEBI CSCRF demonstration collection remains fully operational and accurate.
+10. The entire system operates at **$0/month total infrastructure cost**.
+
+---
+
+## 8. Generalized Product Implementation Roadmap
+
+```mermaid
+flowchart LR
+    M1["Milestone 1: DB & Readiness"] --> M2["Milestone 2: Backend Release"]
+    M2 --> M3["Milestone 3: Free Ingestion"]
+    M3 --> M4["Milestone 4: Frontend Release"]
+    M4 --> M5["Milestone 5: E2E Validation"]
+    M5 --> M6["Milestone 6: Retrieval & Quality"]
+```
+
+### Milestone 1 — Production Readiness and Database Safety
+- **Prerequisites:** Working repository, Neon database credentials, Render environment access.
+- **Verified Neon Architecture:**
+  - Branch `production`: Uninitialized (empty `neondb` database, zero application tables).
+  - Branch `phase7-disposable`: Revision `0009_provision_api_runtime_role` confirmed, currently connected to Render via `sebi_api`.
+  - Strategy: Option A (clean initialization of `production` branch to revision `0009`, credential rotation, and repointing Render).
+- **Deliverables:**
+  - Verify and resolve frontend/backend connectivity between Vercel and Render.
+  - Audit Neon database migration state across branches.
+  - Execute role bootstrap (`scripts/bootstrap_neon_roles.sql`) and apply Alembic migrations `0001`–`0009` against Neon `production` branch using direct connection (`neondb_owner`).
+  - Set fresh, uncompromised credentials for `sebi_api` and `sebi_worker`.
+  - Verify database role boundaries: `sebi_api` granted CRUD on application tables and SELECT on chunks; `sebi_worker` granted procedural execution only.
+  - Repoint Render `DATABASE_URL` to `production` branch pooled endpoint.
+- **Acceptance Tests:** `scripts/test_postgres_storage_live.py` passes cleanly against Neon `production` branch.
+- **Status:** **READY FOR OPERATOR-EXECUTED INITIALIZATION** (Option A runbook fully documented; awaiting operator execution).
+
+### Milestone 2 — Generalized Backend Release
+- **Prerequisites:** Milestone 1 complete.
+- **Deliverables:**
+  - Configure Render environment variables: `AUTH_SECRET_KEY`, `STORAGE_PROVIDER=b2`, Backblaze B2 S3 credentials (`S3_ENDPOINT_URL`, `S3_BUCKET_NAME`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_REGION_NAME`).
+  - Commit and deploy local multi-tenant backend routers (`auth.py`, `workspaces.py`, `collections.py`, `query_history.py`, `relationship_policy.py`).
+  - Verify API endpoints via automated integration test suite.
+- **Acceptance Tests:** `test_tenant_isolation_matrix.py` (16 tests pass), `test_collection_ingestion_api.py` (passes).
+- **Status:** **NOT STARTED**.
+
+### Milestone 3 — Free-Tier Ingestion Execution
+- **Prerequisites:** Milestone 2 complete.
+- **Deliverables:**
+  - Finalize $0/month worker execution strategy (evaluate external GitHub Actions runner, local operator CLI daemon, or bounded execution).
+  - Implement secure execution triggering for claimed ingestion jobs.
+  - Verify PDF text extraction, sliding-window chunking, and atomic snapshot publication to Backblaze B2.
+  - Validate job leases, heartbeats, deduplication, and failure recovery.
+- **Acceptance Tests:** Upload an unfamiliar PDF; worker processes and transitions job to `completed`; snapshot pointer is published in B2.
+- **Status:** **NOT STARTED** (Worker execution strategy is an OPEN architectural decision).
+
+### Milestone 4 — Generalized Frontend Release
+- **Prerequisites:** Milestone 2 & Milestone 3 complete.
+- **Deliverables:**
+  - Integrate `AuthModal.tsx` for registration and login in React frontend.
+  - Integrate `WorkspaceSelector.tsx` and `WorkspaceManageModal.tsx` for collection management and document uploads.
+  - Add upload progress tracking and ingestion status polling.
+  - Update `QueryForm.tsx` to support selecting private and public collections dynamically.
+  - Mount `QueryHistoryDrawer.tsx` to display persistent query history and past citations.
+  - Remove hardcoded SEBI-only presentation assumptions from general views while preserving specialized SEBI branding for the SEBI collection.
+  - Deploy frontend updates to Vercel.
+- **Acceptance Tests:** End-to-end browser walkthrough from signup to collection creation and upload.
+- **Status:** **NOT STARTED**.
+
+### Milestone 5 — End-to-End Generalization Validation
+- **Prerequisites:** Milestone 4 complete.
+- **Deliverables:**
+  - Register a fresh user account on the public website.
+  - Create a new workspace and private collection.
+  - Upload a previously unseen multi-page PDF document.
+  - Verify successful ingestion, indexing, and publication.
+  - Submit domain questions and verify accurate answers with exact page citations.
+  - Submit out-of-scope questions and verify controlled abstention.
+  - Verify complete data isolation against a second user account.
+  - Verify persistence across Render service sleep cycles and restarts.
+- **Acceptance Tests:** Comprehensive manual and automated smoke test report documenting all 13 user journey capabilities.
+- **Status:** **NOT STARTED**.
+
+### Milestone 6 — Retrieval and Quality Improvements (Future Enhancements)
+- **Prerequisites:** Milestone 5 complete.
+- **Deliverables:**
+  - Evaluate resource-compatible hybrid retrieval architectures (e.g., API-based dense embeddings via Groq/HuggingFace inference API or external embedding worker to preserve Render 512 MB limit).
+  - Enhance document parser support (DOCX, Markdown, scanned PDF OCR) once PDF pipeline is hardened.
+  - Implement fine-grained workspace team sharing and role-based permissions.
+  - Implement query latency and cost observability dashboards.
+- **Acceptance Tests:** Hybrid retrieval benchmarks exceeding pure lexical baseline within memory bounds.
+- **Status:** **NOT STARTED** (Post-MVP enhancement).

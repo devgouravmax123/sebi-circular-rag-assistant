@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.exc import DBAPIError, OperationalError, IntegrityError
+from sqlalchemy.exc import DBAPIError, OperationalError, IntegrityError, SQLAlchemyError
 
 from app.core.config import Settings
 from app.schemas.document import DocumentRecord, ChunkRecord
@@ -69,7 +69,7 @@ class TestPostgresConnectionErrorHandling:
         mock_session_factory = MagicMock()
         mock_session = MagicMock()
         mock_session_factory.return_value.__enter__.return_value = mock_session
-        mock_session.execute.side_effect = OperationalError("connection to server lost", None, None)
+        mock_session.execute.side_effect = OperationalError("SELECT 1", {}, Exception("connection to server lost"))
 
         repo = PostgresDocumentRepository(mock_session_factory)
         with pytest.raises(ConnectionStorageError, match="Database connection error in get_document"):
@@ -79,17 +79,28 @@ class TestPostgresConnectionErrorHandling:
         mock_session_factory = MagicMock()
         mock_session = MagicMock()
         mock_session_factory.return_value.__enter__.return_value = mock_session
-        mock_session.execute.side_effect = OperationalError("connection refused", None, None)
+        mock_session.execute.side_effect = OperationalError("SELECT 1", {}, Exception("connection refused"))
 
         repo = PostgresChunkRepository(mock_session_factory)
         with pytest.raises(ConnectionStorageError, match="Database connection error in list_chunks_for_document"):
             repo.list_chunks_for_document("sebi_cscrf_2024_113")
 
+    def test_chunk_repo_search_connection_error(self):
+        mock_session_factory = MagicMock()
+        mock_session = MagicMock()
+        mock_session_factory.return_value.__enter__.return_value = mock_session
+        mock_session.execute.side_effect = OperationalError("SELECT 1", {}, Exception("connection refused"))
+
+        repo = PostgresChunkRepository(mock_session_factory)
+        vec = np.zeros(384, dtype=np.float32)
+        with pytest.raises(ConnectionStorageError, match="Database connection error in search_similar_chunks"):
+            repo.search_similar_chunks("sebi_cscrf", vec)
+
     def test_graph_edge_repo_connection_error(self):
         mock_session_factory = MagicMock()
         mock_session = MagicMock()
         mock_session_factory.return_value.__enter__.return_value = mock_session
-        mock_session.execute.side_effect = OperationalError("connection refused", None, None)
+        mock_session.execute.side_effect = OperationalError("SELECT 1", {}, Exception("connection refused"))
 
         repo = PostgresGraphEdgeRepository(mock_session_factory)
         with pytest.raises(ConnectionStorageError, match="Database connection error in list_all_edges"):
@@ -113,7 +124,21 @@ class TestPostgresVectorValidation:
 
         wrong_dim_vec = np.zeros(512, dtype=np.float32)
         with pytest.raises(ValueError, match="Query vector must be 384 dimensions"):
-            repo.search_similar_chunks(wrong_dim_vec)
+            repo.search_similar_chunks("sebi_cscrf", wrong_dim_vec)
+
+    def test_search_collection_id_validation_raises_value_error(self):
+        mock_session_factory = MagicMock()
+        repo = PostgresChunkRepository(mock_session_factory)
+        vec = np.zeros(384, dtype=np.float32)
+
+        with pytest.raises(ValueError, match="collection_id must be a non-empty string"):
+            repo.search_similar_chunks("", vec)
+
+        with pytest.raises(ValueError, match="collection_id must be a non-empty string"):
+            repo.search_similar_chunks("   ", vec)
+
+        with pytest.raises(ValueError, match="collection_id must be a non-empty string"):
+            repo.search_similar_chunks(None, vec)  # type: ignore[arg-type]
 
 
 class TestPostgresEdgeIntegrityAndDefaults:
@@ -125,17 +150,99 @@ class TestPostgresEdgeIntegrityAndDefaults:
         mock_session_factory.return_value.__enter__.return_value = mock_session
         mock_session.begin.return_value.__enter__.return_value = None
         mock_session.execute.side_effect = IntegrityError(
-            "violates foreign key constraint", "params", "orig"
+            "violates foreign key constraint", "params", Exception("violates foreign key constraint")
         )
 
         repo = PostgresGraphEdgeRepository(mock_session_factory)
-        edge = GraphEdge(
-            edge_id="e1",
-            source_document_id="doc_new",
-            target_document_id="doc_old",
-            relationship=RelationshipType.AMENDS,
-            scope=ScopeType.FULL,
-            evidence_text="test evidence",
-        )
+        edge = GraphEdge.model_validate({
+            "edge_id": "e1",
+            "source_document_id": "doc_new",
+            "target_document_id": "doc_old",
+            "relationship": RelationshipType.AMENDS,
+            "scope": ScopeType.FULL,
+            "evidence_text": "test evidence",
+        })
         with pytest.raises(PersistenceError, match="Integrity constraint violation saving edge"):
             repo.save_edge(edge)
+
+    def test_edge_review_status_defaults_and_preservation(self):
+        """Verifies that edges preserve conservative review status (needs_review by default; never promoted)."""
+        edge = GraphEdge.model_validate({
+            "edge_id": "e_default",
+            "source_document_id": "doc1",
+            "target_document_id": "doc2",
+            "relationship": RelationshipType.SUPERSEDES,
+            "scope": ScopeType.FULL,
+            "evidence_text": "supersedes earlier directive",
+        })
+        assert edge.review_status == ReviewStatus.NEEDS_REVIEW
+        assert edge.confidence == ConfidenceLevel.MEDIUM
+
+    def test_propose_edge_duplicate_raises_persistence_error(self):
+        mock_session_factory = MagicMock()
+        repo = PostgresGraphEdgeRepository(mock_session_factory)
+        with patch.object(repo, "get_edge", return_value=MagicMock()):
+            edge = GraphEdge.model_validate({
+                "edge_id": "e_existing",
+                "source_document_id": "doc1",
+                "target_document_id": "doc2",
+                "relationship": RelationshipType.SUPERSEDES,
+                "scope": ScopeType.FULL,
+                "evidence_text": "evidence",
+            })
+            with pytest.raises(PersistenceError, match="Edge with ID 'e_existing' already exists"):
+                repo.propose_edge(edge)
+
+
+class TestPostgresTransactionAndRollback:
+    """Verifies parameterized transaction execution and rollback on error."""
+
+    def test_save_chunks_rollback_on_error(self):
+        mock_session_factory = MagicMock()
+        mock_session = MagicMock()
+        mock_session_factory.return_value.__enter__.return_value = mock_session
+        mock_session.begin.return_value.__enter__.return_value = None
+        mock_session.execute.side_effect = SQLAlchemyError("DB failure during chunk insertion")
+
+        repo = PostgresChunkRepository(mock_session_factory)
+        chunk = ChunkRecord.model_validate({
+            "chunk_id": "c1",
+            "document_id": "doc1",
+            "text": "chunk text",
+            "page_start": 1,
+            "page_end": 1,
+            "is_ocr": False,
+            "chunk_type": "body",
+            "metadata": {"chunk_index": 0},
+        })
+        with pytest.raises(PersistenceError, match="Failed to save chunks"):
+            repo.save_chunks([chunk])
+
+
+class TestPostgresModelConversionAndIntegrity:
+    """Verifies model conversion, immutable version handling, and constraint validation."""
+
+    def test_document_repo_save_and_model_conversion(self):
+        mock_session_factory = MagicMock()
+        mock_session = MagicMock()
+        mock_session_factory.return_value.__enter__.return_value = mock_session
+        mock_session.begin.return_value.__enter__.return_value = None
+        # Return None for scalar_one_or_none queries so new models are added
+        mock_session.execute.return_value.scalar_one_or_none.return_value = None
+
+        repo = PostgresDocumentRepository(mock_session_factory)
+        doc = DocumentRecord.model_validate({
+            "document_id": "sebi_cscrf_2024_113",
+            "circular_number": "CIR/2024/113",
+            "title": "CSCRF Master Circular",
+            "department": "ITD",
+            "issue_date": "2024-08-20",
+            "effective_date": None,
+            "source_url": "https://sebi.gov.in/circular.pdf",
+            "retrieved_at": "2024-08-20T00:00:00Z",
+            "sha256": "abc123sha",
+            "pdf_path": "data/raw/circular.pdf",
+            "extraction_status": "extracted",
+        })
+        repo.save_document(doc)
+        assert mock_session.add.called

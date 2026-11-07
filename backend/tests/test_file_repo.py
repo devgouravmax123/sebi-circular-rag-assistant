@@ -47,7 +47,8 @@ class TestFileRepositoryErrorHandling:
     def test_document_repository_non_existent_returns_none(self, tmp_path: Path):
         repo = FileDocumentRepository(tmp_path)
         assert repo.get_document("non_existent_doc") is None
-        assert repo.list_documents() == []
+        assert repo.list_documents("sebi_cscrf") == []
+        assert repo.list_all_documents_global() == []
 
     def test_chunk_repository_malformed_json_raises_error(self, tmp_path: Path):
         doc_dir = tmp_path / "doc_1"
@@ -121,6 +122,7 @@ class TestFileRepositoryDataIntegrity:
             sha256="abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234",
             pdf_path="test_doc_01.pdf",
             issue_date="2026-01-01",
+            collection_id="test_col",
         )
         repo.save_document(doc)
 
@@ -130,9 +132,27 @@ class TestFileRepositoryDataIntegrity:
         assert retrieved.title == "Test Regulatory Circular"
         assert retrieved.sha256 == doc.sha256
 
-        by_hash = repo.get_document_by_sha256(doc.sha256)
+        # Scoped lookup
+        by_hash = repo.get_document_by_sha256(doc.sha256, collection_id="test_col")
         assert by_hash is not None
         assert by_hash.document_id == "test_doc_01"
+
+        # Explicit global lookup
+        by_global = repo.get_document_by_sha256_global(doc.sha256)
+        assert by_global is not None
+        assert by_global.document_id == "test_doc_01"
+
+        # Scoped lookup requires collection_id parameter (TypeError if omitted)
+        with pytest.raises(TypeError):
+            repo.get_document_by_sha256(doc.sha256)
+
+        # Invalid collection_id raises ValueError
+        with pytest.raises(ValueError, match="collection_id is required"):
+            repo.get_document_by_sha256(doc.sha256, collection_id="")
+        with pytest.raises(ValueError, match="collection_id is required"):
+            repo.get_document_by_sha256(doc.sha256, collection_id="   ")
+        with pytest.raises(ValueError, match="collection_id is required"):
+            repo.get_document_by_sha256(doc.sha256, collection_id=None)
 
     def test_chunks_roundtrip(self, tmp_path: Path):
         repo = FileChunkRepository(tmp_path)

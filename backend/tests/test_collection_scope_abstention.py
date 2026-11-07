@@ -12,10 +12,12 @@ Test 7 - Provider failure distinction -> genuine synthesis failure produces PROV
 """
 import pytest
 from unittest.mock import MagicMock
+from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.api.v1.query import get_synthesis_service
+from app.api.v1.query import get_synthesis_service, get_retrieval_service
+from app.retrieval.service import RetrievalService
 from app.schemas.safety_gate import AnswerDisposition
 from app.schemas.synthesis import SynthesisOutput, SynthesisStatus
 from app.synthesis.provider import SynthesisMalformedOutputError
@@ -32,6 +34,50 @@ def mock_synthesis_env():
     app.dependency_overrides[get_synthesis_service] = lambda: mock_service
     yield
     app.dependency_overrides.pop(get_synthesis_service, None)
+
+
+@pytest.fixture(autouse=True)
+def mock_retrieval_env():
+    """Deterministic retrieval-service injection for fixture-dependent collection-scope tests.
+    Pins sebi_cscrf to snap_20261011_104512_23a014 and prevents pointer-fallback / reload leakage."""
+    service = RetrievalService(
+        processed_dir="data/processed",
+        indexes_dir="data/indexes",
+    )
+    pinned_snap = Path("data/indexes/snapshots/snap_20261011_104512_23a014").resolve()
+    if pinned_snap.exists():
+        sebi_gen = service._load_isolated_generation(
+            collection_id="sebi_cscrf", target_snapshot_dir=pinned_snap
+        )
+        if sebi_gen is not None:
+            state = service._get_or_create_collection_state("sebi_cscrf")
+            state.active_generation = sebi_gen
+            state.active_snapshot_id = sebi_gen.snapshot_id
+            state.documents = sebi_gen.documents
+            state.chunks = sebi_gen.chunks
+            state.bm25_index = sebi_gen.bm25_index
+            state.dense_index = sebi_gen.dense_index
+            state.is_indexed = True
+            state.is_dense_indexed = True
+
+    # Prevent reload_if_stale from swapping sebi_cscrf to data/indexes/active_snapshot.json during tests
+    orig_reload = service.reload_if_stale
+    def safe_reload(collection_id="sebi_cscrf"):
+        if collection_id == "sebi_cscrf":
+            return False
+        return orig_reload(collection_id=collection_id)
+    service.reload_if_stale = safe_reload
+
+    orig_snap_dir = service.get_active_snapshot_dir
+    def safe_snap_dir(collection_id="sebi_cscrf"):
+        if collection_id == "sebi_cscrf":
+            return pinned_snap
+        return orig_snap_dir(collection_id=collection_id)
+    service.get_active_snapshot_dir = safe_snap_dir
+
+    app.dependency_overrides[get_retrieval_service] = lambda: service
+    yield
+    app.dependency_overrides.pop(get_retrieval_service, None)
 
 
 @pytest.fixture

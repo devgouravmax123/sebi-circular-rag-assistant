@@ -114,6 +114,7 @@ def test_orchestrator_successful_e2e_ingestion(temp_env):
         source_url="http://127.0.0.1:8000/circular_2026_01.pdf",
         idempotency_key="key_test_e2e_1",
         document_id="sebi_cscrf_2026_01",
+        collection_id="sebi_cscrf",
     )
     assert job.status == JobStatus.QUEUED
 
@@ -170,6 +171,7 @@ def test_orchestrator_duplicate_sha256_detection(temp_env):
         source_url="http://127.0.0.1:8000/doc1.pdf",
         idempotency_key="key_dup_1",
         document_id="sebi_doc_1",
+        collection_id="sebi_cscrf",
     )
     token1 = uuid.uuid4()
     claimed1 = job_repo.claim_next_job("worker_1", token1)
@@ -181,6 +183,7 @@ def test_orchestrator_duplicate_sha256_detection(temp_env):
         source_url="http://127.0.0.1:8000/doc2.pdf",
         idempotency_key="key_dup_2",
         document_id="sebi_doc_2_duplicate",
+        collection_id="sebi_cscrf",
     )
     token2 = uuid.uuid4()
     claimed2 = job_repo.claim_next_job("worker_2", token2)
@@ -195,7 +198,7 @@ def test_orchestrator_duplicate_sha256_detection(temp_env):
     assert job2_persisted.status == JobStatus.DUPLICATE
 
     # Ensure doc_repo still only has the original document
-    docs = doc_repo.list_documents()
+    docs = doc_repo.list_documents(collection_id=job1.collection_id or "sebi_cscrf")
     assert len(docs) == 1
     assert docs[0].document_id == "sebi_doc_1"
 
@@ -214,6 +217,7 @@ def test_orchestrator_non_retryable_ssrf_failure(temp_env):
     job = job_repo.create_job(
         source_url="http://127.0.0.1/private.pdf",
         idempotency_key="key_ssrf_test",
+        collection_id="sebi_cscrf",
     )
     token = uuid.uuid4()
     claimed = job_repo.claim_next_job("worker_ssrf", token)
@@ -242,6 +246,7 @@ def test_orchestrator_retryable_network_failure_and_backoff(temp_env):
     job = job_repo.create_job(
         source_url="http://127.0.0.1:8000/busy.pdf",
         idempotency_key="key_retry_test",
+        collection_id="sebi_cscrf",
     )
     token = uuid.uuid4()
     claimed = job_repo.claim_next_job("worker_net", token)
@@ -272,6 +277,7 @@ def test_orchestrator_max_attempts_terminal_failure(temp_env):
         source_url="http://127.0.0.1:8000/fatal.pdf",
         idempotency_key="key_max_attempts",
         max_attempts=2,
+        collection_id="sebi_cscrf",
     )
     # Simulate first attempt already used in previous failure
     job_file = temp_env["processed_dir"] / "ingestion_jobs.json"
@@ -312,6 +318,7 @@ def test_orchestrator_stale_lease_abandonment(temp_env):
     job = job_repo.create_job(
         source_url="http://127.0.0.1:8000/stale.pdf",
         idempotency_key="key_stale_test",
+        collection_id="sebi_cscrf",
     )
     token = uuid.uuid4()
     claimed = job_repo.claim_next_job("worker_orig", token)
@@ -366,11 +373,13 @@ def test_ingestion_worker_polling_loop_and_clean_stop(temp_env):
         source_url="http://127.0.0.1:8000/job1.pdf",
         idempotency_key="loop_key_1",
         document_id="doc_loop_1",
+        collection_id="sebi_cscrf",
     )
     job_repo.create_job(
         source_url="http://127.0.0.1:8000/job2.pdf",
         idempotency_key="loop_key_2",
         document_id="doc_loop_2",
+        collection_id="sebi_cscrf",
     )
 
     # Run worker for exactly 2 jobs
@@ -407,6 +416,7 @@ def test_orchestrator_extraction_failure_and_cleanup(temp_env):
         source_url="http://127.0.0.1:8000/corrupt.pdf",
         idempotency_key="key_corrupt_test",
         document_id="doc_corrupt",
+        collection_id="sebi_cscrf",
     )
     token = uuid.uuid4()
     claimed = job_repo.claim_next_job("worker_corrupt", token)
@@ -439,6 +449,7 @@ def test_orchestrator_heartbeat_updates_during_stages(temp_env):
     job = job_repo.create_job(
         source_url="http://127.0.0.1:8000/hb.pdf",
         idempotency_key="key_hb_test",
+        collection_id="sebi_cscrf",
     )
     token = uuid.uuid4()
     claimed = job_repo.claim_next_job("worker_hb", token)
@@ -485,6 +496,7 @@ def test_crash_recovery_after_persistence_retry(temp_env):
         source_url="http://127.0.0.1:8000/crash_test.pdf",
         idempotency_key="key_crash_retry_1",
         document_id="doc_crash_recovered",
+        collection_id="sebi_cscrf",
     )
     token1 = uuid.uuid4()
     claimed1 = job_repo.claim_next_job("worker_crasher", token1)
@@ -494,6 +506,8 @@ def test_crash_recovery_after_persistence_retry(temp_env):
     dl_res = downloader.fetch_pdf(job.source_url)
     pages = orchestrator.extractor.extract_pages(dl_res.staging_path)
     chunks = orchestrator.chunker.chunk_document("doc_crash_recovered", pages)
+    for c in chunks:
+        c.collection_id = "sebi_cscrf"
     embeddings_dict = {
         c.chunk_id: np.zeros(384, dtype=np.float32) for c in chunks
     }
@@ -504,6 +518,7 @@ def test_crash_recovery_after_persistence_retry(temp_env):
         sha256=dl_res.sha256,
         pdf_path=str(dl_res.staging_path),
         extraction_status="extracted",
+        collection_id="sebi_cscrf",
     )
     doc_repo.save_document(doc_record)
     chunk_repo.save_chunks(chunks)
@@ -529,7 +544,7 @@ def test_crash_recovery_after_persistence_retry(temp_env):
     assert "Crash recovery" in result.message
 
     # 5. Verify no duplicates in document repository
-    all_docs = doc_repo.list_documents()
+    all_docs = doc_repo.list_all_documents_global()
     assert len(all_docs) == 1
     assert all_docs[0].document_id == "doc_crash_recovered"
 
@@ -559,6 +574,7 @@ def test_lease_loss_during_processing_rejects_persistence(temp_env):
         source_url="http://127.0.0.1:8000/lease_loss.pdf",
         idempotency_key="key_lease_loss_1",
         document_id="doc_lease_loss",
+        collection_id="sebi_cscrf",
     )
     token1 = uuid.uuid4()
     claimed1 = job_repo.claim_next_job("worker_slow", token1)

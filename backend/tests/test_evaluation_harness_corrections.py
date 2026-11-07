@@ -26,6 +26,7 @@ if str(backend_path) not in sys.path:
 
 from app.schemas.retrieval import RetrievalResult
 from app.grounding.relevance import filter_relevant_candidates, RelevanceDecisionCode
+from app.schemas.manifest import GroundingPolicyType
 from app.synthesis.verifier import verify_claim_support
 from evaluation.evaluate_general_rag import (
     resolve_output_path,
@@ -80,7 +81,7 @@ def test_1_unanswerable_empty_expected_chunks_does_not_equal_relevance_rejection
     When candidate passages share common technical words with the query, the relevance filter retains them.
     """
     query_with_overlap = "Does Acme deploy PgBouncer or Pgpool-II in front of production PostgreSQL 16 instances?"
-    rel, intent, assessments = filter_relevant_candidates(query_with_overlap, sample_synthetic_chunks)
+    rel, intent, assessments = filter_relevant_candidates(query_with_overlap, sample_synthetic_chunks, policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
 
     # Candidates were retained by the relevance filter
     assert len(rel) > 0, "Relevance filter retained candidate passages sharing common vocabulary"
@@ -94,7 +95,7 @@ def test_2_query_with_retained_candidates_reported_as_retained(sample_synthetic_
     A query where filter_relevant_candidates returns >= 1 candidates is strictly reported as retained.
     """
     query = "What percentage annual performance bonus is awarded to Acme SRE leads upon completing semi-annual DR drills?"
-    rel, intent, assessments = filter_relevant_candidates(query, sample_synthetic_chunks)
+    rel, intent, assessments = filter_relevant_candidates(query, sample_synthetic_chunks, policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     assert len(rel) == 1
     assert rel[0].chunk_id == "acme_infra_handbook_p1_0"
 
@@ -104,7 +105,7 @@ def test_3_query_with_zero_candidates_reported_as_rejection(sample_synthetic_chu
     A query with zero retained candidates is strictly reported as a relevance filter rejection.
     """
     query = "Which specific hardware token vendor (e.g., YubiKey 5C NFC or Google Titan) does Acme procure for FIDO2 MFA?"
-    rel, intent, assessments = filter_relevant_candidates(query, sample_synthetic_chunks)
+    rel, intent, assessments = filter_relevant_candidates(query, sample_synthetic_chunks, policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
     assert len(rel) == 0
 
 

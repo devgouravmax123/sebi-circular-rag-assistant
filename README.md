@@ -256,3 +256,45 @@ npm run dev -- --host 127.0.0.1 --port 5173
 ## 6. Disclaimer
 
 This platform is an independent regulatory technology project. It is **not** affiliated with, endorsed by, or operated by the Securities and Exchange Board of India (SEBI) or any other official regulatory body. Information and evidence returned by this system are for research, compliance assistance, and educational purposes and do not constitute formal legal advice.
+
+### Milestone 10: Private Document Ingestion Pipeline
+- **Secure File Storage:** `LocalStorageAdapter` with path containment, 30MB file size limit, and PDF magic bytes validation.
+- **Asynchronous Pipeline:** 7-stage processing lifecycle (`PENDING` -> `PARSING` -> `CHUNKING` -> `EMBEDDING` -> `PERSISTING` -> `INDEXING` -> `FINISHED`).
+- **Atomic Index Snapshots:** Staged snapshot building and publishing via `IndexPublisher`.
+- **Query Gate:** Unpublished private collections are rejected with HTTP 400 until index snapshot is generated.
+- **Frontend Integration:** Full upload form, real-time job status polling, processed document list, and authenticated PDF download.
+
+---
+
+### Milestone 11: Durable Storage and Snapshot Publication
+**Status: CLOSED — PASS WITH LIMITATIONS**
+
+- **Completed Scope:**
+  - **Provider-Neutral Storage Interface:** Core BaseStorageAdapter abstraction defining bounded uploads, streaming downloads, local materialization, and object lifecycle operations.
+  - **S3 / Cloudflare R2 Adapter:** S3StorageAdapter with boto3 integration, tenant-scoped object key partitioning, chunked upload streaming, and temporary file cleanup.
+  - **Durable Snapshot Bundles:** Authoritative remote storage of all 5 runtime snapshot artifacts (chunks.json, documents.json, dense_index.npy, dense_index_meta.json, manifest.json) under indexes/{collection_id}/snapshots/{snapshot_id}/.
+  - **Active Pointer Promotion:** Authoritative remote active snapshot pointer (indexes/{collection_id}/active_snapshot.json) validated against manifest checksums prior to activation.
+  - **Cold-Start Local Hydration:** Staged hydration (hydrate_snapshot) verifying SHA-256 digests of all bundle artifacts before atomic promotion to local cache.
+  - **API & Worker Integration:** Storage-adapter-backed document upload, authenticated streaming download, and worker publication retries with exponential backoff on publication conflict.
+  - **Local Development Default:** STORAGE_PROVIDER=local retained as default with zero cloud dependencies.
+  - **Deployment Runbook:** Operational configuration, fail-fast startup checks, Render ephemeral container lifecycle, and secret management documented.
+
+- **Test Evidence (Separate Test Runs):**
+  - **Milestone 11 Regression Suite:** **46 passed** in 445.58s (test_storage_interface.py, test_s3_storage_adapter.py, test_index_publication.py, test_collection_retrieval_dispatch.py, test_ingestion_worker.py).
+  - **Durable Snapshot Publication Suite:** **22 passed** in 2.89s (test_durable_snapshot_publication.py).
+  - **Total Across Separate Runs:** **68 passing tests** (no combined run was executed; not all backend suites were run).
+  - **Database-Dependent Suites:** test_collection_ingestion_api.py, test_private_document_ingestion.py, test_multi_tenant_query_authorization.py, and test_workspace_and_collection_api.py were **not run** because local PostgreSQL was unavailable and no database service was started.
+  - **Live Cloudflare R2 Integration:** **Not tested**; S3/R2 adapter behavior was verified using deterministic in-memory mock clients.
+  - **Post-Audit Pyrefly Cleanup:** One-line cleanup at backend/app/api/v1/collections.py:253 validated via py_compile (passed) and test_durable_snapshot_publication.py (22 passed).
+
+- **Open Risks and Limitations:**
+  - **High Priority — Distributed Pointer Concurrency:** Remote active-pointer promotion currently uses a read-then-compare timestamp check followed by an unconditional S3 PutObject write. This presents a TOCTOU race condition when independent instances publish concurrently. No atomic cross-instance CAS or conditional write is implemented in the current storage abstraction, and local filesystem locks (.publish.lock) do not protect separate cloud instances. Tracked as **pre-production hardening**, not completed functionality.
+  - **Medium Priority — Snapshot Cache Growth:** Hydrated local snapshot caches under data/indexes/{collection_id}/snapshots/ lack an automated eviction or TTL policy and may accumulate unbounded over long instance lifecycles.
+  - **Medium Priority — Live Provider Validation:** Real Cloudflare R2 credentials, bucket permissions, TLS negotiation, and live network latency remain unverified.
+  - **Validation Gap:** Database-dependent ingestion API and multi-tenant authorization suites remain unrun and must be executed in an active database environment before production-readiness claims.
+
+- **Closure Boundaries:**
+  - Milestone 11 is formally closed for its current milestone scope, with limitations recorded.
+  - Milestone 11 closure does **not** establish multi-instance production readiness.
+  - Open risks must be resolved or explicitly accepted before production deployment at scale.
+  - Milestone 12 has **not** started and remains unchanged.

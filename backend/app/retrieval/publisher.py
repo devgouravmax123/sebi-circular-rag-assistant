@@ -20,6 +20,9 @@ from typing import Dict, List, Optional, Set, Tuple, Any
 import numpy as np
 
 from app.schemas.document import DocumentRecord, ChunkRecord
+from app.core.config import get_settings
+from app.storage import BaseStorageAdapter, LocalStorageAdapter, get_storage_adapter
+from app.retrieval.snapshot_store import DurableSnapshotStore, StaleSnapshotWriterError
 from app.schemas.publication import (
     SnapshotManifest,
     ActiveSnapshotPointer,
@@ -72,11 +75,23 @@ class IndexPublisher:
         processed_dir: str | Path = "data/processed",
         embedder: Optional[Any] = None,
         collection_id: str = "sebi_cscrf",
+        storage_adapter: Optional[BaseStorageAdapter] = None,
     ):
         self.factory = repository_factory
         self.indexes_dir = Path(indexes_dir).resolve()
         self.processed_dir = Path(processed_dir)
         self.collection_id = self._validate_collection_id(collection_id)
+
+        if storage_adapter is not None:
+            self.storage_adapter = storage_adapter
+        else:
+            self.storage_adapter = get_storage_adapter(get_settings())
+
+        self.durable_store = DurableSnapshotStore(
+            storage_adapter=self.storage_adapter,
+            indexes_dir=self.indexes_dir,
+            session_factory=getattr(self.factory, "session_factory", None),
+        )
 
         # Base directory for collection snapshots
         if self.collection_id == "sebi_cscrf":
@@ -158,6 +173,16 @@ class IndexPublisher:
 
     def get_active_pointer(self) -> Optional[ActiveSnapshotPointer]:
         """Read and validate the current active snapshot pointer."""
+        if not isinstance(self.storage_adapter, LocalStorageAdapter):
+            try:
+                remote_ptr = self.durable_store.get_remote_active_pointer(self.collection_id)
+                if remote_ptr is not None:
+                    return remote_ptr
+            except Exception as e:
+                logger.warning(
+                    f"Error reading remote active pointer for collection '{self.collection_id}', checking local cache: {e}"
+                )
+
         pointer_path = self.active_pointer_path
         if not pointer_path.exists():
             return None
@@ -192,7 +217,12 @@ class IndexPublisher:
             return None
 
         # Resolve snapshot directory
-        if self.is_using_legacy_pointer():
+        if not isinstance(self.storage_adapter, LocalStorageAdapter):
+            cached_dir = self.durable_store.hydrate_snapshot(self.collection_id)
+            if cached_dir is None:
+                return None
+            manifest_path = cached_dir / "manifest.json"
+        elif self.is_using_legacy_pointer():
             manifest_path = self.indexes_dir / "snapshots" / pointer.snapshot_id / "manifest.json"
         else:
             manifest_path = self.snapshots_dir / pointer.snapshot_id / "manifest.json"
@@ -234,7 +264,7 @@ class IndexPublisher:
         """Inspect active snapshot and identify pending un-indexed documents for this collection."""
         from app.schemas.document import resolve_collection_identity
         doc_repo = self.factory.get_document_repository()
-        all_docs = doc_repo.list_documents()
+        all_docs = doc_repo.list_documents(collection_id=self.collection_id)
 
         # Filter documents belonging to this collection
         coll_docs = [
@@ -338,7 +368,7 @@ class IndexPublisher:
             doc_repo = self.factory.get_document_repository()
             chunk_repo = self.factory.get_chunk_repository()
 
-            all_raw_docs = doc_repo.list_documents()
+            all_raw_docs = doc_repo.list_documents(collection_id=self.collection_id)
             # Filter strictly to documents belonging to this collection
             filtered_docs = [
                 d for d in all_raw_docs
@@ -347,7 +377,7 @@ class IndexPublisher:
             documents_map = {d.document_id: d for d in sorted(filtered_docs, key=lambda x: x.document_id)}
             coll_doc_ids = set(documents_map.keys())
 
-            raw_chunks = chunk_repo.list_all_chunks()
+            raw_chunks = chunk_repo.list_all_chunks(collection_id=self.collection_id)
             # Filter chunks belonging to this collection's documents
             all_chunks = []
             for c in raw_chunks:
@@ -361,6 +391,21 @@ class IndexPublisher:
 
             if not all_chunks:
                 raise IndexValidationError(f"No chunks found in repository for collection '{self.collection_id}' to index.")
+
+            # Fix 1 (Milestone 10.2): Exclude failed or chunk-less documents from the published snapshot
+            valid_chunk_doc_ids = {c.document_id for c in all_chunks}
+            published_documents_map = {
+                doc_id: d for doc_id, d in documents_map.items()
+                if doc_id in valid_chunk_doc_ids and getattr(d, "extraction_status", "") != "failed"
+            }
+
+            # Filter chunks strictly to published documents
+            all_chunks = [c for c in all_chunks if c.document_id in published_documents_map]
+
+            if not all_chunks or not published_documents_map:
+                raise IndexValidationError(
+                    f"No valid indexed documents with text chunks found for collection '{self.collection_id}'."
+                )
 
             # Validate unique chunk IDs
             chunk_ids = [c.chunk_id for c in all_chunks]
@@ -386,7 +431,7 @@ class IndexPublisher:
                 json.dump([c.model_dump() for c in all_chunks], f, indent=2)
 
             with open(docs_path, "w", encoding="utf-8") as f:
-                json.dump({k: v.model_dump() for k, v in documents_map.items()}, f, indent=2)
+                json.dump({k: v.model_dump() for k, v in published_documents_map.items()}, f, indent=2)
 
             # Save NumPy dense matrix
             np.save(npy_path, embeddings_matrix)
@@ -426,10 +471,10 @@ class IndexPublisher:
                 format_version="1.0.0",
                 embedding_model=self.embedder.model_name,
                 embedding_dim=DEFAULT_EMBEDDING_DIM,
-                total_documents=len(documents_map),
+                total_documents=len(published_documents_map),
                 total_chunks=len(all_chunks),
-                document_ids=list(documents_map.keys()),
-                document_versions={d.document_id: d.sha256 for d in documents_map.values()},
+                document_ids=list(published_documents_map.keys()),
+                document_versions={d.document_id: d.sha256 for d in published_documents_map.values()},
                 chunk_ids=chunk_ids,
                 corpus_fingerprint=corpus_fingerprint,
                 artifact_checksums=artifact_checksums,
@@ -442,9 +487,9 @@ class IndexPublisher:
                 return PublicationResult(
                     success=True,
                     snapshot_id=snap_id,
-                    total_documents=len(documents_map),
+                    total_documents=len(published_documents_map),
                     total_chunks=len(all_chunks),
-                    newly_published_documents=list(documents_map.keys()),
+                    newly_published_documents=list(published_documents_map.keys()),
                     message=f"Dry run: candidate snapshot built and validated successfully for collection '{self.collection_id}'.",
                 )
 
@@ -461,9 +506,19 @@ class IndexPublisher:
                 collection_id=self.collection_id,
                 activated_at=datetime.now(timezone.utc),
                 manifest_checksum=manifest_checksum,
-                total_documents=len(documents_map),
+                total_documents=len(published_documents_map),
                 total_chunks=len(all_chunks),
             )
+
+            # 5a. If storage provider is remote (S3/R2), upload and verify complete bundle before activating pointer
+            if not isinstance(self.storage_adapter, LocalStorageAdapter):
+                self.durable_store.publish_bundle(
+                    collection_id=self.collection_id,
+                    snapshot_id=snap_id,
+                    local_snapshot_dir=final_snapshot_dir,
+                    manifest=manifest,
+                    pointer=pointer,
+                )
 
             target_pointer_path = self.collection_dir / "active_snapshot.json"
             temp_pointer = self.collection_dir / f".tmp_pointer_{snap_id}.json"
@@ -492,14 +547,14 @@ class IndexPublisher:
 
             logger.info(
                 f"Successfully published search index snapshot '{snap_id}' with "
-                f"{len(documents_map)} documents and {len(all_chunks)} chunks."
+                f"{len(published_documents_map)} documents and {len(all_chunks)} chunks."
             )
             return PublicationResult(
                 success=True,
                 snapshot_id=snap_id,
-                total_documents=len(documents_map),
+                total_documents=len(published_documents_map),
                 total_chunks=len(all_chunks),
-                newly_published_documents=list(documents_map.keys()),
+                newly_published_documents=list(published_documents_map.keys()),
                 message=f"Snapshot '{snap_id}' successfully published and activated.",
             )
 
@@ -508,13 +563,14 @@ class IndexPublisher:
             if staging_dir is not None and staging_dir.exists():
                 shutil.rmtree(staging_dir, ignore_errors=True)
             logger.error(f"Failed to publish index snapshot: {e}", exc_info=True)
+            err_code = type(e).__name__ if isinstance(e, StaleSnapshotWriterError) else str(e)
             return PublicationResult(
                 success=False,
                 snapshot_id=snap_id,
                 total_documents=0,
                 total_chunks=0,
                 message=f"Index publication failed: {e}",
-                error_details=str(e),
+                error_details=err_code,
             )
 
         finally:

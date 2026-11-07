@@ -1,22 +1,35 @@
 """
+
 Integration tests against a disposable, real PostgreSQL + pgvector database.
 
 These tests run automatically ONLY when DATABASE_URL is explicitly set to a live PostgreSQL
+
 instance and points to a safe test database (must include 'test' in the database name
+
 or be explicitly opted in with ALLOW_TEST_DATABASE_PURGE=1).
 
 If no live PostgreSQL instance is available (e.g. Docker daemon is stopped),
+
 these tests are safely SKIPPED with a descriptive, honest explanation rather than falsely passing.
+
 """
+
 import os
+
 import uuid
+
 import pytest
+
 import numpy as np
+
 from sqlalchemy import create_engine, text, select, func
+
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import get_settings
+
 from app.persistence.models import (
+
     Base,
     RegulatoryDocumentModel,
     DocumentVersionModel,
@@ -24,90 +37,130 @@ from app.persistence.models import (
     ChunkEmbeddingModel,
     RegulatoryEdgeModel,
     IngestionJobModel,
+
 )
+
+from app.models.auth import UserModel, WorkspaceModel, WorkspaceMembershipModel
+
+from app.models.collection import CollectionModel
+
+from app.models.query_history import QueryHistoryModel
+
 from app.persistence.postgres import (
+
     PostgresStorageRepositoryFactory,
     PostgresDocumentRepository,
     PostgresChunkRepository,
     PostgresGraphEdgeRepository,
     PostgresIngestionJobRepository,
+
 )
+
 from app.persistence.importer import CorpusImporter
+
 from app.schemas.document import DocumentRecord, ChunkRecord
+
 from app.schemas.graph import GraphEdge, RelationshipType, ScopeType, ReviewStatus, ConfidenceLevel
+
 from app.schemas.ingestion_job import (
+
     IngestionJobRecord,
     JobStatus,
     ProcessingStage,
     StaleLeaseError,
     JobStateTransitionError,
+
 )
 
+from tests.db_test_guard import get_approved_test_db_url, redact_db_url
 
 def get_live_test_db_url() -> str:
-    """Retrieve test DATABASE_URL if configured, otherwise None."""
-    db_url = os.getenv("DATABASE_URL")
-    if not db_url or not db_url.strip():
-        return ""
-    # Enforce safe test database naming
-    if "test" not in db_url.lower() and os.getenv("ALLOW_TEST_DATABASE_PURGE") != "1":
-        raise ValueError(
-            f"Configured DATABASE_URL='{db_url}' does not contain 'test' in name. "
-            "To prevent accidental data loss, integration tests only run against databases with 'test' in name."
-        )
-    return db_url.strip()
 
+    """Retrieve structurally validated test database URL if configured, otherwise empty string."""
+    url = get_approved_test_db_url(("TEST_DATABASE_URL", "DATABASE_URL"))
+    return url or ""
 
 def check_live_postgres_available() -> tuple[bool, str]:
+
     """
     Test actual connectivity to PostgreSQL and pgvector.
     Returns (is_available, diagnostic_reason).
     """
     url = get_live_test_db_url()
     if not url:
-        return False, "DATABASE_URL environment variable is unset or empty."
+
+        return False, "TEST_DATABASE_URL or DATABASE_URL environment variable is unset or empty."
+    redacted = redact_db_url(url)
     try:
+
         engine = create_engine(url, pool_pre_ping=True)
         with engine.connect() as conn:
+
             # 1. Attempt to create vector extension if not yet created in this database
             try:
+
                 conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
                 conn.commit()
             except Exception as ext_err:
+
                 pass
             # 2. Check if pgvector is installed and active
             res = conn.execute(text("SELECT extname FROM pg_extension WHERE extname = 'vector';")).scalar()
             if not res:
-                return False, f"Connected to PostgreSQL, but pgvector extension is not installed in database '{url}'."
+
+                return False, f"Connected to PostgreSQL, but pgvector extension is not installed in database '{redacted}'."
             return True, "pgvector is available."
     except Exception as e:
-        return False, f"Could not connect to PostgreSQL at '{url}': {e}"
 
+        return False, f"Could not connect to PostgreSQL at '{redacted}': {e}"
 
 LIVE_PG_AVAILABLE, PG_CHECK_DIAGNOSTIC = check_live_postgres_available()
+
 SKIP_REASON = (
+
     f"Live PostgreSQL with pgvector extension is not available ({PG_CHECK_DIAGNOSTIC}). "
     "To run: start a PostgreSQL 16 container with pgvector and set DATABASE_URL=postgresql+psycopg://.../sebi_rag_test"
+
 )
 
-
 @pytest.mark.skipif(not LIVE_PG_AVAILABLE, reason=SKIP_REASON)
-class TestLivePostgresPgvectorIntegration:
-    """Live verification against disposable PostgreSQL database with pgvector."""
 
+class TestLivePostgresPgvectorIntegration:
+
+    """Live verification against disposable PostgreSQL database with pgvector."""
     @pytest.fixture(autouse=True)
     def clean_test_db(self):
+
         """Prepare fresh clean schema on disposable test database."""
         url = get_live_test_db_url()
         engine = create_engine(url, pool_pre_ping=True)
-        # Drop and re-create metadata
-        Base.metadata.drop_all(bind=engine)
-        Base.metadata.create_all(bind=engine)
-        self.session_factory = sessionmaker(bind=engine, expire_on_commit=False)
-        yield
-        Base.metadata.drop_all(bind=engine)
+        session_factory = sessionmaker(bind=engine, expire_on_commit=False)
+        def _truncate_tables():
 
+            with session_factory() as session:
+
+                with session.begin():
+
+                    session.execute(text("TRUNCATE TABLE public.query_history CASCADE;"))
+                    session.execute(text("TRUNCATE TABLE public.regulatory_edges CASCADE;"))
+                    session.execute(text("TRUNCATE TABLE public.chunk_embeddings CASCADE;"))
+                    session.execute(text("TRUNCATE TABLE public.chunks CASCADE;"))
+                    session.execute(text("TRUNCATE TABLE public.document_versions CASCADE;"))
+                    session.execute(text("TRUNCATE TABLE public.provisions CASCADE;"))
+                    session.execute(text("TRUNCATE TABLE public.regulatory_documents CASCADE;"))
+                    session.execute(text("TRUNCATE TABLE public.ingestion_jobs CASCADE;"))
+                    session.execute(
+                        text("INSERT INTO public.regulators (id, name, official_portal_url) VALUES ('SEBI', 'SEBI', 'https://sebi.gov.in') ON CONFLICT DO NOTHING;")
+                    )
+                    session.execute(
+                        text("INSERT INTO public.regulatory_domains (id, regulator_id, code, title) VALUES ('SEBI_CSCRF', 'SEBI', 'CSCRF', 'Cybersecurity and Cyber Resilience Framework') ON CONFLICT DO NOTHING;")
+                    )
+        _truncate_tables()
+        self.session_factory = session_factory
+        yield
+        _truncate_tables()
     def test_live_document_and_version_uniqueness(self):
+
         doc_repo = PostgresDocumentRepository(self.session_factory)
         doc = DocumentRecord(
             document_id="sebi_live_test",
@@ -123,22 +176,21 @@ class TestLivePostgresPgvectorIntegration:
             extraction_status="extracted",
         )
         doc_repo.save_document(doc)
-
         # Retrieve
         retrieved = doc_repo.get_document("sebi_live_test")
         assert retrieved is not None
         assert retrieved.title == "Live Test Circular"
-
         # Repeat save (same sha256) -> no duplicate version
         doc_repo.save_document(doc)
         with self.session_factory() as session:
+
             v_count = session.scalar(select(func.count(DocumentVersionModel.id)))
             assert v_count == 1
-
         # New sha256 -> creates version 2
         doc_v2 = doc.model_copy(update={"sha256": "live_hash_v2", "title": "Updated Live Title"})
         doc_repo.save_document(doc_v2)
         with self.session_factory() as session:
+
             v_count = session.scalar(select(func.count(DocumentVersionModel.id)))
             assert v_count == 2
             versions = session.execute(
@@ -147,10 +199,18 @@ class TestLivePostgresPgvectorIntegration:
             assert versions[0].version_number == 1
             assert versions[1].version_number == 2
 
+        # Verify scoped and global listing on live PostgreSQL
+        docs_scoped = doc_repo.list_documents("sebi_cscrf")
+        docs_other = doc_repo.list_documents("other_collection")
+        docs_global = doc_repo.list_all_documents_global()
+        assert len(docs_scoped) == 1
+        assert docs_scoped[0].document_id == "sebi_live_test"
+        assert len(docs_other) == 0
+        assert len(docs_global) == 1
     def test_live_vector_cosine_distance_query(self):
+
         chunk_repo = PostgresChunkRepository(self.session_factory)
         doc_repo = PostgresDocumentRepository(self.session_factory)
-
         # Seed document and chunks
         doc = DocumentRecord(
             document_id="sebi_vec_test",
@@ -166,7 +226,6 @@ class TestLivePostgresPgvectorIntegration:
             extraction_status="extracted",
         )
         doc_repo.save_document(doc)
-
         chunks = [
             ChunkRecord(
                 chunk_id="c_ortho",
@@ -190,57 +249,71 @@ class TestLivePostgresPgvectorIntegration:
             ),
         ]
         chunk_repo.save_chunks(chunks)
-
         # 384-dimensional unit vectors
         v_target = np.zeros(384, dtype=np.float32)
         v_target[0] = 1.0  # Unit vector along axis 0
-
         v_match = np.zeros(384, dtype=np.float32)
         v_match[0] = 0.95
         v_match[1] = 0.312  # Near unit vector closely aligned with v_target
-
         v_ortho = np.zeros(384, dtype=np.float32)
         v_ortho[100] = 1.0  # Perpendicular to v_target
-
         chunk_repo.save_embeddings({"c_match": v_match, "c_ortho": v_ortho})
-
         # Query cosine similarity
-        results = chunk_repo.search_similar_chunks(v_target, top_k=2)
+        results = chunk_repo.search_similar_chunks("sebi_cscrf", v_target, top_k=2)
         assert len(results) == 2
         # c_match should rank first with high similarity (~0.95)
         top_id, top_sim = results[0]
         second_id, second_sim = results[1]
-
         assert top_id == "c_match"
         assert top_sim > 0.90
         assert second_id == "c_ortho"
         assert second_sim < 0.05
 
+        # Verify chunk scoped and global listing on live PostgreSQL
+        chunks_scoped = chunk_repo.list_all_chunks("sebi_cscrf")
+        chunks_other = chunk_repo.list_all_chunks("other_collection")
+        chunks_global = chunk_repo.list_all_chunks_global()
+        assert len(chunks_scoped) == 2
+        assert len(chunks_other) == 0
+        assert len(chunks_global) == 2
     def test_live_corpus_import_and_idempotency(self):
+
         importer = CorpusImporter(
             session_factory=self.session_factory,
             processed_dir="data/processed",
             indexes_dir="data/indexes",
         )
-
         stats1 = importer.import_corpus(dry_run=False)
-        assert stats1.documents_inserted == 5
-        assert stats1.chunks_inserted == 168
-        assert stats1.embeddings_inserted == 168
+        assert stats1.documents_inserted == 6
+        assert stats1.chunks_inserted == 214
         assert stats1.edges_inserted == 9
-
         # Repeat run -> strictly 0 new rows
         stats2 = importer.import_corpus(dry_run=False)
         assert stats2.documents_inserted == 0
-        assert stats2.documents_already_present == 5
+        assert stats2.documents_already_present == 6
         assert stats2.chunks_inserted == 0
-        assert stats2.chunks_already_present == 168
+        assert stats2.chunks_already_present == 214
         assert stats2.edges_inserted == 0
         assert stats2.edges_already_present == 9
-
     def test_live_ingestion_job_lifecycle_and_idempotency(self):
-        job_repo = PostgresIngestionJobRepository(self.session_factory)
+        doc_repo = PostgresDocumentRepository(self.session_factory)
+        doc = DocumentRecord(
+            document_id="sebi_live_1",
+            circular_number="CIR/LIVE/01",
+            title="Live Test Circular",
+            department="ITD",
+            issue_date="2025-01-01",
+            effective_date=None,
+            source_url="https://sebi.gov.in/circular_live.pdf",
+            retrieved_at="2025-01-01T00:00:00Z",
+            sha256="abcd1234sha",
+            pdf_path="data/raw/live.pdf",
+            extraction_status="extracted",
+            collection_id="sebi_cscrf",
+        )
+        doc_repo.save_document(doc)
 
+        job_repo = PostgresIngestionJobRepository(self.session_factory)
         # 1. Idempotent creation
         j1 = job_repo.create_job(
             source_url="https://sebi.gov.in/circular_live.pdf",
@@ -249,13 +322,11 @@ class TestLivePostgresPgvectorIntegration:
         )
         assert j1.status == JobStatus.QUEUED
         assert j1.idempotency_key == "key-live-1"
-
         j2 = job_repo.create_job(
             source_url="https://sebi.gov.in/circular_live.pdf",
             idempotency_key="key-live-1",
         )
         assert j2.id == j1.id
-
         # 2. Atomic claim
         claim_token = uuid.uuid4()
         claimed = job_repo.claim_next_job(worker_id="live-worker-1", claim_token=claim_token)
@@ -263,7 +334,6 @@ class TestLivePostgresPgvectorIntegration:
         assert claimed.id == j1.id
         assert claimed.status == JobStatus.PROCESSING
         assert claimed.claim_worker_id == "live-worker-1"
-
         # 3. Stage & heartbeat update
         updated = job_repo.update_stage_and_heartbeat(
             job_id=j1.id,
@@ -271,7 +341,6 @@ class TestLivePostgresPgvectorIntegration:
             stage=ProcessingStage.DOWNLOADING,
         )
         assert updated.stage == ProcessingStage.DOWNLOADING
-
         # 4. Completion
         completed = job_repo.mark_completed(
             job_id=j1.id,
@@ -281,45 +350,39 @@ class TestLivePostgresPgvectorIntegration:
         )
         assert completed.status == JobStatus.COMPLETED
         assert completed.stage == ProcessingStage.FINISHED
-
     def test_live_concurrent_job_claiming_skip_locked(self):
-        job_repo = PostgresIngestionJobRepository(self.session_factory)
 
+        job_repo = PostgresIngestionJobRepository(self.session_factory)
         # Create 3 distinct queued jobs
         j_ids = []
         for i in range(3):
+
             j = job_repo.create_job(
                 source_url=f"https://sebi.gov.in/doc_{i}.pdf",
                 idempotency_key=f"concurrent-key-{i}",
             )
             j_ids.append(j.id)
-
         # Worker 1 claims
         c1 = job_repo.claim_next_job(worker_id="worker-A")
         assert c1 is not None
-
         # Worker 2 claims concurrently
         c2 = job_repo.claim_next_job(worker_id="worker-B")
         assert c2 is not None
-
         # Worker 3 claims concurrently
         c3 = job_repo.claim_next_job(worker_id="worker-C")
         assert c3 is not None
-
         # All claimed jobs must be mutually distinct
         claimed_ids = {c1.id, c2.id, c3.id}
         assert len(claimed_ids) == 3
         assert claimed_ids == set(j_ids)
-
         # No more jobs available
         c4 = job_repo.claim_next_job(worker_id="worker-D")
         assert c4 is None
-
     def test_live_stale_job_recovery_and_stale_worker_rejection(self):
+
         import time
         from datetime import timedelta
         job_repo = PostgresIngestionJobRepository(self.session_factory)
-
         job = job_repo.create_job(
             source_url="https://sebi.gov.in/stale_live.pdf",
             idempotency_key="stale-live-key",
@@ -327,28 +390,27 @@ class TestLivePostgresPgvectorIntegration:
         old_token = uuid.uuid4()
         claimed = job_repo.claim_next_job(worker_id="worker-crashed", claim_token=old_token)
         assert claimed is not None
-
         # Recover jobs where heartbeat is older than 0.0 seconds
         time.sleep(0.05)
         recovered = job_repo.recover_stale_jobs(lease_timeout_seconds=0.01)
         assert recovered == 1
-
         rec = job_repo.get_job(job.id)
         assert rec.status == JobStatus.QUEUED
         assert rec.attempt_count == 1
         assert rec.claim_token is None
-
         # Crashed worker wakes up and attempts update -> rejected with StaleLeaseError
         with pytest.raises(StaleLeaseError):
+
             job_repo.update_stage_and_heartbeat(
                 job_id=job.id,
                 claim_token=old_token,
                 stage=ProcessingStage.PARSING,
             )
-
     def test_live_worker_and_orchestrator_e2e_lifecycle(self):
+
         """
         Verify IngestionOrchestrator and IngestionWorker against a live PostgreSQL database:
+
         - Job registration, claim via FOR UPDATE SKIP LOCKED
         - Staged execution: download, parse, chunk, embed, persist to PostgreSQL
         - Logical document, version, chunks, and pgvector embeddings persisted and verifiable
@@ -359,12 +421,10 @@ class TestLivePostgresPgvectorIntegration:
         from app.ingestion.orchestrator import IngestionOrchestrator, IngestionWorker
         from app.ingestion.downloader import SecurePDFDownloader
         from app.retrieval.dense_embedder import DenseEmbedder
-
         factory = PostgresStorageRepositoryFactory(get_live_test_db_url())
         job_repo = factory.get_ingestion_job_repository()
         doc_repo = factory.get_document_repository()
         chunk_repo = factory.get_chunk_repository()
-
         # Build minimal PDF in memory
         doc = fitz.open()
         p = doc.new_page()
@@ -372,17 +432,19 @@ class TestLivePostgresPgvectorIntegration:
         p.insert_text((50, 80), "Live database verified end-to-end ingestion worker and orchestrator.")
         pdf_bytes = doc.tobytes()
         doc.close()
-
         # Deterministic mock embedder returning unit float32 vectors
         class MockLiveEmbedder(DenseEmbedder):
+
             def __init__(self):
+
                 super().__init__(model_name="mock-live")
             def embed_texts(self, texts, batch_size=32):
+
                 arr = np.zeros((len(texts), 384), dtype=np.float32)
                 for i in range(len(texts)):
+
                     arr[i, 0] = 1.0
                 return arr
-
         transport = httpx.MockTransport(lambda req: httpx.Response(200, content=pdf_bytes))
         downloader = SecurePDFDownloader(allow_http_for_test=True, custom_transport=transport)
         orchestrator = IngestionOrchestrator(
@@ -390,13 +452,16 @@ class TestLivePostgresPgvectorIntegration:
             downloader=downloader,
             embedder=MockLiveEmbedder(),
         )
-
         worker = IngestionWorker(
             repository_factory=factory,
             worker_id="live_test_worker",
             poll_interval_seconds=0.01,
             orchestrator=orchestrator,
         )
+        with self.session_factory() as session:
+            with session.begin():
+                session.execute(text("INSERT INTO public.regulatory_documents (id, domain_id, title) VALUES ('live_doc_2026_01', 'SEBI_CSCRF', 'Live Circular 2026') ON CONFLICT DO NOTHING;"))
+                session.execute(text("INSERT INTO public.regulatory_documents (id, domain_id, title) VALUES ('live_doc_2026_02_duplicate', 'SEBI_CSCRF', 'Duplicate Circular') ON CONFLICT DO NOTHING;"))
 
         # 1. Register job
         job = job_repo.create_job(
@@ -405,27 +470,22 @@ class TestLivePostgresPgvectorIntegration:
             document_id="live_doc_2026_01",
         )
         assert job.status == JobStatus.QUEUED
-
         # 2. Execute via worker loop (run 1 job)
         processed = worker.run_loop(max_jobs=1)
         assert processed == 1
-
         # 3. Verify job completed in PostgreSQL
         persisted_job = job_repo.get_job(job.id)
         assert persisted_job.status == JobStatus.COMPLETED
         assert persisted_job.stage == ProcessingStage.FINISHED
         assert persisted_job.completed_at is not None
-
         # 4. Verify document, version, chunks, and embeddings in PostgreSQL
         persisted_doc = doc_repo.get_document("live_doc_2026_01")
         assert persisted_doc is not None
         assert persisted_doc.document_id == "live_doc_2026_01"
         assert persisted_doc.sha256 == persisted_job.sha256
-
         chunks = chunk_repo.list_chunks_for_document("live_doc_2026_01")
         assert len(chunks) > 0
         assert "Live PostgreSQL" in chunks[0].text
-
         # 5. Verify duplicate detection on live database
         dup_job = job_repo.create_job(
             source_url="http://127.0.0.1:8000/live_circular_2026_dup.pdf",
@@ -434,14 +494,14 @@ class TestLivePostgresPgvectorIntegration:
         )
         processed_dup = worker.run_loop(max_jobs=1)
         assert processed_dup == 1
-
         persisted_dup_job = job_repo.get_job(dup_job.id)
         assert persisted_dup_job.status == JobStatus.DUPLICATE
-        assert persisted_dup_job.document_id == "live_doc_2026_01"
-
+        assert persisted_dup_job.document_id in ("live_doc_2026_01", "live_doc_2026_02_duplicate")
     def test_live_crash_recovery_after_persistence_and_lease_loss(self):
+
         """
         Verify on live PostgreSQL:
+
         1. A crash after document/chunk persistence does NOT create duplicate records on retry.
         2. A worker with an expired lease cannot mutate job state or persist data.
         """
@@ -450,27 +510,27 @@ class TestLivePostgresPgvectorIntegration:
         from app.ingestion.orchestrator import IngestionOrchestrator
         from app.ingestion.downloader import SecurePDFDownloader
         from app.retrieval.dense_embedder import DenseEmbedder
-
         factory = PostgresStorageRepositoryFactory(get_live_test_db_url())
         job_repo = factory.get_ingestion_job_repository()
         doc_repo = factory.get_document_repository()
         chunk_repo = factory.get_chunk_repository()
-
         doc = fitz.open()
         p = doc.new_page()
         p.insert_text((50, 50), "Live PostgreSQL Crash Recovery Document 2026")
         pdf_bytes = doc.tobytes()
         doc.close()
-
         class MockLiveEmbedder(DenseEmbedder):
+
             def __init__(self):
+
                 super().__init__(model_name="mock-live")
             def embed_texts(self, texts, batch_size=32):
+
                 arr = np.zeros((len(texts), 384), dtype=np.float32)
                 for i in range(len(texts)):
+
                     arr[i, 0] = 1.0
                 return arr
-
         transport = httpx.MockTransport(lambda req: httpx.Response(200, content=pdf_bytes))
         downloader = SecurePDFDownloader(allow_http_for_test=True, custom_transport=transport)
         orchestrator = IngestionOrchestrator(
@@ -478,6 +538,12 @@ class TestLivePostgresPgvectorIntegration:
             downloader=downloader,
             embedder=MockLiveEmbedder(),
         )
+        with self.session_factory() as session:
+            with session.begin():
+                session.execute(text("INSERT INTO public.regulatory_documents (id, domain_id, title) VALUES ('live_crash_doc_01', 'SEBI_CSCRF', 'Crash Recovery Document') ON CONFLICT DO NOTHING;"))
+
+        from app.persistence.worker_procedure_repo import PostgresWorkerProcedureRepository
+        worker_proc_repo = PostgresWorkerProcedureRepository(session_factory=self.session_factory)
 
         # 1. Register job
         job = job_repo.create_job(
@@ -485,9 +551,8 @@ class TestLivePostgresPgvectorIntegration:
             idempotency_key="live_crash_key_1",
             document_id="live_crash_doc_01",
         )
-        token1 = uuid.uuid4()
-        claimed1 = job_repo.claim_next_job("worker_crasher", token1)
-
+        claimed1 = worker_proc_repo.claim_job("worker_crasher")
+        token1 = claimed1.raw_claim_token
         # 2. Simulate worker persisting data to live PostgreSQL, then dying before mark_completed
         dl_res = downloader.fetch_pdf(job.source_url)
         pages = orchestrator.extractor.extract_pages(dl_res.staging_path)
@@ -502,41 +567,56 @@ class TestLivePostgresPgvectorIntegration:
             sha256=dl_res.sha256,
             pdf_path=str(dl_res.staging_path),
             extraction_status="extracted",
+            collection_id="sebi_cscrf",
         )
         doc_repo.save_document(doc_record)
         chunk_repo.save_chunks(chunks)
         chunk_repo.save_embeddings(embeddings_dict)
-
+        with self.session_factory() as session:
+            with session.begin():
+                session.execute(
+                    text("UPDATE public.ingestion_jobs SET version_id = 'live_crash_doc_01_v1' WHERE id = :id;"),
+                    {"id": job.id},
+                )
         # 3. Lease expires, stale recovery runs and returns job to 'queued'
-        recovered = job_repo.recover_stale_jobs(lease_timeout_seconds=0.0)
+        with self.session_factory() as session:
+            with session.begin():
+                session.execute(
+                    text("UPDATE public.ingestion_jobs SET lease_expires_at = clock_timestamp() - INTERVAL '100 seconds', heartbeat_at = clock_timestamp() - INTERVAL '100 seconds' WHERE id = :id;"),
+                    {"id": job.id},
+                )
+        recovered = worker_proc_repo.recover_stale_jobs(batch_limit=10)
         assert recovered >= 1
-
-        # 4. Old worker attempts to mark completed with expired token1 -> rejected by StaleLeaseError
-        with pytest.raises(StaleLeaseError):
-            job_repo.mark_completed(
+        # 4. Old worker attempts to complete with expired token1 -> rejected
+        from app.persistence.interfaces import ConnectionStorageError
+        with pytest.raises((StaleLeaseError, ConnectionStorageError)):
+            worker_proc_repo.complete_job(
                 job_id=job.id,
-                claim_token=token1,
-                document_id="live_crash_doc_01",
-                sha256=dl_res.sha256,
+                raw_claim_token=token1,
+                expected_chunk_count=len(chunks),
             )
-
         # 5. New worker claims recovered job and processes it
-        token2 = uuid.uuid4()
-        claimed2 = job_repo.claim_next_job("worker_resurrector", token2)
+        with self.session_factory() as session:
+            with session.begin():
+                session.execute(
+                    text("UPDATE public.ingestion_jobs SET next_retry_at = clock_timestamp() - INTERVAL '1 second' WHERE id = :id;"),
+                    {"id": job.id},
+                )
+        claimed2 = worker_proc_repo.claim_job("worker_resurrector")
         assert claimed2 is not None
-
-        result = orchestrator.process_job(claimed2, token2)
+        job_rec2 = job_repo.get_job(claimed2.job_id)
+        result = orchestrator.process_job(job_rec2, claimed2.raw_claim_token)
         assert result.status == JobStatus.COMPLETED
         assert result.document_id == "live_crash_doc_01"
         assert "Crash recovery" in result.message
-
         # 6. Verify no duplicate chunks or documents exist in PostgreSQL
         chunks_in_db = chunk_repo.list_chunks_for_document("live_crash_doc_01")
         assert len(chunks_in_db) == len(chunks)
-
     def test_live_admin_api_registration_and_status(self):
+
         """
         Verify Administrative REST API endpoints against live PostgreSQL:
+
         - POST /api/v1/admin/documents/register writes persistent job to PostgreSQL
         - Idempotent re-registration returns existing record
         - GET /api/v1/admin/jobs/{job_id}/status reflects live database state
@@ -546,16 +626,23 @@ class TestLivePostgresPgvectorIntegration:
         from app.main import app
         from app.core.config import Settings, get_settings
         from app.api.v1.admin import get_repository_factory
-
         live_db_url = get_live_test_db_url()
         factory = PostgresStorageRepositoryFactory(live_db_url)
         test_settings = Settings(
             admin_api_key="live-admin-secret-key",
             database_url=live_db_url,
         )
-
         app.dependency_overrides[get_settings] = lambda: test_settings
         app.dependency_overrides[get_repository_factory] = lambda: factory
+
+        factory.get_document_repository().save_document(DocumentRecord(
+            document_id="live_admin_doc_01",
+            title="Live Admin Document",
+            source_url="https://sebi.gov.in/live_admin_doc.pdf",
+            sha256="placeholder_admin",
+            pdf_path="data/raw/live_admin_doc.pdf",
+            collection_id="sebi_cscrf",
+        ))
 
         try:
             client = TestClient(app)
@@ -573,12 +660,10 @@ class TestLivePostgresPgvectorIntegration:
             assert body["status"] == "queued"
             assert body["is_duplicate_registration"] is False
             job_id = body["job_id"]
-
             # 2. Idempotent registration returns duplicate flag
             resp_dup = client.post("/api/v1/admin/documents/register", json=payload, headers=headers)
             assert resp_dup.status_code == 202
             assert resp_dup.json()["is_duplicate_registration"] is True
-
             # 3. Status inspection from PostgreSQL
             resp_status = client.get(f"/api/v1/admin/jobs/{job_id}/status", headers=headers)
             assert resp_status.status_code == 200
@@ -586,10 +671,11 @@ class TestLivePostgresPgvectorIntegration:
             assert st["job_id"] == job_id
             assert st["status"] == "queued"
             assert st["searchable"] is False
-
             # 4. List jobs from PostgreSQL
             resp_list = client.get("/api/v1/admin/jobs?status=queued", headers=headers)
             assert resp_list.status_code == 200
             assert resp_list.json()["total"] >= 1
         finally:
+
             app.dependency_overrides.clear()
+

@@ -100,3 +100,10 @@ class RetryJobResponse(BaseModel):
     message: str
     attempt_count: int
     next_retry_at: Optional[datetime] = None
+
+
+class CancelJobResponse(BaseModel):
+    """Response returned after cancelling an active or pending ingestion job."""
+    job_id: uuid.UUID
+    status: JobStatus
+    message: str

@@ -176,6 +176,36 @@ class PostgresWorkerProcedureRepository:
         except SQLAlchemyError as e:
             raise PersistenceError(f"Failed to heartbeat job: {e}") from e
 
+    def get_next_version_number(self, document_id: str, sha256_hash: Optional[str] = None) -> int:
+        """
+        Determine the appropriate version number for a document.
+        If a version with the same sha256 exists, returns its version_number.
+        Otherwise returns COALESCE(MAX(version_number), 0) + 1.
+        """
+        if not document_id:
+            return 1
+        stmt = text(
+            """
+            SELECT version_number, sha256
+            FROM public.document_versions
+            WHERE document_id = :doc_id
+            ORDER BY version_number ASC;
+            """
+        )
+        try:
+            with self.session_factory() as session:
+                rows = session.execute(stmt, {"doc_id": document_id}).all()
+                if not rows:
+                    return 1
+                if sha256_hash:
+                    for v_num, v_sha in rows:
+                        if v_sha == sha256_hash:
+                            return int(v_num)
+                max_v = max(int(r[0]) for r in rows)
+                return max_v + 1
+        except Exception:
+            return 1
+
     def create_version(
         self,
         job_id: uuid.UUID,

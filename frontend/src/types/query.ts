@@ -70,6 +70,7 @@ export interface CollectionSummary {
   regulator?: string | null;
   policy_type: 'sebi_cscrf_strict' | 'general_static' | string;
   status: 'active' | 'disabled' | 'unpublished' | string;
+  is_private?: boolean;
 }
 
 export interface QueryRequest {
