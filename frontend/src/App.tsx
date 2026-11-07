@@ -3,17 +3,26 @@ import type { QueryRequest, QueryResponse, QueryError, CollectionSummary } from 
 import { queryRegulatoryAssistant, probeHealth, fetchCollections } from './api/client';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WorkspaceProvider, useWorkspace } from './context/WorkspaceContext';
-import { Header } from './components/Header';
+import { Header, type NavTab } from './components/Header';
 import { DisclosureBanner } from './components/DisclosureBanner';
 import { QueryForm } from './components/QueryForm';
 import { ResultsPanel } from './components/ResultsPanel';
 import { TechnicalInfoDrawer } from './components/TechnicalInfoDrawer';
 import { QueryHistoryDrawer } from './components/QueryHistoryDrawer';
+import { DashboardView } from './components/DashboardView';
+import { CollectionsView } from './components/CollectionsView';
+import { QueryHistoryView } from './components/QueryHistoryView';
+import { WorkspaceSettingsView } from './components/WorkspaceSettingsView';
+import { AuthModal } from './components/AuthModal';
 
 function AssistantMain() {
   const { token } = useAuth();
   const { workspaceCollections, isCollectionsLoading: isWsColsLoading } = useWorkspace();
 
+  // Active view tab
+  const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
+
+  // Backend connection status
   const [apiStatus, setApiStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<QueryError | null>(null);
@@ -26,8 +35,12 @@ function AssistantMain() {
   const [isCollectionsLoading, setIsCollectionsLoading] = useState<boolean>(true);
   const [collectionsError, setCollectionsError] = useState<string | null>(null);
 
+  // Auth modal triggered from anywhere
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'login' | 'signup'>('login');
+
   // History Drawer state
-  const [isHistoryOpen, setIsHistoryOpen] = useState<boolean>(false);
+  const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState<boolean>(false);
 
   // Health check with retry to absorb Render Free container spin-up delay
   const checkHealth = async () => {
@@ -147,10 +160,21 @@ function AssistantMain() {
 
   const handleReplayHistoryQuery = (queryText: string, collectionId: string) => {
     setSelectedCollectionId(collectionId);
+    setActiveTab('research');
     handleQuerySubmit({
       query: queryText,
       collection_id: collectionId,
     });
+  };
+
+  const handleSelectCollectionAndResearch = (collectionId: string) => {
+    setSelectedCollectionId(collectionId);
+    setActiveTab('research');
+  };
+
+  const handleOpenAuthModal = (mode: 'login' | 'signup') => {
+    setAuthModalMode(mode);
+    setIsAuthModalOpen(true);
   };
 
   const activeCollection =
@@ -161,58 +185,103 @@ function AssistantMain() {
       {/* Header with connection indicator, workspace switcher, and user auth */}
       <Header
         apiStatus={apiStatus}
-        selectedCollection={activeCollection}
+        selectedCollection={activeTab === 'research' ? activeCollection : null}
+        activeTab={activeTab}
+        onSelectTab={(tab) => setActiveTab(tab)}
         onRetryHealth={checkHealth}
-        onOpenHistory={() => setIsHistoryOpen(true)}
+        onOpenHistory={() => setIsHistoryDrawerOpen(true)}
       />
 
       {/* Main Container */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 flex flex-col gap-6">
-        {/* Scope & Grounding Disclosure Banner */}
-        <DisclosureBanner selectedCollection={activeCollection} />
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 flex flex-col gap-6">
+        {/* Tab 1: Dashboard View */}
+        {activeTab === 'dashboard' && (
+          <DashboardView
+            collections={combinedCollections}
+            onNavigate={(tab) => setActiveTab(tab)}
+            onSelectCollectionAndResearch={handleSelectCollectionAndResearch}
+            onOpenAuthModal={handleOpenAuthModal}
+          />
+        )}
 
-        {/* Main Search and Configuration Form */}
-        <QueryForm
-          isLoading={isLoading}
-          onSubmit={handleQuerySubmit}
-          collections={combinedCollections}
-          selectedCollectionId={selectedCollectionId}
-          onSelectCollection={(id) => setSelectedCollectionId(id)}
-          isCollectionsLoading={isCollectionsLoading || isWsColsLoading}
-          collectionsError={collectionsError}
-          initialQuery={lastSubmittedRequest?.query || ''}
-          initialTopK={lastSubmittedRequest?.top_k || 5}
-          initialIncludeSuperseded={lastSubmittedRequest?.include_superseded || false}
-        />
+        {/* Tab 2: AI Research View */}
+        {activeTab === 'research' && (
+          <div className="space-y-6 animate-fadeIn">
+            {/* Scope & Grounding Disclosure Banner */}
+            <DisclosureBanner selectedCollection={activeCollection} />
 
-        {/* Results / Disposition Panel */}
-        <ResultsPanel
-          isLoading={isLoading}
-          error={error}
-          response={response}
-          selectedCollection={activeCollection}
-          onRetry={lastSubmittedRequest ? handleRetry : undefined}
-        />
+            {/* Main Search and Configuration Form */}
+            <QueryForm
+              isLoading={isLoading}
+              onSubmit={handleQuerySubmit}
+              collections={combinedCollections}
+              selectedCollectionId={selectedCollectionId}
+              onSelectCollection={(id) => setSelectedCollectionId(id)}
+              isCollectionsLoading={isCollectionsLoading || isWsColsLoading}
+              collectionsError={collectionsError}
+              initialQuery={lastSubmittedRequest?.query || ''}
+              initialTopK={lastSubmittedRequest?.top_k || 5}
+              initialIncludeSuperseded={lastSubmittedRequest?.include_superseded || false}
+            />
 
-        {/* Mechanical vs Legal Technical Validation Explainer */}
-        <TechnicalInfoDrawer selectedCollection={activeCollection} />
+            {/* Results / Disposition Panel */}
+            <ResultsPanel
+              isLoading={isLoading}
+              error={error}
+              response={response}
+              selectedCollection={activeCollection}
+              onRetry={lastSubmittedRequest ? handleRetry : undefined}
+            />
+
+            {/* Mechanical vs Legal Technical Validation Explainer */}
+            <TechnicalInfoDrawer selectedCollection={activeCollection} />
+          </div>
+        )}
+
+        {/* Tab 3: Collections & Ingestion View */}
+        {activeTab === 'collections' && (
+          <CollectionsView
+            onNavigateToResearch={handleSelectCollectionAndResearch}
+            onOpenAuthModal={handleOpenAuthModal}
+          />
+        )}
+
+        {/* Tab 4: Query History View */}
+        {activeTab === 'history' && (
+          <QueryHistoryView
+            onReplayQuery={handleReplayHistoryQuery}
+            onOpenAuthModal={handleOpenAuthModal}
+          />
+        )}
+
+        {/* Tab 5: Workspace Settings View */}
+        {activeTab === 'workspace' && (
+          <WorkspaceSettingsView onOpenAuthModal={handleOpenAuthModal} />
+        )}
       </main>
 
-      {/* Query History Drawer */}
+      {/* Side Query History Drawer */}
       <QueryHistoryDrawer
-        isOpen={isHistoryOpen}
-        onClose={() => setIsHistoryOpen(false)}
+        isOpen={isHistoryDrawerOpen}
+        onClose={() => setIsHistoryDrawerOpen(false)}
         onReplayQuery={handleReplayHistoryQuery}
+      />
+
+      {/* Global Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        defaultMode={authModalMode}
       />
 
       {/* Footer */}
       <footer className="border-t border-slate-900 bg-slate-950/80 px-6 py-6 text-center text-xs text-slate-500">
         <div className="max-w-4xl mx-auto space-y-1">
           <p>
-            Multi-Tenant Document Intelligence & Regulatory Research Platform.
+            Document Intelligence &amp; Multi-Tenant AI Research Platform.
           </p>
           <p className="text-[11px] text-slate-600">
-            Answers are strictly limited to the selected indexed collection and verified evidence. SEBI CSCRF materials are not affiliated with or endorsed by SEBI. Excerpts represent mechanical text grounding only.
+            Answers are strictly limited to the selected indexed collection and verified evidence citations. SEBI CSCRF materials are not affiliated with or endorsed by SEBI. Excerpts represent mechanical text grounding only.
           </p>
         </div>
       </footer>

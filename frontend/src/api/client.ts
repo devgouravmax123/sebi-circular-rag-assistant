@@ -32,6 +32,8 @@ import type { QueryHistoryDetail, QueryHistoryListResponse } from '../types/hist
 const rawBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
 export const API_BASE_URL: string = rawBaseUrl
   ? rawBaseUrl.replace(/\/+$/, '').replace(/\/api\/v1$/, '')
+  : typeof window !== 'undefined' && window.location?.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
+  ? 'https://sebi-circular-rag-assistant.onrender.com'
   : 'http://127.0.0.1:8000';
 
 const DEFAULT_TIMEOUT_MS = 35000;
