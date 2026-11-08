@@ -145,6 +145,13 @@ class BaseStorageAdapter(ABC):
         """
         pass
 
+    def delete_prefix(self, prefix: str) -> int:
+        """
+        Safely deletes all stored files or objects matching the given key/path prefix.
+        Returns count of deleted objects.
+        """
+        return 0
+
     @abstractmethod
     def exists(self, source_uri: str) -> bool:
         """

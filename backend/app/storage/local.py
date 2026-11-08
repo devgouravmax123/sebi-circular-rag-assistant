@@ -277,6 +277,50 @@ class LocalStorageAdapter(BaseStorageAdapter):
                 return False
         return False
 
+    def delete_prefix(self, prefix: str) -> int:
+        """
+        Safely deletes all files under root_dir whose relative path starts with the given prefix.
+        Returns count of deleted files.
+        """
+        if not prefix:
+            return 0
+        clean = str(prefix).strip().replace("\\", "/")
+        if clean.startswith("upload://"):
+            clean = clean[len("upload://") :]
+        elif clean.startswith("file://"):
+            clean = clean[len("file://") :]
+        clean = clean.lstrip("/")
+
+        target_dir = (self.root_dir / clean).resolve()
+        try:
+            self._validate_path_containment(target_dir)
+        except PathTraversalError:
+            return 0
+
+        deleted_count = 0
+        if target_dir.is_file():
+            try:
+                target_dir.unlink()
+                logger.info(f"Deleted single storage file by prefix: '{target_dir}'")
+                return 1
+            except Exception as e:
+                logger.warning(f"Failed deleting single storage file {target_dir}: {e}")
+                return 0
+        elif target_dir.is_dir():
+            for p in list(target_dir.rglob("*")):
+                if p.is_file():
+                    try:
+                        p.unlink()
+                        deleted_count += 1
+                    except Exception as e:
+                        logger.warning(f"Failed deleting storage file {p}: {e}")
+            try:
+                shutil.rmtree(target_dir, ignore_errors=True)
+            except Exception:
+                pass
+            logger.info(f"Deleted {deleted_count} storage file(s) under prefix '{prefix}' ({target_dir})")
+        return deleted_count
+
     def _resolve_target_path(self, key_or_uri: str) -> Path:
         """Resolves a destination path under root_dir with path traversal protection."""
         clean = str(key_or_uri).strip()

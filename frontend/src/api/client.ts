@@ -28,6 +28,16 @@ import type {
   DocumentUploadResponse,
 } from '../types/workspace';
 import type { QueryHistoryDetail, QueryHistoryListResponse } from '../types/history';
+import type {
+  GuestSessionResponse,
+  GuestSessionStatusResponse,
+  GuestSessionTerminationResponse,
+  GuestCollection,
+  GuestDocument,
+  GuestJob,
+  GuestHistoryRecord,
+  GuestUploadResponse,
+} from '../types/guest';
 
 const rawBaseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
 export const API_BASE_URL: string = rawBaseUrl
@@ -609,6 +619,175 @@ export async function fetchQueryHistoryDetail(
 
   if (!response.ok) {
     throw await parseErrorResponse(response, 'Query history record not found.');
+  }
+
+  return response.json();
+}
+
+// ============================================================================
+// 6. Ephemeral Guest Session APIs (Milestone 11)
+// ============================================================================
+
+export async function initiateGuestSession(): Promise<GuestSessionResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/guest/session`, {
+    method: 'POST',
+    headers: buildHeaders(),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to initiate guest session.');
+  }
+
+  return response.json();
+}
+
+export async function fetchGuestSessionStatus(token: string): Promise<GuestSessionStatusResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/guest/session`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Guest session is expired or invalid.');
+  }
+
+  return response.json();
+}
+
+export async function terminateGuestSession(token: string): Promise<GuestSessionTerminationResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/guest/session/terminate`, {
+    method: 'POST',
+    headers: buildHeaders(token),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to terminate guest session.');
+  }
+
+  return response.json();
+}
+
+export async function createGuestCollection(
+  name: string,
+  description: string | undefined,
+  token: string
+): Promise<GuestCollection> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/guest/collections`, {
+    method: 'POST',
+    headers: buildHeaders(token, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ name, description }),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to create guest collection.');
+  }
+
+  return response.json();
+}
+
+export async function fetchGuestCollections(token: string): Promise<GuestCollection[]> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/guest/collections`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to fetch guest collections.');
+  }
+
+  return response.json();
+}
+
+export async function uploadGuestDocument(
+  collectionId: string,
+  file: File,
+  title: string | undefined,
+  token: string
+): Promise<GuestUploadResponse> {
+  const formData = new FormData();
+  formData.append('collection_id', collectionId);
+  formData.append('file', file);
+  if (title && title.trim()) {
+    formData.append('title', title.trim());
+  }
+
+  const response = await fetch(`${API_BASE_URL}/api/v1/guest/upload`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token.trim()}`,
+      Accept: 'application/json',
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to upload guest document.');
+  }
+
+  return response.json();
+}
+
+export async function fetchGuestDocuments(token: string): Promise<GuestDocument[]> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/guest/documents`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to fetch guest documents.');
+  }
+
+  return response.json();
+}
+
+export async function fetchGuestJobs(token: string): Promise<GuestJob[]> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/guest/jobs`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to fetch guest jobs.');
+  }
+
+  return response.json();
+}
+
+export async function fetchGuestHistory(token: string): Promise<{ items: GuestHistoryRecord[]; total: number }> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/guest/history`, {
+    method: 'GET',
+    headers: buildHeaders(token),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to fetch guest history.');
+  }
+
+  return response.json();
+}
+
+export async function recordGuestQuery(
+  queryText: string,
+  collectionId: string,
+  disposition: string,
+  answerText: string | undefined,
+  citationsCount: number,
+  token: string
+): Promise<{ status: string; id: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/guest/history/record`, {
+    method: 'POST',
+    headers: buildHeaders(token, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      query_text: queryText,
+      collection_id: collectionId,
+      disposition,
+      answer_text: answerText || null,
+      citations_count: citationsCount,
+    }),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to record guest query history.');
   }
 
   return response.json();

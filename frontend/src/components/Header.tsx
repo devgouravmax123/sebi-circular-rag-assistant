@@ -1,8 +1,9 @@
 import type { CollectionSummary } from '../types/query';
 import { WorkspaceSelector } from './WorkspaceSelector';
 import { UserNav } from './UserNav';
+import { useAuth } from '../context/AuthContext';
 
-export type NavTab = 'dashboard' | 'research' | 'collections' | 'history' | 'workspace';
+export type NavTab = 'dashboard' | 'collections' | 'research' | 'history' | 'workspace' | 'session';
 
 interface HeaderProps {
   apiStatus: 'checking' | 'connected' | 'disconnected';
@@ -16,11 +17,12 @@ interface HeaderProps {
 export const Header = ({
   apiStatus,
   selectedCollection,
-  activeTab = 'research',
+  activeTab = 'dashboard',
   onSelectTab,
   onRetryHealth,
   onOpenHistory,
 }: HeaderProps) => {
+  const { isGuest, isAuthenticated } = useAuth();
   const isSebiStrict = selectedCollection?.policy_type === 'sebi_cscrf_strict';
   const isGeneralStatic = selectedCollection?.policy_type === 'general_static';
 
@@ -28,19 +30,33 @@ export const Header = ({
   const headerTitle = isSebiStrict
     ? 'SEBI CSCRF Regulatory Intelligence Assistant'
     : 'Document Intelligence Platform';
+  const headerSubtitle = isSebiStrict
+    ? 'Evidence-First Retrieval & Citation-Validation Interface'
+    : 'Turn your documents into answers.';
+
   const badgeLabel = isSebiStrict
     ? 'SEBI CSCRF'
     : isGeneralStatic
     ? 'Documentation'
     : 'Multi-Collection';
 
-  const navItems: { id: NavTab; label: string; icon: string }[] = [
+  // Build navigation items (Supporting both Master Prompt 11 names and legacy accessibility queries)
+  const navItems: { id: NavTab; label: string; icon: string; legacyLabel?: string }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
-    { id: 'research', label: 'AI Research', icon: '🔍' },
-    { id: 'collections', label: 'Collections & Ingestion', icon: '📁' },
-    { id: 'history', label: 'Query History', icon: '📜' },
-    { id: 'workspace', label: 'Workspace Settings', icon: '⚙️' },
+    { id: 'collections', label: 'My Documents', icon: '📁', legacyLabel: 'Collections & Ingestion' },
+    { id: 'research', label: 'Ask AI', icon: '🔍', legacyLabel: 'AI Research' },
+    { id: 'history', label: 'Research History', icon: '📜', legacyLabel: 'Query History' },
   ];
+
+  if (!isGuest) {
+    navItems.push({ id: 'workspace', label: 'Workspace Settings', icon: '⚙️' });
+  }
+
+  navItems.push({
+    id: 'session',
+    label: isGuest ? 'Session Settings' : 'Account Settings',
+    icon: isGuest ? '⏳' : '👤',
+  });
 
   return (
     <header className="border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md sticky top-0 z-30 shadow-md shadow-slate-950/40">
@@ -63,24 +79,30 @@ export const Header = ({
               <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-cyan-950/80 text-cyan-400 border border-cyan-800/60">
                 {badgeLabel}
               </span>
+              {isGuest && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-amber-950/80 text-amber-300 border border-amber-800/60">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  <span>Guest Mode (24h)</span>
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-slate-400">
-              Evidence-First Retrieval &amp; Citation-Validation Interface
+              {headerSubtitle}
             </p>
           </div>
         </div>
 
         {/* Right: Workspace, History, Auth, and Connection */}
         <div className="flex flex-wrap items-center gap-2 self-stretch md:self-auto justify-end">
-          {/* Workspace Selector */}
-          <WorkspaceSelector />
+          {/* Workspace Selector (only for registered users) */}
+          {!isGuest && isAuthenticated && <WorkspaceSelector />}
 
-          {/* Quick History Drawer Trigger if handler exists */}
+          {/* Quick History Trigger */}
           {onOpenHistory && (
             <button
               onClick={onOpenHistory}
               className="px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-950/80 hover:bg-slate-900 border border-slate-800 rounded-lg transition cursor-pointer flex items-center gap-1.5"
-              title="View persistent query history drawer"
+              title="View quick history ledger"
             >
               <span>📜</span>
               <span className="hidden sm:inline">Drawer</span>
@@ -88,7 +110,7 @@ export const Header = ({
           )}
 
           {/* User Auth Navigation */}
-          <UserNav />
+          <UserNav onNavigateToSession={() => onSelectTab && onSelectTab('session')} />
 
           {/* Backend health status badge */}
           <div className="hidden lg:flex items-center space-x-2 bg-slate-950/80 border border-slate-800 px-2.5 py-1.5 rounded-lg text-xs font-medium">
@@ -145,6 +167,11 @@ export const Header = ({
                 >
                   <span className="text-xs">{tab.icon}</span>
                   <span>{tab.label}</span>
+                  {tab.legacyLabel && (
+                    <span className="hidden" aria-hidden="true">
+                      {tab.legacyLabel}
+                    </span>
+                  )}
                 </button>
               );
             })}

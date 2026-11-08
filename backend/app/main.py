@@ -55,6 +55,7 @@ from app.api.v1.collections import (
     collections_router,
 )
 from app.api.v1.query_history import router as query_history_router
+from app.api.v1.guest import router as guest_router
 
 app.include_router(query_router)
 app.include_router(admin_router)
@@ -63,6 +64,7 @@ app.include_router(workspaces_router)
 app.include_router(workspace_collections_router)
 app.include_router(collections_router)
 app.include_router(query_history_router)
+app.include_router(guest_router)
 
 
 @app.get("/health")

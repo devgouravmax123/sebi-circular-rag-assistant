@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "test": "vite build --ssr tests/presentation.test.jsx --outDir dist-test/presentation && vite build --ssr tests/collection_selector.test.jsx --outDir dist-test/collection && vite build --ssr tests/multi_tenant_workspace_ui.test.jsx --outDir dist-test/multi_tenant && vite build --ssr tests/platform_navigation_views.test.jsx --outDir dist-test/platform_navigation && node --test dist-test/presentation/presentation.test.js dist-test/collection/collection_selector.test.js dist-test/multi_tenant/multi_tenant_workspace_ui.test.js dist-test/platform_navigation/platform_navigation_views.test.js",
+    "test": "vite build --ssr tests/presentation.test.jsx --outDir dist-test/presentation && vite build --ssr tests/collection_selector.test.jsx --outDir dist-test/collection && vite build --ssr tests/multi_tenant_workspace_ui.test.jsx --outDir dist-test/multi_tenant && vite build --ssr tests/platform_navigation_views.test.jsx --outDir dist-test/platform_navigation && vite build --ssr tests/guest_mode_and_landing.test.jsx --outDir dist-test/guest_mode && node --test dist-test/presentation/presentation.test.js dist-test/collection/collection_selector.test.js dist-test/multi_tenant/multi_tenant_workspace_ui.test.js dist-test/platform_navigation/platform_navigation_views.test.js dist-test/guest_mode/guest_mode_and_landing.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

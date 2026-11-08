@@ -304,6 +304,7 @@ def run_evaluation(output_path: Optional[str] = None, dataset_path: Optional[str
             rel_candidates, query_intent, relevance_assessments = filter_relevant_candidates(
                 query=qtext,
                 candidates=retrieved_results,
+                policy_type=policy.policy_type,
             )
             relevance_accepted_count = len(rel_candidates)
             relevance_rejected_all = (relevance_accepted_count == 0)

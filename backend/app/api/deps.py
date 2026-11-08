@@ -1,8 +1,10 @@
 """
 Authentication and database session dependencies for FastAPI (Milestone 8 - Task 8.2).
 """
+from datetime import datetime, timezone
+import hashlib
 import logging
-from typing import Generator, Optional
+from typing import Generator, Optional, Dict, Any
 import uuid
 
 from fastapi import Depends, HTTPException, Security, status
@@ -14,6 +16,8 @@ from sqlalchemy.orm import sessionmaker, Session
 from app.core.config import Settings, get_settings
 from app.core.auth import decode_access_token
 from app.models.auth import UserModel
+from app.models.guest import GuestSessionModel
+from app.services.guest_service import _memory_guest_sessions, get_guest_workspace_id
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +98,13 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    if payload.get("is_guest"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Guest sessions cannot access registered user resources. Please sign in or create an account.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     user_id_str = payload.get("sub")
     if not user_id_str:
         raise HTTPException(
@@ -171,12 +182,146 @@ def get_current_user_optional(
     """
     Resolves the authenticated user if Bearer credentials are provided.
     If no credentials are provided (anonymous request), returns None without raising 401.
+    If a valid guest token is provided, returns None (caller is a guest, not a UserModel).
     If invalid/expired credentials are provided, raises 401 to prevent spoofed/broken credentials.
     """
     if credentials is None or not credentials.credentials:
         return None
+
+    token = credentials.credentials.strip()
+    try:
+        payload = decode_access_token(token, settings)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication token has expired.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.PyJWTError as e:
+        logger.warning(f"Invalid access token rejected: {type(e).__name__}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if payload.get("is_guest"):
+        # Guest identity is handled via get_current_guest_session_optional
+        return None
+
     if db is None:
         return None
+
     return get_current_user(credentials=credentials, settings=settings, db=db)
 
 
+def get_current_guest_session_optional(
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(http_bearer_scheme),
+    settings: Settings = Depends(get_settings),
+    db: Optional[Session] = Depends(get_db_session_optional),
+) -> Optional[Dict[str, Any]]:
+    """
+    Resolves the guest session context if a valid guest Bearer token is provided.
+    If an expired or deactivated guest token is provided, raises 401.
+    If a registered user token or no credentials are provided, returns None cleanly.
+    """
+    if credentials is None or not credentials.credentials:
+        return None
+
+    token = credentials.credentials.strip()
+    try:
+        payload = decode_access_token(token, settings)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Guest session has expired (24-hour limit reached).",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.PyJWTError:
+        return None
+
+    if not payload.get("is_guest"):
+        return None
+
+    session_id_str = payload.get("session_id")
+    if not session_id_str:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Malformed guest session token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    guest_ws_id = get_guest_workspace_id(session_id_str)
+
+    # 1. Database check if available
+    if db is not None:
+        try:
+            sess_uuid = uuid.UUID(session_id_str)
+            db_sess = (
+                db.query(GuestSessionModel)
+                .filter(
+                    GuestSessionModel.id == sess_uuid,
+                    GuestSessionModel.session_token_hash == token_hash,
+                )
+                .first()
+            )
+            if not db_sess:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Guest session not found or terminated.",
+                )
+            if not db_sess.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Guest session has been terminated.",
+                )
+            now_utc = datetime.now(timezone.utc)
+            if db_sess.expires_at < now_utc:
+                db_sess.is_active = False
+                db.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Guest session has expired (24-hour limit reached).",
+                )
+            return {
+                "session_id": session_id_str,
+                "workspace_id": guest_ws_id,
+                "is_active": db_sess.is_active,
+                "expires_at": db_sess.expires_at,
+            }
+        except (ValueError, HTTPException):
+            raise
+        except Exception as e:
+            if db is not None:
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
+            logger.warning(f"Error resolving guest session in DB, falling back to memory: {e}")
+
+    # 2. In-memory check
+    mem_sess = _memory_guest_sessions.get(session_id_str)
+    if not mem_sess:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Guest session not found or terminated.",
+        )
+    if not mem_sess.get("is_active"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Guest session has been terminated.",
+        )
+    now_utc = datetime.now(timezone.utc)
+    if mem_sess.get("expires_at", now_utc) < now_utc:
+        mem_sess["is_active"] = False
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Guest session has expired (24-hour limit reached).",
+        )
+    return {
+        "session_id": session_id_str,
+        "workspace_id": guest_ws_id,
+        "is_active": True,
+        "expires_at": mem_sess.get("expires_at"),
+    }

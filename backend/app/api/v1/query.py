@@ -1,7 +1,7 @@
 """
 Query API router implementing POST /api/v1/query.
 """
-from typing import Optional, Set, List
+from typing import Optional, Set, List, Dict, Any
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import ValidationError
@@ -33,7 +33,7 @@ from app.schemas.manifest import (
     GroundingPolicyType,
 )
 from app.schemas.document import resolve_collection_identity
-from app.api.deps import get_db_session_optional, get_current_user_optional
+from app.api.deps import get_db_session_optional, get_current_user_optional, get_current_guest_session_optional
 from app.models.auth import UserModel, WorkspaceMembershipModel
 from app.models.collection import CollectionModel
 from app.models.query_history import QueryHistoryModel
@@ -274,6 +274,7 @@ async def query_cscrf(
     synthesis_service: Optional[SynthesisService] = Depends(get_synthesis_service),
     collection_registry: Optional[CollectionRegistry] = Depends(get_collection_registry),
     current_user: Optional[UserModel] = Depends(get_current_user_optional),
+    guest_session: Optional[Dict[str, Any]] = Depends(get_current_guest_session_optional),
     db: Optional[Session] = Depends(get_db_session_optional),
 ) -> QueryResponse:
     # Phase 10.1.20: Enforce in-memory sliding-window rate limit on public query endpoint
@@ -293,13 +294,21 @@ async def query_cscrf(
     requested_cid = request.collection_id.strip() if request.collection_id else "sebi_cscrf"
 
     # Enforce database catalog check first to determine multi-tenant ownership
-    db_col = (
-        db.query(CollectionModel)
-        .filter(func.lower(CollectionModel.id) == requested_cid.lower())
-        .first()
-        if db is not None
-        else None
-    )
+    db_col = None
+    if db is not None:
+        try:
+            db_col = (
+                db.query(CollectionModel)
+                .filter(func.lower(CollectionModel.id) == requested_cid.lower())
+                .first()
+            )
+        except Exception as e:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            logger.warning(f"Error resolving CollectionModel in DB: {e}")
+            db_col = None
 
     # Internal system collection: system_legacy_jobs is strictly unavailable for queries
     if requested_cid.lower() == "system_legacy_jobs" or (db_col and db_col.id == "system_legacy_jobs"):
@@ -310,26 +319,52 @@ async def query_cscrf(
 
     # If collection is known in the DB as private (not public / not system), authorize strictly
     if db_col and (not db_col.is_public and not db_col.is_system):
-        if current_user is None:
+        if current_user is not None:
+            # Check active workspace membership for current_user
+            membership = (
+                db.query(WorkspaceMembershipModel)
+                .filter(
+                    WorkspaceMembershipModel.workspace_id == db_col.workspace_id,
+                    WorkspaceMembershipModel.user_id == current_user.id,
+                )
+                .first()
+            )
+            if not membership:
+                logger.warning(
+                    f"Unauthorized private collection query attempt: user={current_user.id} col={db_col.id} ws={db_col.workspace_id}"
+                )
+                # Generic 404 to eliminate tenant enumeration
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Collection not found.",
+                )
+        elif guest_session is not None:
+            # Verify collection belongs to this guest session's workspace
+            if db_col.workspace_id != guest_session.get("workspace_id"):
+                logger.warning(
+                    f"Unauthorized guest collection query attempt: session={guest_session.get('session_id')} col={db_col.id} ws={db_col.workspace_id}"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Collection not found.",
+                )
+        else:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication required to access private collection.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        # Check active workspace membership for current_user
-        membership = (
-            db.query(WorkspaceMembershipModel)
-            .filter(
-                WorkspaceMembershipModel.workspace_id == db_col.workspace_id,
-                WorkspaceMembershipModel.user_id == current_user.id,
+
+    # In-memory mode guest collection authorization check
+    if db is None and requested_cid.startswith("guest_col_"):
+        if guest_session is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required to access guest collection.",
+                headers={"WWW-Authenticate": "Bearer"},
             )
-            .first()
-        )
-        if not membership:
-            logger.warning(
-                f"Unauthorized private collection query attempt: user={current_user.id} col={db_col.id} ws={db_col.workspace_id}"
-            )
-            # Generic 404 to eliminate tenant enumeration
+        expected_cid = f"guest_col_{guest_session['session_id'][:8]}"
+        if requested_cid != expected_cid:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Collection not found.",
@@ -616,6 +651,51 @@ async def query_cscrf(
                     except Exception:
                         pass
                 logger.error(f"Failed to persist query history for user={current_user.id} col={resolved_cid}: {e}")
+        elif guest_session is not None:
+            try:
+                from app.services.guest_service import _memory_guest_history
+                from app.models.guest import GuestSessionModel
+                import uuid as _uuid_mod
+                from datetime import datetime as _dt_mod, timezone as _tz_mod
+                sid = guest_session.get("session_id")
+                if sid:
+                    ghist = _memory_guest_history.get(sid, [])
+                    history_entry = {
+                        "id": f"ghist_{_uuid_mod.uuid4().hex[:8]}",
+                        "query_text": query,
+                        "collection_id": resolved_cid,
+                        "disposition": resp.disposition.value if hasattr(resp.disposition, "value") else str(resp.disposition),
+                        "answer_text": resp.answer_text,
+                        "created_at": _dt_mod.now(_tz_mod.utc).isoformat(),
+                        "citations_count": len(resp.verified_excerpts),
+                    }
+                    ghist.insert(0, history_entry)
+                    _memory_guest_history[sid] = ghist
+                    if db is not None:
+                        try:
+                            from app.models.guest import GuestQueryHistoryModel
+                            db_entry = GuestQueryHistoryModel(
+                                id=_uuid_mod.uuid4(),
+                                session_id=_uuid_mod.UUID(sid),
+                                collection_id=resolved_cid,
+                                query_text=query,
+                                disposition=resp.disposition.value if hasattr(resp.disposition, "value") else str(resp.disposition),
+                                answer_text=resp.answer_text,
+                                citations_count=len(resp.verified_excerpts),
+                            )
+                            db.add(db_entry)
+                            sess_m = db.query(GuestSessionModel).filter(GuestSessionModel.id == _uuid_mod.UUID(sid)).first()
+                            if sess_m:
+                                sess_m.queries_count = len(ghist)
+                            db.commit()
+                        except Exception as dbe:
+                            try:
+                                db.rollback()
+                            except Exception:
+                                pass
+                            logger.warning(f"Error persisting guest query history to DB: {dbe}")
+            except Exception as e:
+                logger.warning(f"Failed to record guest query history: {e}")
 
     if scope_eval.status == ScopeMatchStatus.EXPLICIT_MISMATCH or intent == QueryIntent.OUT_OF_SCOPE_OR_UNESTABLISHED:
         abstention_msg = scope_eval.reason or f"Query subject is outside the scope of the {corpus_label}."

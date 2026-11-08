@@ -1036,20 +1036,34 @@ class IngestionWorker:
                 with self._active_job_lock:
                     self._current_job_id = None
 
-    def run_loop(self, max_jobs: Optional[int] = None) -> int:
+    def run_loop(
+        self,
+        max_jobs: Optional[int] = None,
+        exit_when_idle: bool = False,
+        timeout_seconds: Optional[float] = None,
+    ) -> int:
         """
-        Run the worker loop until stopped or max_jobs processed.
+        Run the worker loop until stopped, max_jobs processed, queue drained, or timeout reached.
         Returns the number of jobs processed.
         """
         processed_count = 0
+        start_time = time.time()
         while not self._stop_event.is_set():
             if max_jobs is not None and processed_count >= max_jobs:
+                logger.info(f"Worker {self.worker_id} processed requested max_jobs limit ({max_jobs}). Stopping loop.")
+                break
+
+            if timeout_seconds is not None and (time.time() - start_time) >= timeout_seconds:
+                logger.info(f"Worker {self.worker_id} reached execution timeout ({timeout_seconds}s). Stopping loop.")
                 break
 
             result = self.run_once()
             if result:
                 processed_count += 1
             else:
+                if exit_when_idle:
+                    logger.info(f"Worker {self.worker_id} found no eligible queued jobs (exit_when_idle=True). Exiting cleanly.")
+                    break
                 # Idle backoff
                 self._stop_event.wait(timeout=self.poll_interval_seconds)
 

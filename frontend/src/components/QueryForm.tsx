@@ -43,20 +43,26 @@ const SEBI_EXAMPLE_QUERIES = [
 
 const GENERAL_EXAMPLE_QUERIES = [
   {
-    label: 'Data Mesh Governance',
+    label: 'Key Findings & Conclusions',
+    query: 'What are the key findings and conclusions?',
+    top_k: 5,
+    include_superseded: false,
+  },
+  {
+    label: 'Obligations & Timelines',
+    query: 'What obligations and timelines are established?',
+    top_k: 5,
+    include_superseded: false,
+  },
+  {
+    label: 'Compliance & Reporting',
+    query: 'Summarize the compliance and reporting requirements.',
+    top_k: 5,
+    include_superseded: false,
+  },
+  {
+    label: 'Architecture & Principles',
     query: 'What are the core principles and data domain ownership model in the Data Mesh architecture?',
-    top_k: 5,
-    include_superseded: false,
-  },
-  {
-    label: 'Production Backup SLAs',
-    query: 'What are the recovery point objectives (RPO) and recovery time objectives (RTO) for production clusters?',
-    top_k: 5,
-    include_superseded: false,
-  },
-  {
-    label: 'Access Control & MFA',
-    query: 'What are the mandatory multi-factor authentication requirements for internal corporate access?',
     top_k: 5,
     include_superseded: false,
   },

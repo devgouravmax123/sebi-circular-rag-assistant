@@ -76,6 +76,7 @@ export interface WorkspaceCollectionCreateInput {
 export type IngestionJobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'duplicate';
 
 export interface CollectionIngestionJob {
+  id?: string;
   job_id: string;
   document_id: string;
   workspace_id: string;
@@ -95,10 +96,13 @@ export interface CollectionIngestionJobListResponse {
 }
 
 export interface CollectionDocument {
+  id?: string;
   document_id: string;
   title: string;
   circular_number?: string | null;
   source_url?: string;
+  source_uri?: string;
+  file_size_bytes?: number;
   workspace_id?: string | null;
   collection_id?: string | null;
   created_at: string;

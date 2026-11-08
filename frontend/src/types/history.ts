@@ -11,6 +11,8 @@ export interface QueryHistoryItem {
   verified_excerpts_count: number;
   technical_validation_passed: boolean;
   created_at: string;
+  answer_preview?: string | null;
+  citation_count?: number;
 }
 
 export interface QueryHistoryDetail extends QueryHistoryItem {

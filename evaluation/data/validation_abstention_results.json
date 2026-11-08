@@ -9,6 +9,7 @@
   "unanswerable_incorrectly_answered": 0,
   "false_abstention_rate": 0.0,
   "unanswerable_abstention_rate": 1.0,
+  "evidence_grounding_quality": null,
   "per_query_results": [
     {
       "query_id": "val_ans_01_soc_retention_days",
@@ -16,9 +17,21 @@
       "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
       "verified_excerpts": 5,
       "historical_superseded": 0,
-      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf). Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
       "abstention_reason": null,
-      "evaluation_outcome": "ACCEPTED (CORRECT)"
+      "evaluation_outcome": "ACCEPTED (CORRECT)",
+      "retrieved_verified_chunk_ids": [
+        "sebi_cscrf_2024_113_p97_81",
+        "sebi_cscrf_2024_113_p68_57",
+        "sebi_cscrf_2024_113_p118_98",
+        "sebi_cscrf_2024_113_p99_82",
+        "sebi_cscrf_2024_113_p116_97"
+      ],
+      "emitted_citations": [
+        "sebi_cscrf_2024_113_p97_81",
+        "sebi_cscrf_2024_113_p68_57",
+        "sebi_cscrf_2024_113_p118_98"
+      ]
     },
     {
       "query_id": "val_ans_02_ciso_direct_reporting",
@@ -26,9 +39,15 @@
       "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
       "verified_excerpts": 1,
       "historical_superseded": 0,
-      "summary_narrative": "Qualified Historical Excerpts: 1 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "summary_narrative": "Qualified Historical Excerpts: 1 excerpt(s) verified as authentic text from SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf). Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
       "abstention_reason": null,
-      "evaluation_outcome": "ACCEPTED (CORRECT)"
+      "evaluation_outcome": "ACCEPTED (CORRECT)",
+      "retrieved_verified_chunk_ids": [
+        "sebi_cscrf_2024_113_p80_67"
+      ],
+      "emitted_citations": [
+        "sebi_cscrf_2024_113_p80_67"
+      ]
     },
     {
       "query_id": "val_ans_03_march_2025_timeline_relief",
@@ -36,9 +55,20 @@
       "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
       "verified_excerpts": 4,
       "historical_superseded": 0,
-      "summary_narrative": "Qualified Historical Excerpts: 4 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "summary_narrative": "Qualified Historical Excerpts: 4 excerpt(s) verified as authentic text from SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf). Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
       "abstention_reason": null,
-      "evaluation_outcome": "ACCEPTED (CORRECT)"
+      "evaluation_outcome": "ACCEPTED (CORRECT)",
+      "retrieved_verified_chunk_ids": [
+        "sebi_cscrf_2025_045_p1_0",
+        "sebi_cscrf_2025_119_p1_0",
+        "sebi_cscrf_2025_060_p6_4",
+        "sebi_cscrf_2025_060_p1_0"
+      ],
+      "emitted_citations": [
+        "sebi_cscrf_2025_045_p1_0",
+        "sebi_cscrf_2025_119_p1_0",
+        "sebi_cscrf_2025_060_p6_4"
+      ]
     },
     {
       "query_id": "val_ans_04_isolated_ransomware_backups",
@@ -46,9 +76,17 @@
       "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
       "verified_excerpts": 2,
       "historical_superseded": 0,
-      "summary_narrative": "Qualified Historical Excerpts: 2 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "summary_narrative": "Qualified Historical Excerpts: 2 excerpt(s) verified as authentic text from SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf). Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
       "abstention_reason": null,
-      "evaluation_outcome": "ACCEPTED (CORRECT)"
+      "evaluation_outcome": "ACCEPTED (CORRECT)",
+      "retrieved_verified_chunk_ids": [
+        "sebi_cscrf_2024_113_p128_106",
+        "sebi_cscrf_2024_113_p127_105"
+      ],
+      "emitted_citations": [
+        "sebi_cscrf_2024_113_p128_106",
+        "sebi_cscrf_2024_113_p127_105"
+      ]
     },
     {
       "query_id": "val_ans_05_ia_ra_standalone_carveout",
@@ -56,9 +94,21 @@
       "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
       "verified_excerpts": 5,
       "historical_superseded": 0,
-      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf). Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
       "abstention_reason": null,
-      "evaluation_outcome": "ACCEPTED (CORRECT)"
+      "evaluation_outcome": "ACCEPTED (CORRECT)",
+      "retrieved_verified_chunk_ids": [
+        "sebi_cscrf_2025_060_p3_2",
+        "sebi_cscrf_2025_119_p10_7",
+        "sebi_cscrf_2024_113_p8_8",
+        "sebi_cscrf_2025_045_p1_0",
+        "sebi_cscrf_2025_096_p1_0"
+      ],
+      "emitted_citations": [
+        "sebi_cscrf_2025_060_p3_2",
+        "sebi_cscrf_2025_119_p10_7",
+        "sebi_cscrf_2024_113_p8_8"
+      ]
     },
     {
       "query_id": "val_unans_01_rbi_liquidity_coverage_ratio",
@@ -66,9 +116,11 @@
       "disposition": "CONTROLLED_ABSTENTION",
       "verified_excerpts": 0,
       "historical_superseded": 0,
-      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
-      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
-      "evaluation_outcome": "ABSTAINED (CORRECT)"
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)",
+      "retrieved_verified_chunk_ids": [],
+      "emitted_citations": []
     },
     {
       "query_id": "val_unans_02_gdpr_breach_72_hours",
@@ -76,9 +128,11 @@
       "disposition": "CONTROLLED_ABSTENTION",
       "verified_excerpts": 0,
       "historical_superseded": 0,
-      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
-      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
-      "evaluation_outcome": "ABSTAINED (CORRECT)"
+      "summary_narrative": "Controlled Abstention: Query explicitly requests requirements under EU General Data Protection Regulation (GDPR), which is outside the evidence scope of SEBI Cybersecurity and Cyber Resilience Framework.",
+      "abstention_reason": "Query explicitly requests requirements under EU General Data Protection Regulation (GDPR), which is outside the evidence scope of SEBI Cybersecurity and Cyber Resilience Framework.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)",
+      "retrieved_verified_chunk_ids": [],
+      "emitted_citations": []
     },
     {
       "query_id": "val_unans_03_hipaa_phi_encryption",
@@ -86,9 +140,11 @@
       "disposition": "CONTROLLED_ABSTENTION",
       "verified_excerpts": 0,
       "historical_superseded": 0,
-      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
-      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
-      "evaluation_outcome": "ABSTAINED (CORRECT)"
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)",
+      "retrieved_verified_chunk_ids": [],
+      "emitted_citations": []
     },
     {
       "query_id": "val_unans_04_sebi_insider_trading_trading_window",
@@ -96,9 +152,11 @@
       "disposition": "CONTROLLED_ABSTENTION",
       "verified_excerpts": 0,
       "historical_superseded": 0,
-      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
-      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
-      "evaluation_outcome": "ABSTAINED (CORRECT)"
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)",
+      "retrieved_verified_chunk_ids": [],
+      "emitted_citations": []
     },
     {
       "query_id": "val_unans_05_nist_sp_800_53_rev5_controls",
@@ -106,9 +164,11 @@
       "disposition": "CONTROLLED_ABSTENTION",
       "verified_excerpts": 0,
       "historical_superseded": 0,
-      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
-      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
-      "evaluation_outcome": "ABSTAINED (CORRECT)"
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)",
+      "retrieved_verified_chunk_ids": [],
+      "emitted_citations": []
     },
     {
       "query_id": "val_ans_06_cscrf_vapt_periodic_frequency",
@@ -116,9 +176,21 @@
       "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
       "verified_excerpts": 5,
       "historical_superseded": 0,
-      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf). Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
       "abstention_reason": null,
-      "evaluation_outcome": "ACCEPTED (CORRECT)"
+      "evaluation_outcome": "ACCEPTED (CORRECT)",
+      "retrieved_verified_chunk_ids": [
+        "sebi_cscrf_2024_113_p186_137",
+        "sebi_cscrf_2024_113_p15_13",
+        "sebi_cscrf_2024_113_p136_111",
+        "sebi_cscrf_2024_113_p132_109",
+        "sebi_cscrf_2024_113_p201_147"
+      ],
+      "emitted_citations": [
+        "sebi_cscrf_2024_113_p186_137",
+        "sebi_cscrf_2024_113_p15_13",
+        "sebi_cscrf_2024_113_p136_111"
+      ]
     },
     {
       "query_id": "val_ans_07_multifactor_admin_access_perimeter",
@@ -126,19 +198,33 @@
       "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
       "verified_excerpts": 1,
       "historical_superseded": 0,
-      "summary_narrative": "Qualified Historical Excerpts: 1 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "summary_narrative": "Qualified Historical Excerpts: 1 excerpt(s) verified as authentic text from SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf). Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
       "abstention_reason": null,
-      "evaluation_outcome": "ACCEPTED (CORRECT)"
+      "evaluation_outcome": "ACCEPTED (CORRECT)",
+      "retrieved_verified_chunk_ids": [
+        "sebi_cscrf_2024_113_p61_49"
+      ],
+      "emitted_citations": [
+        "sebi_cscrf_2024_113_p61_49"
+      ]
     },
     {
       "query_id": "val_ans_08_board_approval_ciso_appointment",
       "answerability": "answerable",
       "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
-      "verified_excerpts": 3,
+      "verified_excerpts": 2,
       "historical_superseded": 0,
-      "summary_narrative": "Qualified Historical Excerpts: 3 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "summary_narrative": "Qualified Historical Excerpts: 2 excerpt(s) verified as authentic text from SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf). Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
       "abstention_reason": null,
-      "evaluation_outcome": "ACCEPTED (CORRECT)"
+      "evaluation_outcome": "ACCEPTED (CORRECT)",
+      "retrieved_verified_chunk_ids": [
+        "sebi_cscrf_2024_113_p80_67",
+        "sebi_cscrf_2024_113_p53_42"
+      ],
+      "emitted_citations": [
+        "sebi_cscrf_2024_113_p80_67",
+        "sebi_cscrf_2024_113_p53_42"
+      ]
     },
     {
       "query_id": "val_ans_09_tradable_asset_aum_threshold_pms",
@@ -146,9 +232,21 @@
       "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
       "verified_excerpts": 5,
       "historical_superseded": 0,
-      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "summary_narrative": "Qualified Historical Excerpts: 5 excerpt(s) verified as authentic text from SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf). Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
       "abstention_reason": null,
-      "evaluation_outcome": "ACCEPTED (CORRECT)"
+      "evaluation_outcome": "ACCEPTED (CORRECT)",
+      "retrieved_verified_chunk_ids": [
+        "sebi_cscrf_2025_060_p3_2",
+        "sebi_cscrf_2025_119_p9_6",
+        "sebi_cscrf_2024_113_p42_33",
+        "sebi_cscrf_2024_113_p34_27",
+        "sebi_cscrf_2025_045_p1_0"
+      ],
+      "emitted_citations": [
+        "sebi_cscrf_2025_060_p3_2",
+        "sebi_cscrf_2025_119_p9_6",
+        "sebi_cscrf_2024_113_p42_33"
+      ]
     },
     {
       "query_id": "val_ans_10_account_lockout_failed_logins",
@@ -156,9 +254,17 @@
       "disposition": "QUALIFIED_HISTORICAL_EXCERPTS",
       "verified_excerpts": 2,
       "historical_superseded": 0,
-      "summary_narrative": "Qualified Historical Excerpts: 2 excerpt(s) verified as authentic text from SEBI regulatory corpus. Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
+      "summary_narrative": "Qualified Historical Excerpts: 2 excerpt(s) verified as authentic text from SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf). Provisions with UNRESOLVED status reflect historical circular content; active legal currency is not independently established beyond the pilot.",
       "abstention_reason": null,
-      "evaluation_outcome": "ACCEPTED (CORRECT)"
+      "evaluation_outcome": "ACCEPTED (CORRECT)",
+      "retrieved_verified_chunk_ids": [
+        "sebi_cscrf_2024_113_p92_77",
+        "sebi_cscrf_2024_113_p159_124"
+      ],
+      "emitted_citations": [
+        "sebi_cscrf_2024_113_p92_77",
+        "sebi_cscrf_2024_113_p159_124"
+      ]
     },
     {
       "query_id": "val_unans_06_pci_dss_pan_truncation",
@@ -166,9 +272,11 @@
       "disposition": "CONTROLLED_ABSTENTION",
       "verified_excerpts": 0,
       "historical_superseded": 0,
-      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
-      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
-      "evaluation_outcome": "ABSTAINED (CORRECT)"
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)",
+      "retrieved_verified_chunk_ids": [],
+      "emitted_citations": []
     },
     {
       "query_id": "val_unans_07_cobit_governance_objectives_edm",
@@ -176,9 +284,11 @@
       "disposition": "CONTROLLED_ABSTENTION",
       "verified_excerpts": 0,
       "historical_superseded": 0,
-      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
-      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
-      "evaluation_outcome": "ABSTAINED (CORRECT)"
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)",
+      "retrieved_verified_chunk_ids": [],
+      "emitted_citations": []
     },
     {
       "query_id": "val_unans_08_generic_cyber_risk_controls",
@@ -186,9 +296,11 @@
       "disposition": "CONTROLLED_ABSTENTION",
       "verified_excerpts": 0,
       "historical_superseded": 0,
-      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
-      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
-      "evaluation_outcome": "ABSTAINED (CORRECT)"
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)",
+      "retrieved_verified_chunk_ids": [],
+      "emitted_citations": []
     },
     {
       "query_id": "val_unans_09_algo_colocation_latency_nanoseconds",
@@ -196,9 +308,11 @@
       "disposition": "CONTROLLED_ABSTENTION",
       "verified_excerpts": 0,
       "historical_superseded": 0,
-      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
-      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
-      "evaluation_outcome": "ABSTAINED (CORRECT)"
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)",
+      "retrieved_verified_chunk_ids": [],
+      "emitted_citations": []
     },
     {
       "query_id": "val_unans_10_cyber_insurance_coverage_sum_insured",
@@ -206,9 +320,11 @@
       "disposition": "CONTROLLED_ABSTENTION",
       "verified_excerpts": 0,
       "historical_superseded": 0,
-      "summary_narrative": "Controlled Abstention: Insufficient evidence found in the SEBI regulatory corpus to substantiate an answer for this query.",
-      "abstention_reason": "Insufficient evidence: candidate passages in the SEBI regulatory corpus do not substantively cover the query topic.",
-      "evaluation_outcome": "ABSTAINED (CORRECT)"
+      "summary_narrative": "Controlled Abstention: Insufficient evidence found in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) to substantiate an answer for this query.",
+      "abstention_reason": "Insufficient evidence: candidate passages in SEBI Cybersecurity and Cyber Resilience Framework (sebi_cscrf) do not substantively cover the query topic.",
+      "evaluation_outcome": "ABSTAINED (CORRECT)",
+      "retrieved_verified_chunk_ids": [],
+      "emitted_citations": []
     }
   ]
 }

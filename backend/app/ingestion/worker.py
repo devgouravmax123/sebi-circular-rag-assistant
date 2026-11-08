@@ -71,11 +71,14 @@ def run_worker_daemon(
     lease_timeout: float = 60.0,
     stale_recovery_interval: float = 30.0,
     max_jobs: Optional[int] = None,
+    exit_when_idle: bool = False,
+    timeout_seconds: Optional[float] = None,
     worker_id: Optional[str] = None,
 ) -> int:
     """
     Supervised worker loop execution.
     Attaches OS signal handlers for clean termination.
+    Supports continuous daemon mode or bounded batch execution mode.
     """
     settings = get_settings()
     logger.info(f"Initializing IngestionWorker in environment '{settings.environment}'...")
@@ -109,7 +112,8 @@ def run_worker_daemon(
 
     logger.info(
         f"Ingestion worker '{worker.worker_id}' started. Polling every {poll_interval}s "
-        f"(lease_timeout={lease_timeout}s, stale_recovery={stale_recovery_interval}s, max_jobs={max_jobs or 'unlimited'})."
+        f"(lease_timeout={lease_timeout}s, stale_recovery={stale_recovery_interval}s, "
+        f"max_jobs={max_jobs or 'unlimited'}, exit_when_idle={exit_when_idle}, timeout={timeout_seconds or 'none'})."
     )
 
     processed = 0
@@ -119,7 +123,11 @@ def run_worker_daemon(
         if cleaned_orphans > 0:
             logger.info(f"Cleaned up {cleaned_orphans} orphaned staging file(s) on worker startup.")
 
-        processed = worker.run_loop(max_jobs=max_jobs)
+        processed = worker.run_loop(
+            max_jobs=max_jobs,
+            exit_when_idle=exit_when_idle,
+            timeout_seconds=timeout_seconds,
+        )
         logger.info(f"Worker loop stopped gracefully. Processed {processed} total job(s).")
         return 0
     except Exception as loop_err:
@@ -142,6 +150,8 @@ def main() -> int:
     parser.add_argument("--lease-timeout", type=float, default=60.0, help="Lease timeout in seconds (default: 60.0).")
     parser.add_argument("--stale-recovery-interval", type=float, default=30.0, help="Stale recovery check interval in seconds (default: 30.0).")
     parser.add_argument("--max-jobs", type=int, default=None, help="Stop after processing max jobs (default: run indefinitely).")
+    parser.add_argument("--exit-when-idle", action="store_true", default=False, help="Exit cleanly when queue is empty instead of polling indefinitely.")
+    parser.add_argument("--timeout-seconds", type=float, default=None, help="Stop after maximum wall-clock seconds.")
     parser.add_argument("--worker-id", type=str, default=None, help="Explicit worker ID identifier.")
     args = parser.parse_args()
 
@@ -150,6 +160,8 @@ def main() -> int:
         lease_timeout=args.lease_timeout,
         stale_recovery_interval=args.stale_recovery_interval,
         max_jobs=args.max_jobs,
+        exit_when_idle=args.exit_when_idle,
+        timeout_seconds=args.timeout_seconds,
         worker_id=args.worker_id,
     )
 

@@ -493,6 +493,34 @@ class IndexPublisher:
                     message=f"Dry run: candidate snapshot built and validated successfully for collection '{self.collection_id}'.",
                 )
 
+            # Anti-Race Guard: Verify guest collection was not purged during snapshot build
+            if self.collection_id.startswith("guest_col_"):
+                session_factory = getattr(self.factory, "session_factory", None)
+                if session_factory is not None:
+                    try:
+                        with session_factory() as sess:
+                            from app.models.collection import CollectionModel
+                            col_exists = (
+                                sess.query(CollectionModel)
+                                .filter(CollectionModel.id == self.collection_id)
+                                .first()
+                            )
+                            if not col_exists:
+                                logger.warning(
+                                    f"Aborting snapshot activation: guest collection '{self.collection_id}' was purged during build."
+                                )
+                                shutil.rmtree(staging_dir, ignore_errors=True)
+                                return PublicationResult(
+                                    success=False,
+                                    snapshot_id=snap_id,
+                                    total_documents=0,
+                                    total_chunks=0,
+                                    message=f"Collection '{self.collection_id}' was purged prior to snapshot activation.",
+                                    error_details="CollectionPurgedRaceCondition",
+                                )
+                    except Exception as e:
+                        logger.warning(f"Error checking guest collection active status in publisher: {e}")
+
             # 5. Atomic Activation: move staging to snapshots/<snap_id>
             final_snapshot_dir = self.snapshots_dir / snap_id
             if final_snapshot_dir.exists():

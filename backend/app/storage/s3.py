@@ -334,6 +334,43 @@ class S3StorageAdapter(BaseStorageAdapter):
             logger.warning(f"Failed to delete S3 object '{file_path_or_uri}': {e}")
             return False
 
+    def delete_prefix(self, prefix: str) -> int:
+        """
+        Safely deletes all objects in the bucket whose key matches the given prefix.
+        Handles pagination and batch deletes (up to 1000 per request).
+        Returns total count of deleted objects.
+        """
+        if not prefix:
+            return 0
+        clean_prefix = str(prefix).strip().replace("\\", "/")
+        if clean_prefix.startswith("upload://"):
+            clean_prefix = f"uploads/{clean_prefix[len('upload://'):]}"
+        elif clean_prefix.startswith("s3://"):
+            parts = clean_prefix[len("s3://"):].split("/", 1)
+            clean_prefix = parts[1] if len(parts) > 1 else ""
+        clean_prefix = clean_prefix.lstrip("/")
+
+        paginator = self.client.get_paginator("list_objects_v2")
+        deleted_count = 0
+        try:
+            for page in paginator.paginate(Bucket=self.bucket_name, Prefix=clean_prefix):
+                items = page.get("Contents", [])
+                if not items:
+                    continue
+                delete_keys = [{"Key": item["Key"]} for item in items]
+                for i in range(0, len(delete_keys), 1000):
+                    batch = delete_keys[i : i + 1000]
+                    self.client.delete_objects(
+                        Bucket=self.bucket_name,
+                        Delete={"Objects": batch, "Quiet": True},
+                    )
+                    deleted_count += len(batch)
+            logger.info(f"Deleted {deleted_count} S3 object(s) with prefix '{clean_prefix}'")
+            return deleted_count
+        except Exception as e:
+            logger.warning(f"Error deleting S3 objects with prefix '{clean_prefix}': {e}")
+            raise
+
     def exists(self, source_uri: str) -> bool:
         """Returns True if object exists in S3, False otherwise."""
         try:

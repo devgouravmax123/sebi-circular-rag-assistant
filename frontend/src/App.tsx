@@ -1,6 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { QueryRequest, QueryResponse, QueryError, CollectionSummary } from './types/query';
-import { queryRegulatoryAssistant, probeHealth, fetchCollections } from './api/client';
+import {
+  queryRegulatoryAssistant,
+  probeHealth,
+  fetchCollections,
+  recordGuestQuery,
+} from './api/client';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WorkspaceProvider, useWorkspace } from './context/WorkspaceContext';
 import { Header, type NavTab } from './components/Header';
@@ -13,10 +18,12 @@ import { DashboardView } from './components/DashboardView';
 import { CollectionsView } from './components/CollectionsView';
 import { QueryHistoryView } from './components/QueryHistoryView';
 import { WorkspaceSettingsView } from './components/WorkspaceSettingsView';
+import { SessionSettingsView } from './components/SessionSettingsView';
+import { LandingPage } from './components/LandingPage';
 import { AuthModal } from './components/AuthModal';
 
 function AssistantMain() {
-  const { token } = useAuth();
+  const { token, isAuthenticated, isGuest, guestToken, refreshGuestStatus } = useAuth();
   const { workspaceCollections, isCollectionsLoading: isWsColsLoading } = useWorkspace();
 
   // Active view tab
@@ -137,10 +144,29 @@ function AssistantMain() {
     setError(null);
     setLastSubmittedRequest(request);
 
+    const authToken = token || guestToken;
+
     try {
-      const res = await queryRegulatoryAssistant(request, token);
+      const res = await queryRegulatoryAssistant(request, authToken);
       setResponse(res);
       setApiStatus('connected');
+
+      // Record query history in guest session if in guest mode
+      if (isGuest && guestToken) {
+        try {
+          await recordGuestQuery(
+            request.query,
+            request.collection_id || 'sebi_cscrf',
+            res.disposition,
+            res.answer_text || undefined,
+            res.verified_excerpts?.length || 0,
+            guestToken
+          );
+          await refreshGuestStatus();
+        } catch (recErr) {
+          console.warn('Failed to record guest query history:', recErr);
+        }
+      }
     } catch (err: unknown) {
       const queryErr = err as QueryError;
       setError(queryErr);
@@ -180,6 +206,16 @@ function AssistantMain() {
   const activeCollection =
     combinedCollections.find((c) => c.collection_id === selectedCollectionId) || null;
 
+  // 1. PRODUCT ENTRY EXPERIENCE: If unauthenticated and NOT in guest mode, show the dedicated Landing Page!
+  if (!isAuthenticated && !isGuest) {
+    return (
+      <LandingPage
+        onOpenAuth={handleOpenAuthModal}
+      />
+    );
+  }
+
+  // 2. ACTIVE APPLICATION: When authenticated or in active guest mode
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-slate-950">
       {/* Header with connection indicator, workspace switcher, and user auth */}
@@ -187,7 +223,13 @@ function AssistantMain() {
         apiStatus={apiStatus}
         selectedCollection={activeTab === 'research' ? activeCollection : null}
         activeTab={activeTab}
-        onSelectTab={(tab) => setActiveTab(tab)}
+        onSelectTab={(tab) => {
+          if (tab === 'workspace' && isGuest) {
+            setActiveTab('session');
+          } else {
+            setActiveTab(tab);
+          }
+        }}
         onRetryHealth={checkHealth}
         onOpenHistory={() => setIsHistoryDrawerOpen(true)}
       />
@@ -204,10 +246,18 @@ function AssistantMain() {
           />
         )}
 
-        {/* Tab 2: AI Research View */}
+        {/* Tab 2: Collections / My Documents View */}
+        {activeTab === 'collections' && (
+          <CollectionsView
+            onNavigateToResearch={handleSelectCollectionAndResearch}
+            onOpenAuthModal={handleOpenAuthModal}
+          />
+        )}
+
+        {/* Tab 3: Ask AI View */}
         {activeTab === 'research' && (
           <div className="space-y-6 animate-fadeIn">
-            {/* Scope & Grounding Disclosure Banner */}
+            {/* Scope & Grounding Disclosure Banner (Only when SEBI is selected) */}
             <DisclosureBanner selectedCollection={activeCollection} />
 
             {/* Main Search and Configuration Form */}
@@ -238,15 +288,7 @@ function AssistantMain() {
           </div>
         )}
 
-        {/* Tab 3: Collections & Ingestion View */}
-        {activeTab === 'collections' && (
-          <CollectionsView
-            onNavigateToResearch={handleSelectCollectionAndResearch}
-            onOpenAuthModal={handleOpenAuthModal}
-          />
-        )}
-
-        {/* Tab 4: Query History View */}
+        {/* Tab 4: Research History View */}
         {activeTab === 'history' && (
           <QueryHistoryView
             onReplayQuery={handleReplayHistoryQuery}
@@ -254,9 +296,17 @@ function AssistantMain() {
           />
         )}
 
-        {/* Tab 5: Workspace Settings View */}
-        {activeTab === 'workspace' && (
+        {/* Tab 5: Workspace Settings View (Registered Users Only) */}
+        {activeTab === 'workspace' && !isGuest && (
           <WorkspaceSettingsView onOpenAuthModal={handleOpenAuthModal} />
+        )}
+
+        {/* Tab 6: Session Settings / Account Settings View */}
+        {activeTab === 'session' && (
+          <SessionSettingsView
+            onOpenAuthModal={handleOpenAuthModal}
+            onSessionEnded={() => setActiveTab('dashboard')}
+          />
         )}
       </main>
 
@@ -281,7 +331,7 @@ function AssistantMain() {
             Document Intelligence &amp; Multi-Tenant AI Research Platform.
           </p>
           <p className="text-[11px] text-slate-600">
-            Answers are strictly limited to the selected indexed collection and verified evidence citations. SEBI CSCRF materials are not affiliated with or endorsed by SEBI. Excerpts represent mechanical text grounding only.
+            Answers are strictly limited to the selected indexed collection and verified evidence citations. Pre-indexed regulatory materials are demonstration reference corpora.
           </p>
         </div>
       </footer>
