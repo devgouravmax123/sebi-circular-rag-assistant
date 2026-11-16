@@ -5,13 +5,15 @@ Path prefix: /api/v1/auth
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Security, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 
 from app.core.config import Settings, get_settings
 from app.core.auth import hash_password, verify_password, create_access_token
+from app.core.firebase import verify_firebase_id_token
 from app.api.deps import get_db_session, get_current_user
 from app.models.auth import UserModel
 from app.schemas.auth import (
@@ -20,11 +22,13 @@ from app.schemas.auth import (
     UserResponse,
     TokenResponse,
     MessageResponse,
+    LinkLegacyAccountRequest,
 )
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+http_bearer_scheme = HTTPBearer(auto_error=False)
 
 
 @router.post(
@@ -161,4 +165,91 @@ def get_me(
     Strictly protected by bearer token authentication.
     """
     return UserResponse.model_validate(current_user)
+
+
+@router.post(
+    "/link-legacy",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Safely link an existing password-based account to Firebase identity",
+)
+def link_legacy_account(
+    payload: LinkLegacyAccountRequest,
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(http_bearer_scheme),
+    db: Session = Depends(get_db_session),
+) -> UserResponse:
+    """
+    Explicit, cryptographically safe migration endpoint for legacy password-based accounts.
+    Requires:
+    1. Valid, verified Firebase ID token in Authorization header.
+    2. Confirmation of the previous password for the legacy account.
+    Upon successful password verification, sets firebase_uid on the legacy account,
+    preserving all previous workspaces, documents, and query history.
+    """
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Firebase ID token required.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = credentials.credentials.strip()
+    try:
+        decoded = verify_firebase_id_token(token)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid Firebase token: {e}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not decoded.get("email_verified"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email verification required before linking existing account.",
+        )
+
+    firebase_uid = decoded["uid"]
+    email = (decoded.get("email") or "").strip().lower()
+
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Firebase token has no associated email address.",
+        )
+
+    legacy_user = db.query(UserModel).filter(func.lower(UserModel.email) == email).first()
+    if not legacy_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No existing account found with this email address.",
+        )
+
+    if legacy_user.firebase_uid:
+        if legacy_user.firebase_uid == firebase_uid:
+            return UserResponse.model_validate(legacy_user)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This account is already linked to a different Firebase identity.",
+        )
+
+    if not legacy_user.hashed_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Account does not have a legacy password set.",
+        )
+
+    if not verify_password(payload.password, legacy_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password for existing account.",
+        )
+
+    legacy_user.firebase_uid = firebase_uid
+    legacy_user.email_verified = True
+    db.commit()
+    db.refresh(legacy_user)
+
+    logger.info(f"Legacy account {legacy_user.id} successfully linked to Firebase UID.")
+    return UserResponse.model_validate(legacy_user)
 

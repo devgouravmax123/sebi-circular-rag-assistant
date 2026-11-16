@@ -55,7 +55,14 @@ class UserResponse(BaseModel):
     email: str
     full_name: Optional[str] = None
     is_active: bool
+    email_verified: bool = False
+    firebase_uid: Optional[str] = None
     created_at: datetime
+
+
+class LinkLegacyAccountRequest(BaseModel):
+    """Request payload to link an existing legacy password-based account to Firebase identity."""
+    password: str = Field(..., description="Previous password for the legacy account")
 
 
 class TokenResponse(BaseModel):

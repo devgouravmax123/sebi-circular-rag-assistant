@@ -98,7 +98,7 @@ export function LandingPage({ onStartGuest, onOpenAuth }: LandingPageProps) {
         {/* Subtitle */}
         <p className="mt-6 text-base sm:text-xl text-slate-300 max-w-3xl leading-relaxed">
           Evidence-grounded AI research for business, technical, legal, and operational documents.
-          Every answer is backed by exact source citations and verified quotes—with zero hallucinations.
+          Every answer is backed by exact source citations and verified quotes—evidence-grounded with controlled abstention when sources do not cover the query.
         </p>
 
         {/* CTAs */}
@@ -146,7 +146,7 @@ export function LandingPage({ onStartGuest, onOpenAuth }: LandingPageProps) {
               </p>
             </div>
             <div className="mt-6 pt-4 border-t border-slate-800/80 text-xs font-medium text-cyan-400">
-              Zero Unverified Claims
+              Deterministic Citation Verification
             </div>
           </div>
 
@@ -272,12 +272,14 @@ export function LandingPage({ onStartGuest, onOpenAuth }: LandingPageProps) {
         </div>
       </footer>
 
-      {/* Auth Modal for Sign In / Sign Up */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-        defaultMode={authMode}
-      />
+      {/* Auth Modal for Sign In / Sign Up when used standalone */}
+      {!onOpenAuth && (
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          defaultMode={authMode}
+        />
+      )}
     </div>
   );
 }

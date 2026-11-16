@@ -75,6 +75,10 @@ class Settings(BaseModel):
     auth_secret_key: Optional[str] = Field(default_factory=lambda: os.getenv("AUTH_SECRET_KEY"), repr=False)
     auth_token_expire_minutes: int = Field(default_factory=lambda: int(os.getenv("AUTH_TOKEN_EXPIRE_MINUTES", "60")))
     auth_algorithm: str = Field(default_factory=lambda: os.getenv("AUTH_ALGORITHM", "HS256"))
+    # Milestone 18: Firebase Authentication Configuration
+    firebase_project_id: Optional[str] = Field(default_factory=lambda: os.getenv("FIREBASE_PROJECT_ID"))
+    firebase_service_account_json: Optional[str] = Field(default_factory=lambda: os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON"), repr=False)
+    firebase_credentials_path: Optional[str] = Field(default_factory=lambda: os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
 
 
     @property

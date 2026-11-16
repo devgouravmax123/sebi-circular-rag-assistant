@@ -9,6 +9,8 @@ export interface User {
   role?: string;
   is_active: boolean;
   created_at?: string;
+  firebase_uid?: string | null;
+  email_verified?: boolean;
 }
 
 export interface AuthResponse {

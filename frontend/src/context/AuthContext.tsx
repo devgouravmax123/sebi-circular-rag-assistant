@@ -6,10 +6,22 @@ import {
   authSignup,
   authLogout,
   authGetMe,
+  authLinkLegacy,
   initiateGuestSession,
   fetchGuestSessionStatus,
   terminateGuestSession,
 } from '../api/client';
+import {
+  isFirebaseClientConfigured,
+  firebaseRegisterUser,
+  firebaseSignInUser,
+  firebaseSendVerificationEmail,
+  firebaseCheckEmailVerification,
+  firebaseSendPasswordReset,
+  firebaseSignOutUser,
+  firebaseGetIdToken,
+  onAuthStateSubscription,
+} from '../api/firebase';
 
 const TOKEN_STORAGE_KEY = 'sebi_rag_access_token';
 const GUEST_TOKEN_STORAGE_KEY = 'doc_intel_guest_token';
@@ -23,6 +35,16 @@ interface AuthContextValue {
   signup: (credentials: SignupCredentials) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+
+  // Firebase Email Verification & Recovery (Milestone 18)
+  isEmailVerified: boolean;
+  isVerificationPending: boolean;
+  pendingVerificationEmail: string | null;
+  checkEmailVerification: () => Promise<boolean>;
+  resendVerificationEmail: () => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
+  linkLegacyAccount: (password: string) => Promise<void>;
+  pendingLegacyLinkToken: string | null;
 
   // Ephemeral Guest Mode (Milestone 11)
   isGuest: boolean;
@@ -42,6 +64,15 @@ const defaultAuthValue: AuthContextValue = {
   signup: async () => {},
   logout: async () => {},
   refreshUser: async () => {},
+
+  isEmailVerified: false,
+  isVerificationPending: false,
+  pendingVerificationEmail: null,
+  checkEmailVerification: async () => false,
+  resendVerificationEmail: async () => {},
+  sendPasswordReset: async () => {},
+  linkLegacyAccount: async () => {},
+  pendingLegacyLinkToken: null,
 
   isGuest: false,
   guestToken: null,
@@ -73,12 +104,91 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [guestSession, setGuestSession] = useState<GuestSessionStatusResponse | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  // Email verification state
+  const [isVerificationPending, setIsVerificationPending] = useState<boolean>(false);
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
+  const [pendingLegacyLinkToken, setPendingLegacyLinkToken] = useState<string | null>(null);
+
   // Restore registered user session or guest session on startup
   useEffect(() => {
     let ignore = false;
 
-    async function initSessions() {
-      // 1. If registered token exists, validate it
+    // 1. If Firebase is configured, subscribe to Firebase auth state
+    if (isFirebaseClientConfigured()) {
+      const unsubscribe = onAuthStateSubscription(async (fbUser) => {
+        if (ignore) return;
+
+        if (!fbUser) {
+          // If no Firebase user, check if we have a valid guest token
+          if (guestToken) {
+            try {
+              const status = await fetchGuestSessionStatus(guestToken);
+              if (!ignore && status.is_active && status.time_remaining_seconds > 0) {
+                setGuestSession(status);
+              } else {
+                setGuestToken(null);
+                setGuestSession(null);
+                try {
+                  localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
+                } catch {}
+              }
+            } catch {
+              if (!ignore) {
+                setGuestToken(null);
+                setGuestSession(null);
+              }
+            }
+          }
+          if (!ignore) {
+            setUser(null);
+            setToken(null);
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        if (fbUser.emailVerified) {
+          try {
+            const idToken = await fbUser.getIdToken();
+            const currentUser = await authGetMe(idToken);
+            if (!ignore) {
+              setUser(currentUser);
+              setToken(idToken);
+              setIsVerificationPending(false);
+              setPendingVerificationEmail(null);
+              try {
+                localStorage.setItem(TOKEN_STORAGE_KEY, idToken);
+                localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
+              } catch {}
+            }
+          } catch {
+            if (!ignore) {
+              setUser(null);
+              setToken(null);
+            }
+          }
+        } else {
+          if (!ignore) {
+            setIsVerificationPending(true);
+            setPendingVerificationEmail(fbUser.email);
+            setUser(null);
+            setToken(null);
+          }
+        }
+
+        if (!ignore) {
+          setIsLoading(false);
+        }
+      });
+
+      return () => {
+        ignore = true;
+        unsubscribe();
+      };
+    }
+
+    // 2. Direct backend auth fallback (offline / tests)
+    async function initFallbackSessions() {
       if (token) {
         try {
           const currentUser = await authGetMe(token);
@@ -88,20 +198,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           return;
         } catch {
-          // Token invalid, expired, or user deactivated: clear stored session
           if (!ignore) {
             setUser(null);
             setToken(null);
             try {
               localStorage.removeItem(TOKEN_STORAGE_KEY);
-            } catch {
-              // Ignore
-            }
+            } catch {}
           }
         }
       }
 
-      // 2. If no registered user, check if active guest token exists
       if (guestToken) {
         try {
           const status = await fetchGuestSessionStatus(guestToken);
@@ -113,9 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setGuestSession(null);
               try {
                 localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
-              } catch {
-                // Ignore
-              }
+              } catch {}
             }
           }
         } catch {
@@ -124,9 +228,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setGuestSession(null);
             try {
               localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
-            } catch {
-              // Ignore
-            }
+            } catch {}
           }
         }
       }
@@ -136,7 +238,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    initSessions();
+    initFallbackSessions();
 
     return () => {
       ignore = true;
@@ -155,21 +257,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setGuestSession(null);
           try {
             localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
-          } catch {
-            // Ignore
-          }
+          } catch {}
         } else {
           setGuestSession(updated);
         }
       } catch {
-        // Session expired or cleaned up
         setGuestToken(null);
         setGuestSession(null);
         try {
           localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
-        } catch {
-          // Ignore
-        }
+        } catch {}
       }
     }, 30000);
 
@@ -177,21 +274,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [guestToken, guestSession]);
 
   const login = async (credentials: LoginCredentials) => {
+    if (isFirebaseClientConfigured()) {
+      const fbUser = await firebaseSignInUser(credentials.email, credentials.password);
+      if (!fbUser.emailVerified) {
+        setPendingVerificationEmail(credentials.email);
+        setIsVerificationPending(true);
+        throw new Error('EMAIL_VERIFICATION_REQUIRED');
+      }
+
+      const idToken = await fbUser.getIdToken();
+      try {
+        const currentUser = await authGetMe(idToken);
+        setToken(idToken);
+        setUser(currentUser);
+        setIsVerificationPending(false);
+        setPendingVerificationEmail(null);
+        setPendingLegacyLinkToken(null);
+        setGuestToken(null);
+        setGuestSession(null);
+        try {
+          localStorage.setItem(TOKEN_STORAGE_KEY, idToken);
+          localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
+        } catch {}
+      } catch (err: unknown) {
+        const errStatus = (err as unknown as { status?: number })?.status;
+        if (errStatus === 409) {
+          setPendingLegacyLinkToken(idToken);
+          setPendingVerificationEmail(credentials.email);
+          throw new Error('LEGACY_ACCOUNT_NEEDS_LINKING');
+        }
+        throw err;
+      }
+      return;
+    }
+
+    // Direct backend fallback
     const res = await authLogin(credentials);
     setToken(res.access_token);
     setUser(res.user);
-    // If transitioning from guest, clear guest session
     setGuestToken(null);
     setGuestSession(null);
     try {
       localStorage.setItem(TOKEN_STORAGE_KEY, res.access_token);
       localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
-    } catch {
-      // Storage unavailable
-    }
+    } catch {}
   };
 
   const signup = async (credentials: SignupCredentials) => {
+    if (isFirebaseClientConfigured()) {
+      await firebaseRegisterUser(
+        credentials.email,
+        credentials.password,
+        credentials.full_name
+      );
+      setPendingVerificationEmail(credentials.email);
+      setIsVerificationPending(true);
+      return;
+    }
+
+    // Direct backend fallback
     const res = await authSignup(credentials);
     setToken(res.access_token);
     setUser(res.user);
@@ -200,22 +341,86 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       localStorage.setItem(TOKEN_STORAGE_KEY, res.access_token);
       localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
-    } catch {
-      // Storage unavailable
+    } catch {}
+  };
+
+  const checkEmailVerification = async (): Promise<boolean> => {
+    if (!isFirebaseClientConfigured()) return true;
+
+    const isVerified = await firebaseCheckEmailVerification();
+    if (isVerified) {
+      const idToken = await firebaseGetIdToken(true);
+      if (idToken) {
+        try {
+          const currentUser = await authGetMe(idToken);
+          setToken(idToken);
+          setUser(currentUser);
+          setIsVerificationPending(false);
+          setPendingVerificationEmail(null);
+          setGuestToken(null);
+          setGuestSession(null);
+          try {
+            localStorage.setItem(TOKEN_STORAGE_KEY, idToken);
+            localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
+          } catch {}
+          return true;
+        } catch (err: unknown) {
+          const errStatus = (err as unknown as { status?: number })?.status;
+          if (errStatus === 409) {
+            setPendingLegacyLinkToken(idToken);
+            throw new Error('LEGACY_ACCOUNT_NEEDS_LINKING');
+          }
+          throw err;
+        }
+      }
+    }
+    return false;
+  };
+
+  const resendVerificationEmail = async () => {
+    if (isFirebaseClientConfigured()) {
+      await firebaseSendVerificationEmail();
     }
   };
 
+  const sendPasswordReset = async (email: string) => {
+    if (isFirebaseClientConfigured()) {
+      await firebaseSendPasswordReset(email);
+    }
+  };
+
+  const linkLegacyAccount = async (password: string) => {
+    if (!pendingLegacyLinkToken) {
+      throw new Error('No pending authentication to link.');
+    }
+    const linkedUser = await authLinkLegacy(password, pendingLegacyLinkToken);
+    setToken(pendingLegacyLinkToken);
+    setUser(linkedUser);
+    setIsVerificationPending(false);
+    setPendingVerificationEmail(null);
+    setPendingLegacyLinkToken(null);
+    setGuestToken(null);
+    setGuestSession(null);
+    try {
+      localStorage.setItem(TOKEN_STORAGE_KEY, pendingLegacyLinkToken);
+      localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
+    } catch {}
+  };
+
   const logout = async () => {
-    if (token) {
+    if (isFirebaseClientConfigured()) {
+      await firebaseSignOutUser();
+    } else if (token) {
       await authLogout(token);
     }
     setToken(null);
     setUser(null);
+    setIsVerificationPending(false);
+    setPendingVerificationEmail(null);
+    setPendingLegacyLinkToken(null);
     try {
       localStorage.removeItem(TOKEN_STORAGE_KEY);
-    } catch {
-      // Storage unavailable
-    }
+    } catch {}
   };
 
   const refreshUser = async () => {
@@ -235,9 +440,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setGuestToken(res.token);
       try {
         localStorage.setItem(GUEST_TOKEN_STORAGE_KEY, res.token);
-      } catch {
-        // Storage unavailable
-      }
+      } catch {}
       const status = await fetchGuestSessionStatus(res.token);
       setGuestSession(status);
     } finally {
@@ -253,18 +456,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setGuestSession(null);
       try {
         localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
-      } catch {
-        // Storage unavailable
-      }
+      } catch {}
       return result;
     } catch {
       setGuestToken(null);
       setGuestSession(null);
       try {
         localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
-      } catch {
-        // Storage unavailable
-      }
+      } catch {}
       return null;
     }
   };
@@ -280,22 +479,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setGuestSession(null);
         try {
           localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
-        } catch {
-          // Ignore
-        }
+        } catch {}
       }
     } catch {
       setGuestToken(null);
       setGuestSession(null);
       try {
         localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
-      } catch {
-        // Ignore
-      }
+      } catch {}
     }
   };
-
-  const isGuest = !user && !!guestToken && !!guestSession;
 
   return (
     <AuthContext.Provider
@@ -308,7 +501,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signup,
         logout,
         refreshUser,
-        isGuest,
+
+        isEmailVerified: !!user?.email_verified,
+        isVerificationPending,
+        pendingVerificationEmail,
+        checkEmailVerification,
+        resendVerificationEmail,
+        sendPasswordReset,
+        linkLegacyAccount,
+        pendingLegacyLinkToken,
+
+        isGuest: !!guestToken,
         guestToken,
         guestSession,
         startGuestSession,
@@ -323,5 +526,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  return context || defaultAuthValue;
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 }

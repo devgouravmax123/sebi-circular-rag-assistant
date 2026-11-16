@@ -209,9 +209,16 @@ function AssistantMain() {
   // 1. PRODUCT ENTRY EXPERIENCE: If unauthenticated and NOT in guest mode, show the dedicated Landing Page!
   if (!isAuthenticated && !isGuest) {
     return (
-      <LandingPage
-        onOpenAuth={handleOpenAuthModal}
-      />
+      <>
+        <LandingPage
+          onOpenAuth={handleOpenAuthModal}
+        />
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          onClose={() => setIsAuthModalOpen(false)}
+          defaultMode={authModalMode}
+        />
+      </>
     );
   }
 

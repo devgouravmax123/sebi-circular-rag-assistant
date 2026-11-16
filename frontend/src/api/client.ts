@@ -168,6 +168,20 @@ export async function authGetMe(token: string): Promise<User> {
   return response.json();
 }
 
+export async function authLinkLegacy(password: string, token: string): Promise<User> {
+  const response = await fetch(`${API_BASE_URL}/api/v1/auth/link-legacy`, {
+    method: 'POST',
+    headers: buildHeaders(token, { 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ password }),
+  });
+
+  if (!response.ok) {
+    throw await parseErrorResponse(response, 'Failed to link legacy account.');
+  }
+
+  return response.json();
+}
+
 // ============================================================================
 // 2. Workspace & Membership APIs
 // ============================================================================
