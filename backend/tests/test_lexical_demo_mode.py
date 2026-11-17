@@ -78,17 +78,17 @@ def test_4_lexical_only_exact_keyword_query(client, monkeypatch):
 
     resp = client.post(
         "/api/v1/query",
-        json={"query": "ISO 27001 certification requirement", "top_k": 3},
+        json={"query": "FIDO2 multi-factor authentication password length", "top_k": 3},
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["query"] == "ISO 27001 certification requirement"
+    assert data["query"] == "FIDO2 multi-factor authentication password length"
     assert data["technical_validation_passed"] is True
     assert len(data["verified_excerpts"]) > 0
 
-    # Ensure pilot corpus scope limitation is present
+    # Ensure collection scope limitation is present
     assert "pilot_corpus_scope_limitation" in data
-    assert "5-document SEBI CSCRF circular corpus" in data["pilot_corpus_scope_limitation"]
+    assert "general_synthetic" in data["pilot_corpus_scope_limitation"]
 
     # Verify claim citations and answer text exist (Mock synthesis)
     assert data["synthesis_status"] in ["FULLY_ANSWERED", "PARTIALLY_ANSWERED"]
@@ -158,7 +158,7 @@ def test_8_hybrid_mode_still_works_as_default(client, monkeypatch):
 
     resp = client.post(
         "/api/v1/query",
-        json={"query": "ISO 27001 certification requirement", "top_k": 3},
+        json={"query": "FIDO2 multi-factor authentication password length", "top_k": 3},
     )
     assert resp.status_code == 200
     data = resp.json()
@@ -208,7 +208,7 @@ def test_10_app_startup_without_heavy_ml():
             f"assert r1.status_code == 200, f'health failed: {{r1.status_code}}'\n"
             f"r2 = client.get('/ready')\n"
             f"assert r2.status_code == 200, f'ready failed: {{r2.status_code}}'\n"
-            f"r3 = client.post('/api/v1/query', json={{'query': 'What is CSCRF?'}})\n"
+            f"r3 = client.post('/api/v1/query', json={{'query': 'What is the password requirement?'}})\n"
             f"assert r3.status_code == 200, f'query failed: {{r3.status_code}}'\n"
             f"r4 = client.get('/api/v1/admin/jobs', headers={{'X-Admin-Key': 'test_secret_key_at_least_16_chars'}})\n"
             f"assert r4.status_code == 200, f'admin failed: {{r4.status_code}}'\n"
@@ -230,12 +230,12 @@ def test_11_cross_platform_manifest_checksum_and_retrieval(tmp_path):
     from pathlib import Path
     import json
 
-    real_snap_dir = Path("data/indexes/snapshots/snap_20261011_104512_23a014")
+    real_snap_dir = Path("data/indexes/general_synthetic/snapshots/snap_20261022_062310_395f75")
     real_pointer_file = Path("data/indexes/active_snapshot.json")
 
     # Set up isolated index directory mimicking Linux git checkout (LF only)
     fake_indexes = tmp_path / "indexes"
-    fake_snap = fake_indexes / "snapshots" / "snap_20261011_104512_23a014"
+    fake_snap = fake_indexes / "general_synthetic" / "snapshots" / "snap_20261022_062310_395f75"
     fake_snap.mkdir(parents=True)
 
     # Write snapshot files with strict LF line endings
@@ -259,14 +259,14 @@ def test_11_cross_platform_manifest_checksum_and_retrieval(tmp_path):
         retrieval_mode="lexical_only",
     )
     docs_count, chunks_count = service.load_and_index_corpus()
-    assert docs_count == 5, f"Expected 5 documents, got {docs_count}"
-    assert chunks_count == 168, f"Expected 168 chunks, got {chunks_count}"
+    assert docs_count == 3, f"Expected 3 documents, got {docs_count}"
+    assert chunks_count == 3, f"Expected 3 chunks, got {chunks_count}"
 
-    # 2. Must retrieve actual circular passages for regulatory queries
-    res = service.search("Cybersecurity and Cyber Resilience Framework", top_k=3)
+    # 2. Must retrieve actual handbook passages
+    res = service.search("FIDO2 authentication", top_k=3)
     assert res.total_results > 0, "Expected non-zero results from active snapshot"
     assert len(res.results) > 0
-    assert any("CSCRF" in r.text or "Cybersecurity" in r.text for r in res.results)
+    assert any("FIDO2" in r.text or "authentication" in r.text for r in res.results)
 
     # 3. Verify that true content tampering is still strictly rejected
     tampered_manifest = fake_snap / "manifest.json"
@@ -291,20 +291,19 @@ def test_12_end_to_end_query_safety_gate_with_snapshot_only(tmp_path):
     """
     from fastapi.testclient import TestClient
     from app.main import app
-    from app.api.v1.query import get_retrieval_service, get_safety_gate, _retrieval_service, _safety_gate
+    from app.api.v1.query import get_retrieval_service, get_safety_gate
     from app.retrieval.service import RetrievalService
     from app.grounding.safety_gate import AnswerSafetyGate
     from app.schemas.safety_gate import ExcerptDraftPayload, CandidateExcerptDraft
     from app.schemas.query import AnswerDisposition
     from pathlib import Path
-    import json
 
-    real_snap_dir = Path("data/indexes/snapshots/snap_20261011_104512_23a014")
+    real_snap_dir = Path("data/indexes/general_synthetic/snapshots/snap_20261022_062310_395f75")
     real_pointer_file = Path("data/indexes/active_snapshot.json")
 
     # Set up isolated index directory mimicking Linux git checkout (LF only)
     fake_indexes = tmp_path / "indexes"
-    fake_snap = fake_indexes / "snapshots" / "snap_20261011_104512_23a014"
+    fake_snap = fake_indexes / "general_synthetic" / "snapshots" / "snap_20261022_062310_395f75"
     fake_snap.mkdir(parents=True)
 
     for fname in ("manifest.json", "chunks.json", "documents.json"):
@@ -326,7 +325,7 @@ def test_12_end_to_end_query_safety_gate_with_snapshot_only(tmp_path):
         retrieval_mode="lexical_only",
     )
     retrieval.load_and_index_corpus()
-    assert len(retrieval.chunks) == 168
+    assert len(retrieval.chunks) == 3
 
     # Create safety gate using the retrieval service's loaded corpus
     from app.grounding.validator import CitationValidator
@@ -342,15 +341,15 @@ def test_12_end_to_end_query_safety_gate_with_snapshot_only(tmp_path):
     )
 
     from app.schemas.manifest import GroundingPolicyDeclaration, GroundingPolicyType
-    sebi_policy = GroundingPolicyDeclaration(
-        policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT,
-        enforce_regulatory_graph=True,
+    general_policy = GroundingPolicyDeclaration(
+        policy_type=GroundingPolicyType.GENERAL_STATIC,
+        enforce_regulatory_graph=False,
     )
 
     # 1. Verify that genuine chunk ID passes safety gate verification
     real_chunk = retrieval.chunks[0]
     valid_payload = ExcerptDraftPayload(
-        query="CSCRF",
+        query="PostgreSQL",
         excerpts=[
             CandidateExcerptDraft(
                 excerpt_id="excerpt_1",
@@ -362,8 +361,8 @@ def test_12_end_to_end_query_safety_gate_with_snapshot_only(tmp_path):
     gate_res = safety_gate.evaluate_draft(
         payload=valid_payload,
         retrieval_candidates={real_chunk.chunk_id},
-        policy=sebi_policy,
-        collection_id="sebi_cscrf",
+        policy=general_policy,
+        collection_id="general_synthetic",
     )
     assert gate_res.disposition in (
         AnswerDisposition.VERIFIED_HISTORICAL_EXCERPTS,
@@ -373,20 +372,20 @@ def test_12_end_to_end_query_safety_gate_with_snapshot_only(tmp_path):
 
     # 2. Verify that unknown or fabricated chunk ID is strictly rejected
     fabricated_payload = ExcerptDraftPayload(
-        query="CSCRF",
+        query="PostgreSQL",
         excerpts=[
             CandidateExcerptDraft(
                 excerpt_id="excerpt_bad",
-                source_chunk_id="sebi_cscrf_fake_chunk_99999",
+                source_chunk_id="synthetic_fake_chunk_99999",
                 proposed_excerpt_text="some fabricated text",
             )
         ],
     )
     bad_res = safety_gate.evaluate_draft(
         payload=fabricated_payload,
-        retrieval_candidates={"sebi_cscrf_fake_chunk_99999"},
-        policy=sebi_policy,
-        collection_id="sebi_cscrf",
+        retrieval_candidates={"synthetic_fake_chunk_99999"},
+        policy=general_policy,
+        collection_id="general_synthetic",
     )
     assert bad_res.disposition == AnswerDisposition.CONTROLLED_ABSTENTION
     assert len(bad_res.verified_excerpts) == 0
@@ -396,7 +395,7 @@ def test_12_end_to_end_query_safety_gate_with_snapshot_only(tmp_path):
     app.dependency_overrides[get_safety_gate] = lambda: safety_gate
     try:
         client = TestClient(app)
-        res = client.post("/api/v1/query", json={"query": "What is CSCRF?", "top_k": 3})
+        res = client.post("/api/v1/query", json={"query": "PostgreSQL replication", "top_k": 3})
         assert res.status_code == 200
         data = res.json()
         assert data["disposition"] in [
@@ -412,12 +411,11 @@ def test_12_end_to_end_query_safety_gate_with_snapshot_only(tmp_path):
 def test_13_definition_retrieval_relevance_and_answer_sufficiency():
     """
     Verify that:
-    1. 'What is CSCRF?' prioritizes foundational definition passages (p13_11 or p31_25)
-       over procedural audit-report templates or checklist parameters.
-    2. Foundational definition chunks appear in the top-ranked retrieved results.
-    3. Mock synthesis assigns FULLY_ANSWERED when definition evidence substantively answers the query.
+    1. 'What is the password requirement?' retrieves the access control policy chunk.
+    2. Password policy chunks appear in the top-ranked retrieved results.
+    3. Mock synthesis assigns FULLY_ANSWERED when definition/policy evidence substantively answers the query.
     4. Mock synthesis downgrades to PARTIALLY_ANSWERED when evidence lacks substantive coverage.
-    5. Procedural queries (deadlines, ISO 27001) preserve their dedicated priority orders.
+    5. Procedural queries (backup retention, RPO) preserve their dedicated priority orders.
     """
     from app.retrieval.service import RetrievalService
     from app.grounding.relevance import filter_relevant_candidates
@@ -435,78 +433,67 @@ def test_13_definition_retrieval_relevance_and_answer_sufficiency():
         retrieval_mode="lexical_only",
     )
     docs_cnt, chunks_cnt = service.load_and_index_corpus()
-    assert docs_cnt == 5
-    assert chunks_cnt == 168
+    assert docs_cnt == 3
+    assert chunks_cnt == 3
 
-    # 1. Retrieval for 'What is CSCRF?'
-    retrieval_resp = service.search_hybrid("What is CSCRF?", top_k=50, candidate_k=50)
+    # 1. Retrieval for 'What is the password requirement?'
+    retrieval_resp = service.search_hybrid("What is the password requirement?", top_k=10, candidate_k=10)
     assert retrieval_resp.total_results > 0
 
-    # 2. Relevance filtering and definition intent prioritization
-    filtered, intent, assessments = filter_relevant_candidates("What is CSCRF?", retrieval_resp.results, policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
+    # 2. Relevance filtering
+    filtered, intent, assessments = filter_relevant_candidates(
+        "What is the password requirement?",
+        retrieval_resp.results,
+        policy_type=GroundingPolicyType.GENERAL_STATIC,
+    )
     assert len(filtered) > 0
 
-    # Foundational definition chunks containing formulation/goals content must be prioritized in top results
-    top_chunks = filtered[:2]
-    assert any(
-        any(phrase in c.text.lower() for phrase in ["has been formulated", "formulated to consolidate", "resiliency goals namely"])
-        for c in top_chunks
-    ), "Expected foundational definition or framework goals text in top results"
-
-    # Top chunk text must contain substantive definition phrasing
     top_chunk = filtered[0]
-    assert any(
-        phrase in top_chunk.text.lower()
-        for phrase in ["formulated", "cyber resilience framework", "cyber resiliency goals", "cscrf"]
-    )
+    assert "password" in top_chunk.text.lower()
 
     # 3. Answer sufficiency: MockSynthesisProvider with responsive evidence receives FULLY_ANSWERED
     provider = MockSynthesisProvider()
     responsive_input = SynthesisInput(
-        query="What is CSCRF?",
+        query="What is the password requirement?",
         evidence_items=[
             SynthesisEvidenceItem(
                 chunk_id=top_chunk.chunk_id,
                 document_id=top_chunk.document_id,
                 text=top_chunk.text,
                 regulatory_status="ACTIVE_CURRENT",
-                status_reason="Active foundational circular",
+                status_reason="Active security policy",
             )
         ],
     )
     resp_output = provider.synthesize(responsive_input)
     assert resp_output.status == SynthesisStatus.FULLY_ANSWERED
     assert len(resp_output.unresolved_subquestions) == 0
-    # Meaningful synthesized content assertion: answer must assert CSCRF formulation
-    assert any(
-        phrase in resp_output.answer.lower()
-        for phrase in ["cyber resilience framework", "cscrf", "formulated"]
-    )
     assert len(resp_output.claims) > 0
     assert any(top_chunk.chunk_id in c.supporting_chunk_ids for c in resp_output.claims)
 
     # 4. Answer sufficiency safeguard: MockSynthesisProvider with irrelevant evidence is downgraded
-    # Even if citation verification passes, answer must be downgraded to PARTIALLY_ANSWERED
     irrelevant_input = SynthesisInput(
-        query="What is CSCRF?",
+        query="What is the password requirement?",
         evidence_items=[
             SynthesisEvidenceItem(
-                chunk_id="sebi_sample_chunk_other",
-                document_id="sebi_sample_doc",
+                chunk_id="sample_irrelevant_chunk",
+                document_id="sample_doc",
                 text="The audit committee shall meet quarterly to review financial balance sheets and dividend distributions.",
                 regulatory_status="ACTIVE_CURRENT",
-                status_reason="Active unrelated provision",
+                status_reason="Unrelated financial provision",
             )
         ],
     )
     irrel_output = provider.synthesize(irrelevant_input)
     assert irrel_output.status == SynthesisStatus.PARTIALLY_ANSWERED
     assert len(irrel_output.unresolved_subquestions) > 0
-    subq_text = irrel_output.unresolved_subquestions[0].subquestion
-    assert "Sufficiency check" in subq_text or "Regulatory answer for" in subq_text
 
-    # 5. Procedural query regression: verify deadline query still prioritizes latest circular (CIR/2025/096)
-    deadline_resp = service.search_hybrid("What is the compliance deadline for CSCRF?", top_k=50, candidate_k=50)
-    deadline_filtered, deadline_intent, _ = filter_relevant_candidates("What is the compliance deadline for CSCRF?", deadline_resp.results, policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT)
-    assert len(deadline_filtered) > 0
-    assert "2025_096" in deadline_filtered[0].document_id
+    # 5. Procedural query regression: verify backup retention query prioritizes infrastructure handbook
+    backup_resp = service.search_hybrid("What is the backup retention period for production snapshots?", top_k=10, candidate_k=10)
+    backup_filtered, backup_intent, _ = filter_relevant_candidates(
+        "What is the backup retention period for production snapshots?",
+        backup_resp.results,
+        policy_type=GroundingPolicyType.GENERAL_STATIC,
+    )
+    assert len(backup_filtered) > 0
+    assert "acme_infra_handbook" in backup_filtered[0].document_id

@@ -307,7 +307,7 @@ class IngestionOrchestrator:
             )
 
             if is_local_upload:
-                staging_dir = Path(tempfile.gettempdir()) / "sebi_ingestion_staging"
+                staging_dir = Path(tempfile.gettempdir()) / "citenza_ingestion_staging"
                 staging_dir.mkdir(parents=True, exist_ok=True)
                 downloaded_file = staging_dir / f"staged_{uuid.uuid4().hex[:12]}.pdf"
 
@@ -916,7 +916,7 @@ class IngestionWorker:
         """
         Safely remove abandoned staging files left behind after ungraceful process crashes.
         Strict safety rules:
-        - Only removes files matching the dedicated prefix 'sebi_staging_worker_' and '.pdf.staging' suffix.
+        - Only removes files matching dedicated staging worker prefixes ('citenza_staging_worker_' or 'sebi_staging_worker_') and '.pdf.staging' suffix.
         - Only removes files strictly older than max_age_seconds (default 1 hr, well past max lease time).
         - Preserves all active files and files belonging to other services/applications.
         - Idempotent and fails safe (logs warnings without raising).
@@ -934,7 +934,7 @@ class IngestionWorker:
             for item in target_dir.iterdir():
                 if (
                     item.is_file()
-                    and item.name.startswith("sebi_staging_worker_")
+                    and (item.name.startswith("citenza_staging_worker_") or item.name.startswith("sebi_staging_worker_"))
                     and item.name.endswith(".pdf.staging")
                 ):
                     try:
@@ -1005,7 +1005,7 @@ class IngestionWorker:
                     source_url=claimed.source_url,
                     idempotency_key=f"key_{claimed.job_id}",
                     document_id=claimed.document_id,
-                    collection_id=inferred_col or "sebi_cscrf",
+                    collection_id=inferred_col or "general_synthetic",
                     status=JobStatus.PROCESSING,
                     stage=ProcessingStage.PENDING,
                 )

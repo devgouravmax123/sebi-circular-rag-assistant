@@ -1,7 +1,8 @@
 {
-  "snapshot_id": "snap_20261011_104512_23a014",
-  "activated_at": "2026-10-11T10:45:12.630630Z",
-  "manifest_checksum": "bb889416f251d800f4d60f2968f808dc4b3b997d519c8903005059991f16e481",
-  "total_documents": 5,
-  "total_chunks": 168
+  "snapshot_id": "snap_20261022_062310_395f75",
+  "collection_id": "general_synthetic",
+  "activated_at": "2026-10-22T06:23:10.816012Z",
+  "manifest_checksum": "e55663dd0880e3b05d71fa27d1fee873b58c2012c093d3c6626dc006bcd69336",
+  "total_documents": 3,
+  "total_chunks": 3
 }

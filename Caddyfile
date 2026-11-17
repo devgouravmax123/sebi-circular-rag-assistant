@@ -1,8 +1,8 @@
 # Configuration file for Caddy Reverse Proxy
-# SEBI Regulatory Intelligence Platform (Production)
+# Citenza Document Intelligence Platform (Production)
 #
 # Environment variables:
-#   DOMAIN: Public domain name or hostname (e.g., sebi-rag.yourdomain.com or :80)
+#   DOMAIN: Public domain name or hostname (e.g., citenza.yourdomain.com or :80)
 #   ACME_EMAIL: Optional email for Let's Encrypt notifications
 #
 {

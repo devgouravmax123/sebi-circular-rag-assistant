@@ -1,6 +1,6 @@
-# Frontend — SEBI Circular Assistant & Multi-Tenant Document Intelligence Platform
+# Frontend — Citenza Document Intelligence Platform
 
-React 19 + TypeScript + Vite + Tailwind CSS interface for the SEBI Regulatory Intelligence Platform and Multi-Tenant SaaS.
+React 19 + TypeScript + Vite + Tailwind CSS interface for Citenza: Your documents. Verified answers.
 
 ## Prerequisites
 - Node.js `v20+` / npm `10+`
@@ -44,7 +44,7 @@ React 19 + TypeScript + Vite + Tailwind CSS interface for the SEBI Regulatory In
 ## Multi-Tenant Features & UI Workflows (Milestone 9)
 
 ### 1. Authentication & Session State
-- **Anonymous Access**: Public demo collections (`sebi_cscrf`, `cisa_playbooks`) remain queryable without signing in.
+- **Anonymous Access**: Public demo collections (`general_synthetic`, `cisa_playbooks`) remain queryable without signing in.
 - **Sign In / Sign Up**: Click "Sign In" or "Sign Up" in the header to open the auth modal. Passwords require at least 8 characters.
 - **Session Restoration**: Authenticated sessions are restored via `GET /api/v1/auth/me`. If a token expires or becomes invalid, local session state is cleared cleanly.
 - **Logout**: Discards client-side tokens and notifies `POST /api/v1/auth/logout`.

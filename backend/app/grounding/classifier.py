@@ -1,5 +1,5 @@
 """
-Deterministic query intent classification for SEBI CSCRF Regulatory Q&A Assistant.
+Deterministic query intent classification for Citenza Document Intelligence Platform.
 """
 from enum import Enum
 import re
@@ -15,20 +15,10 @@ class QueryIntent(str, Enum):
     OUT_OF_SCOPE_OR_UNESTABLISHED = "OUT_OF_SCOPE_OR_UNESTABLISHED"
 
 
-# Patterns for clearly out of scope topics relative to the 5-document CSCRF corpus
+# Patterns for queries that explicitly ask about unestablished or hypothetical entities
 OUT_OF_SCOPE_PATTERNS = [
-    r"\bnav\s+cutoff\b",
-    r"\bmutual\s+fund\s+nav\b",
-    r"\bcutoff\s+time\b",
     r"\bunregulated\s+fintechs?\b",
     r"\bunregulated\s+entit\w*\b",
-    r"\binsider\s+trading\b",
-    r"\btakeover\s+code\b",
-    r"\blodr\b",
-    r"\bipo\s+allotment\b",
-    r"\bdemat\s+account\s+opening\s+charge\b",
-    r"\bdividend\s+distribution\b",
-    r"\bfund\s+manager\s+salary\b",
 ]
 
 # Specific circular mention patterns (generalized regex + baseline aliases)

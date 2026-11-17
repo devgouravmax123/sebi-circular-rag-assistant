@@ -48,12 +48,12 @@ function renderWithProviders(element) {
 test('1. LandingPage: renders neutral branding, headline, and Sign In / Sign Up / Guest CTAs', () => {
   const html = renderWithProviders(React.createElement(LandingPage, {}));
 
-  // Neutral product identity
-  assert.match(html, /Document Intelligence/);
-  assert.match(html, /General-Purpose AI Document Intelligence Platform/);
+  // Citenza product identity
+  assert.match(html, /Citenza/);
+  assert.match(html, /Your documents\. Verified answers\./);
   assert.match(html, /Turn your documents/);
-  assert.match(html, /into trusted answers\./);
-  assert.match(html, /Evidence-grounded AI research for business, technical, legal, and operational documents\./);
+  assert.match(html, /reliable answers\./);
+  assert.match(html, /Upload documents, organize your knowledge, and ask questions with answers grounded in your sources\./);
 
   // 3 Primary Entry CTAs
   assert.match(html, /Sign In/);

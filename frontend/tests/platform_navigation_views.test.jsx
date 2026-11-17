@@ -13,12 +13,12 @@ import { WorkspaceProvider } from '../src/context/WorkspaceContext.tsx';
 
 const sampleCollections = [
   {
-    collection_id: 'sebi_cscrf',
-    name: 'SEBI CSCRF Regulatory Intelligence',
-    description: 'Master circulars and cybersecurity framework',
-    domain: 'CSCRF',
-    regulator: 'SEBI',
-    policy_type: 'sebi_cscrf_strict',
+    collection_id: 'general_synthetic',
+    name: 'General Technical Knowledge',
+    description: 'Acme Infrastructure and Technical Documentation',
+    domain: 'TECHNICAL',
+    regulator: null,
+    policy_type: 'general_static',
     status: 'active',
     is_private: false,
   },
@@ -77,14 +77,15 @@ test('2. DashboardView: renders platform banner, quick actions, and collection s
     })
   );
 
-  assert.match(html, /Document Intelligence &amp; Research Platform/);
-  assert.match(html, /AI-Powered Evidence Synthesis &amp; Multi-Tenant Research/);
+  assert.match(html, /Citenza Platform/);
+  assert.match(html, /Turn your documents into reliable answers\./);
+  assert.match(html, /Your documents\. Verified answers\./);
   assert.match(html, /Quick Actions/);
   assert.match(html, /Ask Questions/);
   assert.match(html, /Create Collection/);
   assert.match(html, /Upload PDF Documents/);
   assert.match(html, /Workspace &amp; Team/);
-  assert.match(html, /SEBI CSCRF Regulatory Intelligence/);
+  assert.match(html, /General Technical Knowledge/);
   assert.match(html, /AI &amp; Systems Research Papers/);
 });
 

@@ -1,10 +1,10 @@
 """
-Citation and evidence validator for the SEBI CSCRF Regulatory Q&A Assistant.
+Citation and evidence validator for the Citenza Document Intelligence Platform.
 
 Enforces:
 1. Mechanical citation integrity against registered corpus chunks and document metadata.
 2. Distinct claim-to-evidence support evaluation without assuming semantic proof from mechanical checks.
-3. Graph consistency and conservative regulatory status safety (no upgrading UNRESOLVED, no supersession from REFERENCES).
+3. Graph consistency and conservative relationship status safety (no upgrading UNRESOLVED, no supersession from REFERENCES).
 4. Deterministic, fail-closed handling of invalid provenance or malformed inputs.
 """
 import os
@@ -17,7 +17,6 @@ from app.schemas.document import ChunkRecord, DocumentRecord
 from app.schemas.grounding import GroundedEvidenceItem, RegulatoryStatus
 from app.schemas.graph import GraphEdge, RelationshipType, ScopeType, ReviewStatus
 from app.schemas.graph_collection import GraphEdgeCollection
-from app.schemas.cscrf_graph_data import create_verified_cscrf_graph
 from app.schemas.citation import (
     CitationItem,
     CitationStatus,
@@ -55,9 +54,9 @@ class CitationValidator:
 
     @property
     def graph(self) -> GraphEdgeCollection:
-        """Lazily load graph dataset only when explicitly accessed (e.g. during claim validation)."""
+        """Lazily load graph dataset only when explicitly accessed."""
         if self._graph is None:
-            self._graph = create_verified_cscrf_graph()
+            self._graph = GraphEdgeCollection()
         return self._graph
 
     @graph.setter
@@ -68,7 +67,7 @@ class CitationValidator:
         """
         Loads chunks and document metadata into in-memory dictionaries.
         If collection_id is specified, attempts to load from active published snapshot for that collection.
-        If collection_id is None or 'sebi_cscrf' and snapshot is missing, falls back to processed_dir.
+        If snapshot is missing, falls back to processed_dir.
         Fails safely and deterministically without crashing if directory is missing or partially populated.
         """
         # 1. Attempt to load from active published snapshot if collection_id is specified
@@ -76,7 +75,7 @@ class CitationValidator:
             # Check partition pointer: data/indexes/{collection_id}/active_snapshot.json
             partition_dir = self.indexes_dir / self.collection_id
             pointer_file = partition_dir / "active_snapshot.json"
-            if not pointer_file.exists() and self.collection_id == "sebi_cscrf":
+            if not pointer_file.exists():
                 pointer_file = self.indexes_dir / "active_snapshot.json"
 
             if pointer_file.exists():
@@ -91,10 +90,9 @@ class CitationValidator:
                             target_dir = self.indexes_dir / target_dir
                     elif "snapshot_id" in pointer_data:
                         snap_id = pointer_data["snapshot_id"]
-                        if self.collection_id == "sebi_cscrf" and not (partition_dir / "snapshots" / snap_id).exists():
+                        target_dir = partition_dir / "snapshots" / snap_id
+                        if not target_dir.exists():
                             target_dir = self.indexes_dir / "snapshots" / snap_id
-                        else:
-                            target_dir = partition_dir / "snapshots" / snap_id
                     else:
                         target_dir = None
 
@@ -127,7 +125,7 @@ class CitationValidator:
                 except Exception:
                     pass
 
-        # 2. Legacy fallback to processed_dir (for sebi_cscrf or when no snapshot exists)
+        # 2. Fallback to processed_dir when no snapshot exists
         if not self.processed_dir.exists():
             return
 

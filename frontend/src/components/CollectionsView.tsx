@@ -44,7 +44,7 @@ export function CollectionsView({
   const [newColId, setNewColId] = useState('');
   const [newColName, setNewColName] = useState('');
   const [newColDesc, setNewColDesc] = useState('');
-  const [newColPolicy, setNewColPolicy] = useState<'general_static' | 'sebi_cscrf_strict'>('general_static');
+  const [newColPolicy, setNewColPolicy] = useState<'general_static'>('general_static');
   const [isCreatingCol, setIsCreatingCol] = useState(false);
   const [createColError, setCreateColError] = useState<string | null>(null);
   const [createColSuccess, setCreateColSuccess] = useState<string | null>(null);
@@ -234,7 +234,7 @@ export function CollectionsView({
     id: string;
     name: string;
     desc: string;
-    policy: 'general_static' | 'sebi_cscrf_strict';
+    policy: 'general_static';
   }) => {
     setNewColId(preset.id);
     setNewColName(preset.name);
@@ -664,14 +664,8 @@ export function CollectionsView({
                           {col.id}
                         </span>
                       </div>
-                      <span
-                        className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded border shrink-0 ${
-                          col.policy_name === 'sebi_cscrf_strict'
-                            ? 'bg-rose-950/60 text-rose-300 border-rose-800/60'
-                            : 'bg-teal-950/60 text-teal-300 border-teal-800/60'
-                        }`}
-                      >
-                        {col.policy_name === 'sebi_cscrf_strict' ? 'Regulatory' : 'General'}
+                      <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded border shrink-0 bg-teal-950/60 text-teal-300 border-teal-800/60">
+                        General
                       </span>
                     </div>
                   );
@@ -731,11 +725,11 @@ export function CollectionsView({
                       label: 'Tech Docs',
                     },
                     {
-                      id: 'regulatory-cscrf',
-                      name: 'Cybersecurity Regulatory Guidelines',
-                      desc: 'Regulatory circulars, frameworks, and compliance mandates.',
-                      policy: 'sebi_cscrf_strict' as const,
-                      label: 'Regulatory',
+                      id: 'company-policies',
+                      name: 'Company Policies & Operations',
+                      desc: 'Standard operating procedures, governance, and organization policies.',
+                      policy: 'general_static' as const,
+                      label: 'Policies',
                     },
                   ].map((preset) => (
                     <button
@@ -814,11 +808,10 @@ export function CollectionsView({
                   </label>
                   <select
                     value={newColPolicy}
-                    onChange={(e) => setNewColPolicy(e.target.value as 'general_static' | 'sebi_cscrf_strict')}
+                    onChange={(e) => setNewColPolicy(e.target.value as 'general_static')}
                     className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:border-cyan-500 focus:outline-none"
                   >
                     <option value="general_static">General Static (General Documents, Research, Tech)</option>
-                    <option value="sebi_cscrf_strict">SEBI CSCRF Strict (Regulatory Compliance &amp; Circulars)</option>
                   </select>
                 </div>
               )}
@@ -934,7 +927,7 @@ export function CollectionsView({
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-300 mb-1">
-                      Circular / Reference Number
+                      Document Reference / ID
                     </label>
                     <input
                       type="text"

@@ -29,13 +29,52 @@ from app.schemas.grounding import (
 )
 from app.schemas.graph import GraphEdge, RelationshipType, ScopeType, ReviewStatus
 from app.schemas.graph_collection import GraphEdgeCollection
+from app.schemas.document import DocumentRecord, ChunkRecord
 from app.grounding.validator import CitationValidator
 
 
 @pytest.fixture
-def validator():
-    # Uses real registered corpus in data/processed
-    return CitationValidator(processed_dir="data/processed")
+def test_corpus():
+    doc_45 = DocumentRecord(
+        document_id="sebi_cscrf_2025_045",
+        title="Extension Circular",
+        pdf_path="data/raw/c45.pdf",
+        source_url="https://example.com/c45.pdf",
+        circular_number="SEBI/HO/ITD-1/ITD_CSC_EXT/P/CIR/2025/45",
+        issue_date="2025-03-28",
+        total_pages=2,
+        sha256="abc45",
+        status="PROCESSED",
+    )
+    doc_113 = DocumentRecord(
+        document_id="sebi_cscrf_2024_113",
+        title="Baseline Circular",
+        pdf_path="data/raw/c113.pdf",
+        source_url="https://example.com/c113.pdf",
+        circular_number="SEBI/HO/ITD-1/ITD_CSC_BASE/P/CIR/2024/113",
+        issue_date="2024-08-20",
+        total_pages=118,
+        sha256="abc113",
+        status="PROCESSED",
+    )
+    chunk_45 = ChunkRecord(
+        chunk_id="sebi_cscrf_2025_045_p1_0",
+        document_id="sebi_cscrf_2025_045",
+        text="Recognising the need for robust cybersecurity measures and protection of data and IT infrastructure.",
+        page_start=1,
+        page_end=2,
+        word_count=15,
+        char_count=104,
+    )
+    chunks = {chunk_45.chunk_id: chunk_45}
+    docs = {doc_45.document_id: doc_45, doc_113.document_id: doc_113}
+    return docs, chunks
+
+
+@pytest.fixture
+def validator(test_corpus):
+    docs, chunks = test_corpus
+    return CitationValidator(corpus_chunks=chunks, corpus_documents=docs)
 
 
 def test_1_valid_chunk_and_citation(validator):
@@ -190,7 +229,7 @@ def test_9_conflicting_regulatory_evidence(validator):
     assert any("superseded" in res.status_reason.lower() for _ in [1])
 
 
-def test_10_references_edge_incorrectly_presented_as_supersession():
+def test_10_references_edge_incorrectly_presented_as_supersession(test_corpus):
     # Setup custom graph where doc_a REFERENCES doc_b
     graph = GraphEdgeCollection()
     graph.add_edge(
@@ -204,7 +243,8 @@ def test_10_references_edge_incorrectly_presented_as_supersession():
             review_status=ReviewStatus.VERIFIED,
         )
     )
-    val = CitationValidator(processed_dir="data/processed", graph_collection=graph)
+    docs, chunks = test_corpus
+    val = CitationValidator(corpus_chunks=chunks, corpus_documents=docs, graph_collection=graph)
     claim = ClaimItem(
         claim_id="cl_ref_as_amend",
         claim_text="Circular 2025/060 supersedes and repeals Circular 2025/045 in its entirety.",

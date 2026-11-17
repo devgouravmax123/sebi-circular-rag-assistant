@@ -15,21 +15,20 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements-demo.txt
 
 # Create non-root application user
-RUN groupadd -g 10001 sebi && \
-    useradd -u 10001 -g sebi -m -s /bin/bash sebi
+RUN groupadd -g 10001 citenza && \
+    useradd -u 10001 -g citenza -m -s /bin/bash citenza
 
 # Create data directories with permissions
 RUN mkdir -p /app/data/processed /app/data/indexes /app/data/uploads && \
-    chown -R sebi:sebi /app/data
+    chown -R citenza:citenza /app/data
 
 # Copy application source code
-COPY --chown=sebi:sebi backend/app /app/app
+COPY --chown=citenza:citenza backend/app /app/app
 
 # Copy immutable snapshot assets and verified graph
-COPY --chown=sebi:sebi data/manifests /app/data/manifests
-COPY --chown=sebi:sebi data/indexes /app/data/indexes
-COPY --chown=sebi:sebi data/processed/cscrf_graph.json /app/data/processed/cscrf_graph.json
-COPY --chown=sebi:sebi data/processed/manifest.json /app/data/processed/manifest.json
+COPY --chown=citenza:citenza data/manifests /app/data/manifests
+COPY --chown=citenza:citenza data/indexes /app/data/indexes
+COPY --chown=citenza:citenza data/processed/manifest.json /app/data/processed/manifest.json
 
 # Configure runtime environment
 ENV PYTHONUNBUFFERED=1 \
@@ -42,7 +41,7 @@ ENV PYTHONUNBUFFERED=1 \
     SYNTHESIS_PROVIDER=mock \
     PORT=8000
 
-USER sebi
+USER citenza
 
 EXPOSE 8000
 

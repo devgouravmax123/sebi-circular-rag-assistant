@@ -85,7 +85,7 @@ class SynthesisService:
         disposition: AnswerDisposition,
         regulatory_warnings: List[str],
         domain: Optional[str] = None,
-        collection_id: Optional[str] = "sebi_cscrf",
+        collection_id: Optional[str] = None,
         policy_type: Optional[str] = None,
     ) -> SynthesisOutput:
         """
@@ -140,7 +140,7 @@ class SynthesisService:
         # 3. Construct bounded SynthesisInput from verified excerpts
         evidence_items: List[SynthesisEvidenceItem] = []
         for exc in verified_excerpts[:max_chunks]:
-            exc_coll_id = getattr(exc, "collection_id", None) or collection_id or "sebi_cscrf"
+            exc_coll_id = getattr(exc, "collection_id", None) or collection_id or ""
             evidence_items.append(
                 SynthesisEvidenceItem(
                     chunk_id=exc.source_chunk_id,
@@ -173,7 +173,7 @@ class SynthesisService:
             evidence_items=evidence_items,
             regulatory_warnings=regulatory_warnings,
             domain=domain,
-            collection_id=collection_id or "sebi_cscrf",
+            collection_id=collection_id or "",
             policy_type=norm_policy,
         )
 

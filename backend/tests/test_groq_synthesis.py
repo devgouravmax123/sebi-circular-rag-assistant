@@ -525,6 +525,7 @@ def test_19_title_deduplicated_for_same_document():
 
     input_payload = SynthesisInput(
         query="What are the audit requirements under CSCRF?",
+        policy_type="sebi_cscrf_strict",
         evidence_items=[
             SynthesisEvidenceItem(
                 chunk_id="cscrf_p144_0",
@@ -577,6 +578,7 @@ def test_20_distinct_documents_retain_separate_titles():
 
     input_payload = SynthesisInput(
         query="How does the amending circular change the original requirements?",
+        policy_type="sebi_cscrf_strict",
         evidence_items=[
             SynthesisEvidenceItem(
                 chunk_id="cscrf_2024_p1",
@@ -663,6 +665,7 @@ def test_22_missing_metadata_handled_gracefully():
 
     input_payload = SynthesisInput(
         query="Query with sparse metadata",
+        policy_type="sebi_cscrf_strict",
         evidence_items=[
             SynthesisEvidenceItem(
                 chunk_id="sparse_chunk_1",

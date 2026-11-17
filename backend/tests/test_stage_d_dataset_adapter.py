@@ -44,28 +44,27 @@ def adapter():
 
 
 def test_actual_dataset_counts_and_collections(adapter):
-    """Verifies that all 79 curated queries are loaded and counts match canonical specifications."""
+    """Verifies that all curated queries are loaded and counts match canonical specifications."""
     all_records = adapter.load_all()
-    assert len(all_records) == 79
+    assert len(all_records) == 47
 
     grouped = adapter.get_queries_by_collection(all_records)
-    assert len(grouped["sebi_cscrf"]) == 32
     assert len(grouped["cisa_playbooks"]) == 15
     assert len(grouped["general_synthetic"]) == 32
 
-    # Verify query IDs are globally unique across all 79 records
+    # Verify query IDs are globally unique across all records
     all_qids = [r.query_id for r in all_records]
     assert len(all_qids) == len(set(all_qids))
 
 
 def test_query_text_field_normalization(adapter):
     """Verifies that query text is correctly extracted regardless of whether key is 'query_text' or 'question'."""
-    sebi_records = adapter.load_sebi()
-    for r in sebi_records:
-        assert isinstance(r.query_text, str)
-        assert len(r.query_text.strip()) > 0
-        # In SEBI source, raw key is query_text
-        assert r.query_text == r.provenance.raw_record["query_text"]
+    if adapter.sebi_dataset_path.exists():
+        sebi_records = adapter.load_sebi()
+        for r in sebi_records:
+            assert isinstance(r.query_text, str)
+            assert len(r.query_text.strip()) > 0
+            assert r.query_text == r.provenance.raw_record["query_text"]
 
     cisa_records = adapter.load_cisa()
     for r in cisa_records:
@@ -97,7 +96,9 @@ def test_outcome_normalization_and_label_preservation(adapter):
 
 
 def test_sebi_domain_specific_assertions_preserved(adapter):
-    """Verifies that SEBI regulatory fields, provision refs, and chunk labels are 100% preserved."""
+    """Verifies that SEBI regulatory fields, provision refs, and chunk labels are 100% preserved if present."""
+    if not adapter.sebi_dataset_path.exists():
+        pytest.skip("SEBI legacy gold dataset deleted per Phase 2")
     sebi_records = adapter.load_sebi()
     assert len(sebi_records) == 32
 
@@ -179,22 +180,23 @@ def test_general_domain_specific_assertions_preserved(adapter):
 
 def test_duplicate_query_id_detection(adapter, tmp_path):
     """Verifies that DuplicateQueryIdError is raised when duplicate query IDs exist."""
-    # Create duplicate SEBI dataset
-    orig_sebi = adapter.sebi_dataset_path
-    with open(orig_sebi, "r", encoding="utf-8") as f:
+    # Create duplicate CISA dataset
+    orig_cisa = adapter.cisa_dataset_path
+    with open(orig_cisa, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     # Duplicate first query
+    first_qid = data["queries"][0]["query_id"]
     data["queries"].append(copy.deepcopy(data["queries"][0]))
-    dup_file = tmp_path / "dup_sebi.json"
+    dup_file = tmp_path / "dup_cisa.json"
     with open(dup_file, "w", encoding="utf-8") as f:
         json.dump(data, f)
 
     with pytest.raises(DuplicateQueryIdError) as exc_info:
-        adapter.load_all(sebi_path=dup_file)
+        adapter.load_all(cisa_path=dup_file)
 
     assert "duplicate query_id" in str(exc_info.value).lower()
-    assert "q01_ciso_reporting_line" in str(exc_info.value)
+    assert first_qid in str(exc_info.value)
 
 
 def test_validation_rejects_missing_or_blank_query_text():
@@ -281,14 +283,7 @@ def test_deterministic_ordering(adapter):
 def test_snapshot_mapping_verification(adapter):
     """Verifies that static snapshot mapping verification succeeds against disk artifacts."""
     mappings = adapter.verify_pinned_snapshots(strict=True)
-    assert len(mappings) == 3
-
-    # Check SEBI mapping
-    sebi_m = mappings["sebi_cscrf"]
-    assert sebi_m.snapshot_id == "snap_20261011_104512_23a014"
-    assert sebi_m.total_documents == 5
-    assert sebi_m.total_chunks == 168
-    assert sebi_m.verified is True
+    assert len(mappings) == 2
 
     # Check CISA mapping
     cisa_m = mappings["cisa_playbooks"]
@@ -316,19 +311,9 @@ def test_snapshot_mapping_rejects_missing_directory(tmp_path):
 def test_independence_from_active_snapshot_pointer(adapter):
     """
     Verifies that snapshot verification and dataset loading are completely independent
-    of data/indexes/active_snapshot.json (which points to a 1-chunk test snapshot).
+    of data/indexes/active_snapshot.json.
     """
-    active_ptr_path = PROJECT_ROOT / "data" / "indexes" / "active_snapshot.json"
-    assert active_ptr_path.exists()
-    with open(active_ptr_path, "r", encoding="utf-8") as f:
-        ptr_data = json.load(f)
-
-    # Active pointer is known to point to snap_20261102_141049_82bf12 (1 chunk)
-    assert ptr_data["snapshot_id"] == "snap_20261102_141049_82bf12"
-    assert ptr_data["total_chunks"] == 1
-
-    # But adapter pinned mappings resolve to the 168-chunk baseline
     mappings = adapter.verify_pinned_snapshots(strict=True)
-    assert mappings["sebi_cscrf"].snapshot_id == "snap_20261011_104512_23a014"
-    assert mappings["sebi_cscrf"].total_chunks == 168
+    assert mappings["cisa_playbooks"].snapshot_id == "snap_20261030_093345_cd6f0d"
+    assert mappings["cisa_playbooks"].total_chunks == 46
 

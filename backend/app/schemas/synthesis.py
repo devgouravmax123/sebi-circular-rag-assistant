@@ -100,7 +100,7 @@ class SynthesisEvidenceItem(BaseModel):
     mapped_provisions: List[str] = Field(default_factory=list, description="Associated provision IDs")
     applicable_edge_ids: List[str] = Field(default_factory=list, description="Graph edge IDs influencing this passage")
     collection_id: Optional[str] = Field(
-        default="sebi_cscrf",
+        default=None,
         description="Authoritative collection identifier for evidence chunk",
     )
 
@@ -123,11 +123,11 @@ class SynthesisInput(BaseModel):
     )
     domain: Optional[str] = Field(None, description="Regulatory framework domain (e.g. CSCRF)")
     collection_id: Optional[str] = Field(
-        default="sebi_cscrf",
+        default=None,
         description="Target collection identifier for contextual traceability",
     )
     policy_type: Optional[str] = Field(
-        default="sebi_cscrf_strict",
+        default="general_static",
         description="Grounding policy type governing prompt formatting and grounding rules",
     )
 

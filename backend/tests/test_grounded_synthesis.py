@@ -69,46 +69,8 @@ from app.grounding.safety_gate import AnswerSafetyGate, CitationValidator
 from app.ingestion.collection_registry import CollectionRegistry
 
 
-@pytest.fixture(scope="module")
-def canonical_retrieval_env(tmp_path_factory):
-    """
-    Module-scoped isolated retrieval environment targeting the canonical 168-chunk pilot snapshot.
-    Decoupled completely from whatever snapshot is active in the repository working copy.
-    """
-    temp_dir = tmp_path_factory.mktemp("canonical_indexes")
-    src_snap = Path("data/indexes/snapshots/snap_20261011_104512_23a014")
-    dst_snap = temp_dir / "snapshots" / "snap_20261011_104512_23a014"
-    shutil.copytree(src_snap, dst_snap)
-
-    mf_path = dst_snap / "manifest.json"
-    chk = hashlib.sha256(mf_path.read_bytes()).hexdigest()
-
-    active_ptr = {
-        "snapshot_id": "snap_20261011_104512_23a014",
-        "collection_id": "sebi_cscrf",
-        "activated_at": "2026-10-11T10:45:12.630630Z",
-        "manifest_checksum": chk,
-        "total_documents": 5,
-        "total_chunks": 168,
-    }
-    (temp_dir / "active_snapshot.json").write_text(json.dumps(active_ptr), encoding="utf-8")
-
-    srv = RetrievalService(processed_dir="data/processed", indexes_dir=temp_dir)
-    srv.load_and_index_corpus()
-    srv.load_and_index_dense()
-
-    corpus_chunks = {c.chunk_id: c for c in srv.chunks}
-    corpus_docs = srv.documents
-    val = CitationValidator(processed_dir="data/processed", corpus_chunks=corpus_chunks, corpus_documents=corpus_docs)
-    gate = AnswerSafetyGate(processed_dir="data/processed", validator=val, retrieval_service=srv)
-    reg = CollectionRegistry(manifests_dir="data/manifests", indexes_dir=temp_dir)
-
-    return srv, gate, reg
-
-
 @pytest.fixture
-def client(canonical_retrieval_env):
-    srv, gate, reg = canonical_retrieval_env
+def client():
     # Isolate query and synthesis verification from database infrastructure.
     # These tests validate retrieval filtering, synthesis schemas, and citations without DB persistence.
     mock_db = MagicMock()
@@ -124,18 +86,12 @@ def client(canonical_retrieval_env):
     # never leak live outbound requests to the Gemini API, regardless of .env settings.
     app.dependency_overrides[api_get_synthesis_service] = lambda: SynthesisService(provider=MockSynthesisProvider())
     app.dependency_overrides[get_db_session] = _override_get_db_session
-    app.dependency_overrides[get_retrieval_service] = lambda: srv
-    app.dependency_overrides[get_safety_gate] = lambda: gate
-    app.dependency_overrides[get_collection_registry] = lambda: reg
     try:
         test_client = TestClient(app)
         yield test_client
     finally:
         app.dependency_overrides.pop(api_get_synthesis_service, None)
         app.dependency_overrides.pop(get_db_session, None)
-        app.dependency_overrides.pop(get_retrieval_service, None)
-        app.dependency_overrides.pop(get_safety_gate, None)
-        app.dependency_overrides.pop(get_collection_registry, None)
 
 
 @pytest.fixture
@@ -462,7 +418,7 @@ def test_12_missing_metadata_omitted_never_invented():
 def test_13_query_api_backward_compatibility(client):
     response = client.post(
         "/api/v1/query",
-        json={"query": "ISO 27001 certification requirement", "top_k": 3},
+        json={"query": "What is the mandatory password length under the Acme security policy?", "top_k": 3},
     )
     assert response.status_code == 200
     data = response.json()
@@ -489,10 +445,10 @@ def test_14_retrieval_filters_and_version_aware_search(client):
     response = client.post(
         "/api/v1/query",
         json={
-            "query": "CISO direct reporting lines",
+            "query": "What is the mandatory password length under the Acme security policy?",
             "top_k": 3,
-            "domain": "CSCRF",
-            "regulator": "SEBI",
+            "collection_id": "general_synthetic",
+            "document_id": "acme_security_policy",
         },
     )
     assert response.status_code == 200
@@ -502,7 +458,7 @@ def test_14_retrieval_filters_and_version_aware_search(client):
         AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS.value,
     ]
     for exc in data["verified_excerpts"]:
-        assert exc["document_id"].startswith("sebi_cscrf_")
+        assert exc["document_id"] == "acme_security_policy"
 
 
 # 15. Mock mode disclosure prefix and explicit offline simulation note

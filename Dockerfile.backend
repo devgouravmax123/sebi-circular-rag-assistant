@@ -36,18 +36,18 @@ RUN pip install --no-cache-dir --upgrade pip && \
     rm -rf /wheels
 
 # Create unprivileged application user
-RUN groupadd -g 10001 sebi && \
-    useradd -u 10001 -g sebi -m -s /bin/bash sebi
+RUN groupadd -g 10001 citenza && \
+    useradd -u 10001 -g citenza -m -s /bin/bash citenza
 
 # Create durable data mount points with proper permissions
-RUN mkdir -p /app/data/processed /app/data/indexes /app/data/raw /home/sebi/.cache && \
-    chown -R sebi:sebi /app /home/sebi
+RUN mkdir -p /app/data/processed /app/data/indexes /app/data/raw /home/citenza/.cache && \
+    chown -R citenza:citenza /app /home/citenza
 
 # Copy backend application code and alembic configuration
-COPY --chown=sebi:sebi alembic.ini /app/alembic.ini
-COPY --chown=sebi:sebi backend/alembic /app/backend/alembic
-COPY --chown=sebi:sebi backend/alembic /app/alembic
-COPY --chown=sebi:sebi backend/app /app/app
+COPY --chown=citenza:citenza alembic.ini /app/alembic.ini
+COPY --chown=citenza:citenza backend/alembic /app/backend/alembic
+COPY --chown=citenza:citenza backend/alembic /app/alembic
+COPY --chown=citenza:citenza backend/app /app/app
 
 # Set environment defaults
 ENV PYTHONUNBUFFERED=1 \
@@ -55,12 +55,12 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
     PROCESSED_DIR=/app/data/processed \
     INDEXES_DIR=/app/data/indexes \
-    HF_HOME=/home/sebi/.cache/huggingface \
+    HF_HOME=/home/citenza/.cache/huggingface \
     TRANSFORMERS_OFFLINE=1 \
     HF_HUB_OFFLINE=1
 
 # Switch to unprivileged user
-USER sebi
+USER citenza
 
 # Default port for FastAPI HTTP serving
 EXPOSE 8000

@@ -1,7 +1,16 @@
 """
 Global pytest fixtures and test-environment isolation for the backend test suite.
 """
+import os
 import pytest
+
+# Prevent accidental fallback to remote production/cloud database during test collection.
+# If TEST_DATABASE_URL is not explicitly configured for local disposable testing,
+# candidate database variables are neutralized so get_approved_test_db_url() returns None safely.
+if not os.getenv("TEST_DATABASE_URL"):
+    for _var in ("DATABASE_URL", "WORKER_DATABASE_URL", "DIRECT_DATABASE_URL", "MIGRATION_DATABASE_URL"):
+        os.environ[_var] = ""
+
 from app.core.config import get_settings
 from app.core.rate_limiter import get_query_rate_limiter
 

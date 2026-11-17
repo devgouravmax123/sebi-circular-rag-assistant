@@ -66,6 +66,38 @@ def get_db_session(settings: Settings = Depends(get_settings)) -> Generator[Sess
         session.close()
 
 
+def get_db_session_optional(settings: Settings = Depends(get_settings)) -> Generator[Optional[Session], None, None]:
+    """
+    FastAPI dependency yielding a managed SQLAlchemy database session if configured.
+    Yields None cleanly if database is not enabled/configured (ADR-020 zero-cost local default).
+    """
+    global _db_engine, _db_sessionmaker
+
+    if not settings.is_database_enabled or not settings.database_url:
+        yield None
+        return
+
+    if _db_engine is None:
+        _db_engine = create_engine(
+            settings.database_url,
+            pool_pre_ping=True,
+            pool_size=settings.db_pool_size,
+            max_overflow=settings.db_max_overflow,
+            pool_timeout=settings.db_pool_timeout,
+            pool_recycle=settings.db_pool_recycle,
+        )
+        _db_sessionmaker = sessionmaker(bind=_db_engine, expire_on_commit=False)
+
+    session = _db_sessionmaker()
+    try:
+        yield session
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
 def ensure_user_personal_workspace(user: UserModel, db: Session) -> WorkspaceModel:
     """
     Ensures that a user has access to at least one workspace.
@@ -306,7 +338,7 @@ def resolve_firebase_user(
 def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Security(http_bearer_scheme),
     settings: Settings = Depends(get_settings),
-    db: Session = Depends(get_db_session),
+    db: Optional[Session] = Depends(get_db_session_optional),
 ) -> UserModel:
     """
     Reusable FastAPI dependency resolving the trusted authenticated user identity.
@@ -322,6 +354,33 @@ def get_current_user(
         )
 
     token = credentials.credentials.strip()
+
+    # Pre-check for internal signed JWTs (e.g. guest tokens, expired tokens)
+    try:
+        pre_payload = decode_access_token(token, settings)
+        if pre_payload.get("is_guest"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Guest sessions cannot access registered user resources. Please sign in or create an account.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication token has expired.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        # Not an internal JWT or token invalid; continue to Firebase / legacy resolution
+        pass
+
+    if db is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database is not configured on server.",
+        )
 
     # Strategy 1: Attempt Firebase ID token verification
     try:
@@ -391,38 +450,6 @@ def get_current_user(
         )
 
     return user
-
-
-def get_db_session_optional(settings: Settings = Depends(get_settings)) -> Generator[Optional[Session], None, None]:
-    """
-    FastAPI dependency yielding a managed SQLAlchemy database session if configured.
-    Yields None cleanly if database is not enabled/configured (ADR-020 zero-cost local default).
-    """
-    global _db_engine, _db_sessionmaker
-
-    if not settings.is_database_enabled or not settings.database_url:
-        yield None
-        return
-
-    if _db_engine is None:
-        _db_engine = create_engine(
-            settings.database_url,
-            pool_pre_ping=True,
-            pool_size=settings.db_pool_size,
-            max_overflow=settings.db_max_overflow,
-            pool_timeout=settings.db_pool_timeout,
-            pool_recycle=settings.db_pool_recycle,
-        )
-        _db_sessionmaker = sessionmaker(bind=_db_engine, expire_on_commit=False)
-
-    session = _db_sessionmaker()
-    try:
-        yield session
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        session.close()
 
 
 def get_current_user_optional(

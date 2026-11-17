@@ -30,7 +30,7 @@ from app.grounding.validator import CitationValidator
 from app.grounding.resolver import ConservativeGraphResolver
 from app.schemas.manifest import GroundingPolicyDeclaration, GroundingPolicyType
 from app.retrieval.service import RetrievalService
-from app.schemas.cscrf_graph_data import create_verified_cscrf_graph
+from app.schemas.graph_collection import GraphEdgeCollection
 from app.grounding.relationship_policy import (
     resolve_relationship_and_temporal_policies,
     is_current_status_query,
@@ -59,6 +59,8 @@ class AnswerSafetyGate:
         self.processed_dir = Path(processed_dir)
         self.retrieval_service = retrieval_service
         self._graph = graph_collection
+        if self._graph is None and validator is not None:
+            self._graph = getattr(validator, "_graph", None)
         self._resolver = resolver
         self.validator = validator if validator is not None else CitationValidator(
             processed_dir=self.processed_dir,
@@ -67,9 +69,9 @@ class AnswerSafetyGate:
 
     @property
     def graph(self) -> GraphEdgeCollection:
-        """Lazily load verified CSCRF graph if not provided."""
+        """Lazily load graph if not provided."""
         if self._graph is None:
-            self._graph = create_verified_cscrf_graph()
+            self._graph = GraphEdgeCollection()
         return self._graph
 
     @property
@@ -102,7 +104,7 @@ class AnswerSafetyGate:
         cid = (
             collection_id.strip()
             if collection_id
-            else ("sebi_cscrf" if policy.policy_type == GroundingPolicyType.SEBI_CSCRF_STRICT else "general_static")
+            else "general_synthetic"
         )
 
         rel_policy, temp_policy = resolve_relationship_and_temporal_policies(

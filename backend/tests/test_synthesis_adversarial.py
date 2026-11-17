@@ -393,7 +393,7 @@ def test_api_provider_timeout_returns_structured_200_without_exposing_internals(
     try:
         response = client.post(
             "/api/v1/query",
-            json={"query": "ISO 27001 certification requirement", "top_k": 3},
+            json={"query": "What is the required password length under the Acme security policy?", "top_k": 3},
         )
         assert response.status_code == 200
         data = response.json()
@@ -416,7 +416,7 @@ def test_api_provider_unavailable_returns_safe_structured_error(client):
     try:
         response = client.post(
             "/api/v1/query",
-            json={"query": "ISO 27001 certification requirement", "top_k": 3},
+            json={"query": "What is the required password length under the Acme security policy?", "top_k": 3},
         )
         assert response.status_code == 200
         data = response.json()

@@ -1,5 +1,5 @@
 """
-Conservative graph resolver for regulatory evidence grounding in SEBI CSCRF.
+Conservative graph resolver for evidence grounding in document collections.
 
 Resolves retrieved candidate passages against verified relationship graph edges:
 - Preserves 100% of original retrieved passages and metadata.

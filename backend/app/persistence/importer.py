@@ -19,6 +19,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Set, Tuple
+import uuid
 import numpy as np
 
 from sqlalchemy import select, and_, text
@@ -413,8 +414,12 @@ class CorpusImporter:
         ).scalar_one_or_none()
 
         if not doc_model:
+            workspace_id = getattr(doc_record, "workspace_id", None) or uuid.UUID("00000000-0000-0000-0000-000000000001")
+            collection_id = getattr(doc_record, "collection_id", None) or "general_synthetic"
             doc_model = RegulatoryDocumentModel(
                 id=doc_record.document_id,
+                workspace_id=workspace_id,
+                collection_id=collection_id,
                 domain_id=self.domain_id,
                 circular_number=doc_record.circular_number,
                 title=doc_record.title,

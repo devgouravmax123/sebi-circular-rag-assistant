@@ -188,9 +188,13 @@ class MockSynthesisProvider(SynthesisProvider):
             if len(parts) > 1:
                 sub_q = parts[1].strip().rstrip("?")
                 # Check if evidence mentions keywords of the secondary subquestion
-                sub_keywords = extract_keywords_from_claim(sub_q)
+                sub_keywords = [
+                    kw for kw in extract_keywords_from_claim(sub_q)
+                    if kw not in {"non", "does", "also", "have", "with", "from"}
+                ]
                 evidence_text = " ".join(e.text.lower() for e in payload.evidence_items)
-                has_sub_support = any(kw in evidence_text for kw in sub_keywords) if sub_keywords else False
+                matched_sub_kw = [kw for kw in sub_keywords if kw in evidence_text]
+                has_sub_support = (len(matched_sub_kw) / len(sub_keywords) >= 0.5) if sub_keywords else False
 
                 if not has_sub_support:
                     unresolved.append(

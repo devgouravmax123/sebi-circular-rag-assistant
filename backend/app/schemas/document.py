@@ -16,34 +16,19 @@ class DocumentRecord(BaseModel):
     sha256: str = Field(..., description="SHA-256 checksum of source PDF")
     pdf_path: str = Field(..., description="Relative path to stored PDF artifact")
     extraction_status: str = Field("pending_review", description="Status of extraction")
-    regulator: str = Field("SEBI", description="Regulatory authority code (e.g. SEBI)")
-    domain: str = Field("CSCRF", description="Regulatory domain (e.g. CSCRF, LODR, ICDR)")
-    collection_id: Optional[str] = Field(None, description="Stable collection identifier (e.g. sebi_cscrf)")
-
-
-# Five canonical documents belonging to the foundational SEBI CSCRF pilot
-LEGACY_SEBI_DOCUMENTS = {
-    "sebi_cscrf_2024_113",
-    "sebi_cscrf_2025_045",
-    "sebi_cscrf_2025_060",
-    "sebi_cscrf_2025_096",
-    "sebi_cscrf_2025_119",
-}
+    regulator: Optional[str] = Field(None, description="Authority or organization code if applicable")
+    domain: Optional[str] = Field(None, description="Domain identifier if applicable")
+    collection_id: Optional[str] = Field(None, description="Stable collection identifier")
+    workspace_id: Optional[Any] = Field(None, description="Owning workspace identifier")
 
 
 def resolve_collection_identity(document_id: str, declared_collection_id: Optional[str] = None) -> Optional[str]:
     """
-    Deterministically resolves collection identity for a document:
-    1. If explicitly declared, returns declared_collection_id.
-    2. If missing, applies controlled backward compatibility ONLY if document_id is one of the
-       five recognized legacy SEBI CSCRF documents -> resolves to 'sebi_cscrf'.
-    3. For any other document lacking a collection identity, returns None (ambiguous/unassigned).
-       Never silently assigns arbitrary unknown documents to SEBI.
+    Deterministically resolves collection identity for a document.
+    Returns declared_collection_id if provided and non-empty, otherwise None.
     """
     if declared_collection_id and declared_collection_id.strip():
         return declared_collection_id.strip()
-    if document_id in LEGACY_SEBI_DOCUMENTS:
-        return "sebi_cscrf"
     return None
 
 

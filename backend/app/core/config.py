@@ -22,7 +22,7 @@ class Settings(BaseModel):
     Core application settings.
     Defaults to file-backed local mode when DATABASE_URL is not set.
     """
-    app_name: str = "SEBI Regulatory Intelligence Platform"
+    app_name: str = "Citenza Document Intelligence Platform"
     environment: str = Field(default_factory=lambda: os.getenv("APP_ENV", "development"))
     database_url: Optional[str] = Field(
         default_factory=lambda: os.getenv("DATABASE_URL"),

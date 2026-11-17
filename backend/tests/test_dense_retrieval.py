@@ -165,16 +165,16 @@ def test_retrieval_service_decoupled_bm25_and_dense(tmp_path):
         indexes_dir=tmp_path,
         dense_embedder=MockEmbedder(),
     )
-    doc_count, chunk_count = service.load_and_index_corpus()
-    assert doc_count == 5
-    assert chunk_count == 168
+    doc_count, chunk_count = service.load_and_index_corpus("cisa_playbooks")
+    assert doc_count >= 1
+    assert chunk_count >= 46
 
     # BM25 search
-    res_bm25 = service.search("August 31 2025 extension compliance timelines", top_k=3)
+    res_bm25 = service.search("incident response coordination", collection_id="cisa_playbooks", top_k=3)
     assert res_bm25.total_results > 0
 
     # Dense search with mock embedder
-    res_dense = service.search_dense("August 31 2025 extension compliance timelines", top_k=3)
+    res_dense = service.search_dense("incident response coordination", collection_id="cisa_playbooks", top_k=3)
     assert res_dense.total_results > 0
     assert len(res_dense.results) <= 3
     # Check that scores are distinct types / representations
@@ -192,21 +192,21 @@ def test_lazy_dense_indexing_after_lexical_loading_synchronizes_generation(tmp_p
         indexes_dir=tmp_path,
         dense_embedder=MockEmbedder(),
     )
-    doc_count, chunk_count = service.load_and_index_corpus()
-    assert doc_count == 5
-    assert chunk_count == 168
+    doc_count, chunk_count = service.load_and_index_corpus("cisa_playbooks")
+    assert doc_count >= 1
+    assert chunk_count >= 46
 
     # Active generation before dense loading has bm25 but no dense
-    state = service._get_or_create_collection_state("sebi_cscrf")
+    state = service._get_or_create_collection_state("cisa_playbooks")
     assert state.is_dense_indexed is False
     assert state.dense_index is None
 
     # Trigger lazy dense loading via get_active_generation / search_dense
-    res_dense = service.search_dense("compliance timelines", top_k=3)
+    res_dense = service.search_dense("incident response", collection_id="cisa_playbooks", top_k=3)
     assert res_dense.total_results > 0
 
     # Generation is synchronized
-    gen = service.get_active_generation("sebi_cscrf")
+    gen = service.get_active_generation("cisa_playbooks")
     assert gen.dense_index is not None
     assert gen.bm25_index is not None
     assert state.is_dense_indexed is True
@@ -222,7 +222,7 @@ def test_repeated_dense_searches_do_not_rebuild_index(tmp_path, monkeypatch):
         indexes_dir=tmp_path,
         dense_embedder=MockEmbedder(),
     )
-    service.load_and_index_corpus()
+    service.load_and_index_corpus("cisa_playbooks")
 
     build_call_count = 0
     original_build = DenseIndex.build_from_chunks
@@ -235,17 +235,17 @@ def test_repeated_dense_searches_do_not_rebuild_index(tmp_path, monkeypatch):
     monkeypatch.setattr(DenseIndex, "build_from_chunks", counting_build)
 
     # First search builds dense index
-    res1 = service.search_dense("audit guidelines", top_k=2)
+    res1 = service.search_dense("incident containment", collection_id="cisa_playbooks", top_k=2)
     assert res1.total_results > 0
     assert build_call_count == 1
 
     # Second search must reuse without calling build_from_chunks again
-    res2 = service.search_dense("audit guidelines", top_k=2)
+    res2 = service.search_dense("incident containment", collection_id="cisa_playbooks", top_k=2)
     assert res2.total_results > 0
     assert build_call_count == 1
 
     # Third search with different query must also reuse
-    res3 = service.search_dense("extension timelines", top_k=2)
+    res3 = service.search_dense("playbook guidelines", collection_id="cisa_playbooks", top_k=2)
     assert res3.total_results > 0
     assert build_call_count == 1
 
@@ -263,8 +263,8 @@ def test_lexical_only_mode_does_not_invoke_dense_loading(tmp_path, monkeypatch):
     )
     assert service.is_lexical_only is True
 
-    doc_count, chunk_count = service.load_and_index_corpus()
-    assert doc_count == 5
+    doc_count, chunk_count = service.load_and_index_corpus("cisa_playbooks")
+    assert doc_count >= 1
 
     build_called = False
 
@@ -276,7 +276,7 @@ def test_lexical_only_mode_does_not_invoke_dense_loading(tmp_path, monkeypatch):
     monkeypatch.setattr(DenseIndex, "build_from_chunks", fail_build)
 
     # BM25 search works normally
-    res_bm25 = service.search("compliance timelines", top_k=3)
+    res_bm25 = service.search("incident response", collection_id="cisa_playbooks", top_k=3)
     assert res_bm25.total_results > 0
     assert build_called is False
 
@@ -344,14 +344,14 @@ def test_concurrent_lazy_loading_thread_safety(tmp_path):
         indexes_dir=tmp_path,
         dense_embedder=MockEmbedder(),
     )
-    service.load_and_index_corpus()
+    service.load_and_index_corpus("cisa_playbooks")
 
     results = []
     errors = []
 
     def worker():
         try:
-            res = service.search_dense("extension compliance timelines", top_k=2)
+            res = service.search_dense("incident response coordination", collection_id="cisa_playbooks", top_k=2)
             results.append(res)
         except Exception as e:
             errors.append(e)

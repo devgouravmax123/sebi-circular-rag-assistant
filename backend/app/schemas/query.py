@@ -22,7 +22,7 @@ class QueryRequest(BaseModel):
         ...,
         min_length=2,
         max_length=500,
-        description="Natural language question regarding SEBI CSCRF circular provisions (2 to 500 characters).",
+        description="Natural language question regarding indexed document provisions (2 to 500 characters).",
     )
     top_k: int = Field(
         default=5,
@@ -35,28 +35,28 @@ class QueryRequest(BaseModel):
         description="Whether to include historical superseded provisions if asking historical questions.",
     )
     regulator: Optional[str] = Field(
-        default="SEBI",
-        description="Regulator code (e.g. 'SEBI'). Multi-regulator queries outside SEBI are not supported in Phase 8C.",
+        default=None,
+        description="Optional authority or regulator code (e.g. 'SEC', 'CISA').",
     )
     domain: Optional[str] = Field(
         default=None,
-        description="Optional regulatory domain filter (e.g. 'CSCRF', 'LODR', 'ICDR').",
+        description="Optional domain filter.",
     )
     document_id: Optional[str] = Field(
         default=None,
-        description="Optional filter targeting a specific regulatory document ID.",
+        description="Optional filter targeting a specific document ID.",
     )
     start_date: Optional[str] = Field(
         default=None,
-        description="Optional earliest circular issue_date (YYYY-MM-DD).",
+        description="Optional earliest document date (YYYY-MM-DD).",
     )
     end_date: Optional[str] = Field(
         default=None,
-        description="Optional latest circular issue_date (YYYY-MM-DD).",
+        description="Optional latest document date (YYYY-MM-DD).",
     )
     collection_id: str = Field(
-        default="sebi_cscrf",
-        description="Target document collection identifier (defaults to 'sebi_cscrf' for SEBI pilot compatibility).",
+        default="general_synthetic",
+        description="Target document collection identifier.",
     )
 
     @field_validator("collection_id")
@@ -77,9 +77,7 @@ class QueryRequest(BaseModel):
     def validate_regulator(cls, v: Optional[str]) -> Optional[str]:
         if v is not None:
             norm = v.strip().upper()
-            if norm != "SEBI":
-                raise ValueError("Only 'SEBI' is supported as the regulator in Phase 8C.")
-            return norm
+            return norm if norm else None
         return v
 
     @field_validator("domain")
@@ -141,11 +139,10 @@ class QueryResponse(BaseModel):
     )
     pilot_corpus_scope_limitation: str = Field(
         default=(
-            "Educational & Pilot Assistant: Operating strictly over the 5-document SEBI CSCRF circular corpus "
-            "(CIR/2024/113, CIR/2025/045, CIR/2025/060, CIR/2025/096, CIR/2025/119). "
-            "Excerpts represent technical document grounding only and do not establish universal legal currency."
+            "Citenza Document Intelligence Assistant: Operating over indexed collection documents. "
+            "Excerpts represent technical document grounding only and do not constitute formal legal advice."
         ),
-        description="Authoritative notice defining the 5-document pilot boundary.",
+        description="Notice defining the collection grounding boundary.",
     )
     # Phase 8E: Grounded LLM Synthesis fields (backward compatible)
     answer_text: Optional[str] = Field(

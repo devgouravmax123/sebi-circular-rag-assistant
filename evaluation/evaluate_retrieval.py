@@ -1,7 +1,7 @@
 """
-Unified Retrieval Evaluator for SEBI CSCRF Regulatory Q&A/Intelligence Assistant.
+Unified Retrieval Evaluator for Citenza Document Intelligence Platform.
 
-Evaluates lexical (BM25), dense, and hybrid (RRF) retrieval systems against the gold evaluation dataset.
+Evaluates lexical (BM25), dense, and hybrid (RRF) retrieval systems against the general evaluation dataset.
 Implements:
 1. Primary chunk-ranked document metrics (K=10 raw chunks budget, first-occurrence deduplication, cutoffs k in {1, 3, 5}).
 2. Diagnostic aggregated document metrics (max chunk score per document, doc_id tie-breaking, cutoffs k in {1, 3, 5}).
@@ -305,7 +305,7 @@ class UnifiedEvaluator:
     """
     def __init__(
         self,
-        dataset_path: str | Path = "evaluation/data/gold_evaluation_dataset.json",
+        dataset_path: str | Path = "evaluation/data/general_evaluation_dataset.json",
         processed_dir: str | Path = "data/processed",
         indexes_dir: str | Path = "data/indexes",
         raw_budget_K: int = 10,
@@ -426,7 +426,7 @@ class UnifiedEvaluator:
 
 def print_evaluation_report(results: List[Dict[str, Any]]):
     print("\n" + "=" * 95)
-    print("                 SEBI CSCRF UNIFIED RETRIEVAL EVALUATION REPORT")
+    print("                 CITENZA UNIFIED RETRIEVAL EVALUATION REPORT")
     print("=" * 95)
 
     counts = results[0]["counts"]
@@ -543,14 +543,14 @@ def print_evaluation_report(results: List[Dict[str, Any]]):
         compare_pair(rrf_res, dense_res, "RRF Hybrid", "Dense")
 
     print("\n" + "=" * 95)
-    print("Notice: Small pilot benchmark (32 queries across 5 documents). Results demonstrate")
-    print("relative retrieval alignment on verified provisions, not universal regulatory completeness.")
+    print("Notice: Document retrieval benchmark across verified general collections.")
+    print("Results demonstrate relative retrieval alignment on active documents.")
     print("=" * 95 + "\n")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Unified Retrieval Evaluator for SEBI CSCRF")
-    parser.add_argument("--dataset", type=str, default="evaluation/data/gold_evaluation_dataset.json", help="Path to gold dataset")
+    parser = argparse.ArgumentParser(description="Unified Retrieval Evaluator for Citenza")
+    parser.add_argument("--dataset", type=str, default="evaluation/data/general_evaluation_dataset.json", help="Path to gold dataset")
     parser.add_argument("--processed_dir", type=str, default="data/processed", help="Path to processed corpus")
     parser.add_argument("--indexes_dir", type=str, default="data/indexes", help="Path to indexes")
     parser.add_argument("--k", type=int, default=10, help="Raw chunk retrieval budget K")

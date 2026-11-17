@@ -36,9 +36,72 @@ from app.schemas.manifest import GroundingPolicyDeclaration, GroundingPolicyType
 from app.schemas.retrieval import RetrievalResult, RetrievalResponse
 
 
+from app.schemas.document import DocumentRecord, ChunkRecord
+from app.grounding.validator import CitationValidator
+
+
 @pytest.fixture
-def gate():
-    return AnswerSafetyGate(processed_dir="data/processed")
+def test_corpus():
+    doc_45 = DocumentRecord(
+        document_id="sebi_cscrf_2025_045",
+        title="Extension Circular",
+        pdf_path="data/raw/circ45.pdf",
+        source_url="https://example.com/circ45.pdf",
+        total_pages=2,
+        sha256="abc45",
+        status="PROCESSED",
+    )
+    doc_113 = DocumentRecord(
+        document_id="sebi_cscrf_2024_113",
+        title="Baseline Circular",
+        pdf_path="data/raw/circ113.pdf",
+        source_url="https://example.com/circ113.pdf",
+        total_pages=118,
+        sha256="abc113",
+        status="PROCESSED",
+    )
+    doc_60 = DocumentRecord(
+        document_id="sebi_cscrf_2025_060",
+        title="Subsequent Circular",
+        pdf_path="data/raw/circ60.pdf",
+        source_url="https://example.com/circ60.pdf",
+        total_pages=5,
+        sha256="abc60",
+        status="PROCESSED",
+    )
+    chunk_45 = ChunkRecord(
+        chunk_id="sebi_cscrf_2025_045_p1_0",
+        document_id="sebi_cscrf_2025_045",
+        text=(
+            "Recognising the need for robust cybersecurity measures and protection of data and IT infrastructure. "
+            "SEBI had received multiple requests for CSCRF compliance timelines extension. "
+            "3.1. Bring the provisions of this circulars to the notice of their members/ participants. "
+            "This circular is issued with the approval of Competent Authority."
+        ),
+        page_start=1,
+        page_end=2,
+        word_count=45,
+        char_count=290,
+    )
+    chunk_113 = ChunkRecord(
+        chunk_id="sebi_cscrf_2024_113_p80_67",
+        document_id="sebi_cscrf_2024_113",
+        text="The reporting of the CISO of the MII and Qualified REs shall be directly to the MD & CEO of their organization.",
+        page_start=80,
+        page_end=81,
+        word_count=21,
+        char_count=113,
+    )
+    chunks = {chunk_45.chunk_id: chunk_45, chunk_113.chunk_id: chunk_113}
+    docs = {doc_45.document_id: doc_45, doc_113.document_id: doc_113, doc_60.document_id: doc_60}
+    return docs, chunks
+
+
+@pytest.fixture
+def gate(test_corpus):
+    docs, chunks = test_corpus
+    val = CitationValidator(corpus_chunks=chunks, corpus_documents=docs)
+    return AnswerSafetyGate(validator=val)
 
 
 @pytest.fixture
@@ -137,7 +200,7 @@ def test_4_retrieval_service_execution_error(sebi_policy):
     assert "Server-side retrieval failed" in resp.summary_narrative
 
 
-def test_5_only_superseded_evidence_for_current_compliance_query(sebi_policy):
+def test_5_only_superseded_evidence_for_current_compliance_query(sebi_policy, test_corpus):
     # Setup custom graph where doc_old is SUPERSEDED by doc_new
     custom_graph = GraphEdgeCollection()
     custom_graph.add_edge(
@@ -151,7 +214,9 @@ def test_5_only_superseded_evidence_for_current_compliance_query(sebi_policy):
             review_status=ReviewStatus.VERIFIED,
         )
     )
-    custom_gate = AnswerSafetyGate(processed_dir="data/processed", graph_collection=custom_graph)
+    docs, chunks = test_corpus
+    val = CitationValidator(corpus_chunks=chunks, corpus_documents=docs, graph_collection=custom_graph)
+    custom_gate = AnswerSafetyGate(validator=val, graph_collection=custom_graph)
     exact_c45 = "SEBI had received multiple requests for CSCRF compliance timelines extension"
     payload = ExcerptDraftPayload(
         query="What is the current mandatory deadline for CSCRF compliance today?",
@@ -171,7 +236,7 @@ def test_5_only_superseded_evidence_for_current_compliance_query(sebi_policy):
     assert "all matching corpus provisions are superseded" in resp.abstention_reason.lower()
 
 
-def test_6_historical_query_with_superseded_evidence_separated(sebi_policy):
+def test_6_historical_query_with_superseded_evidence_separated(sebi_policy, test_corpus):
     custom_graph = GraphEdgeCollection()
     custom_graph.add_edge(
         GraphEdge(
@@ -184,7 +249,9 @@ def test_6_historical_query_with_superseded_evidence_separated(sebi_policy):
             review_status=ReviewStatus.VERIFIED,
         )
     )
-    custom_gate = AnswerSafetyGate(processed_dir="data/processed", graph_collection=custom_graph)
+    docs, chunks = test_corpus
+    val = CitationValidator(corpus_chunks=chunks, corpus_documents=docs, graph_collection=custom_graph)
+    custom_gate = AnswerSafetyGate(validator=val, graph_collection=custom_graph)
     exact_c45 = "SEBI had received multiple requests for CSCRF compliance timelines extension"
     payload = ExcerptDraftPayload(
         query="What was historically stated in circular 2025/045?",
@@ -230,7 +297,7 @@ def test_8_partial_amendment_with_unmatched_provision_is_unresolved(gate):
     assert len(provisions) == 0
 
 
-def test_9_references_edge_never_implies_supersession(sebi_policy):
+def test_9_references_edge_never_implies_supersession(sebi_policy, test_corpus):
     custom_graph = GraphEdgeCollection()
     custom_graph.add_edge(
         GraphEdge(
@@ -243,7 +310,9 @@ def test_9_references_edge_never_implies_supersession(sebi_policy):
             review_status=ReviewStatus.VERIFIED,
         )
     )
-    custom_gate = AnswerSafetyGate(processed_dir="data/processed", graph_collection=custom_graph)
+    docs, chunks = test_corpus
+    val = CitationValidator(corpus_chunks=chunks, corpus_documents=docs, graph_collection=custom_graph)
+    custom_gate = AnswerSafetyGate(validator=val, graph_collection=custom_graph)
     exact_c45 = "SEBI had received multiple requests for CSCRF compliance timelines extension"
     payload = ExcerptDraftPayload(
         query="Did 2025_060 repeal 2025_045?",

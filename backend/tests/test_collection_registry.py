@@ -32,10 +32,9 @@ from app.schemas.manifest import (
 from app.schemas.document import (
     DocumentRecord,
     ChunkRecord,
-    LEGACY_SEBI_DOCUMENTS,
     resolve_collection_identity,
 )
-from app.schemas.cscrf_graph_data import create_verified_cscrf_graph
+from app.schemas.graph_collection import GraphEdgeCollection
 
 
 @pytest.fixture
@@ -44,27 +43,25 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parent.parent.parent
 
 
-def test_load_existing_sebi_cscrf_manifest(repo_root: Path):
-    """Verify loading real repository manifest data/manifests/sebi_cscrf.json."""
+def test_load_existing_general_synthetic_manifest(repo_root: Path):
+    """Verify loading real repository manifest data/manifests/general_synthetic.json."""
     manifests_dir = repo_root / "data" / "manifests"
     indexes_dir = repo_root / "data" / "indexes"
     assert manifests_dir.exists(), "data/manifests directory must exist"
 
     registry = CollectionRegistry(manifests_dir=manifests_dir, indexes_dir=indexes_dir)
-    assert registry.has_collection("sebi_cscrf")
+    assert registry.has_collection("general_synthetic")
 
-    manifest = registry.get_collection("sebi_cscrf")
-    assert manifest.collection_id == "sebi_cscrf"
-    assert manifest.name == "SEBI Cybersecurity and Cyber Resilience Framework"
-    assert manifest.regulator == "SEBI"
-    assert manifest.domain == "CSCRF"
-    assert manifest.enforce_regulatory_graph is True
-    assert len(manifest.documents) == 5
+    manifest = registry.get_collection("general_synthetic")
+    assert manifest.collection_id == "general_synthetic"
+    assert "Acme" in manifest.name
+    assert manifest.enforce_regulatory_graph is False
+    assert len(manifest.documents) == 3
 
     # Policy declaration check
-    policy = registry.get_grounding_policy("sebi_cscrf")
-    assert policy.policy_type == GroundingPolicyType.SEBI_CSCRF_STRICT
-    assert policy.enforce_regulatory_graph is True
+    policy = registry.get_grounding_policy("general_synthetic")
+    assert policy.policy_type == GroundingPolicyType.GENERAL_STATIC
+    assert policy.enforce_regulatory_graph is False
     assert policy.enforce_verbatim_citation is True
     assert policy.enforce_retrieval_binding is True
 
@@ -217,71 +214,45 @@ def test_general_static_policy_declaration():
     assert manifest.policy.enforce_retrieval_binding is True
 
 
-def test_legacy_sebi_document_mapping_and_backward_compatibility():
-    """Verify explicit mapping of 5 SEBI circulars and rejection of ambiguous assignment."""
-    # 1. Five canonical SEBI documents map deterministically
-    for doc_id in LEGACY_SEBI_DOCUMENTS:
-        resolved = resolve_collection_identity(doc_id)
-        assert resolved == "sebi_cscrf", f"Legacy document {doc_id} must resolve to sebi_cscrf"
+def test_document_collection_identity_resolution():
+    """Verify deterministic collection identity resolution."""
+    # 1. Missing declared collection ID returns None
+    assert resolve_collection_identity("any_doc_id") is None
 
-    # 2. Arbitrary missing document does NOT resolve to sebi_cscrf
-    unknown_doc_id = "rbi_kyc_master_direction_2024"
-    assert resolve_collection_identity(unknown_doc_id) is None
-
-    # 3. Explicitly declared collection ID always takes precedence
-    custom_resolved = resolve_collection_identity(unknown_doc_id, declared_collection_id="rbi_banking")
-    assert custom_resolved == "rbi_banking"
-
-    # 4. Explicit override even on a legacy SEBI ID if intentionally reassigned
-    override = resolve_collection_identity("sebi_cscrf_2024_113", declared_collection_id="custom_collection")
-    assert override == "custom_collection"
+    # 2. Explicit declared collection ID is returned
+    assert resolve_collection_identity("any_doc_id", declared_collection_id="general_synthetic") == "general_synthetic"
 
 
-def test_backward_compatibility_with_legacy_serialized_records():
-    """Legacy JSON records without collection_id parse cleanly into DocumentRecord and ChunkRecord."""
-    legacy_doc_json = {
-        "document_id": "sebi_cscrf_2024_113",
-        "circular_number": "SEBI/HO/ITD-1/ITD_CSC_EXT/P/CIR/2024/113",
-        "title": "Cybersecurity and Cyber Resilience Framework (CSCRF)",
-        "source_url": "https://www.sebi.gov.in/legal/circulars/aug-2024/cscrf.html",
-        "sha256": "bd9ddb68bb49b9a92771ff01ed3138e01f0962b383e9ff643008b729290fc85d",
-        "pdf_path": "data/raw/CSCRF_2024_113.pdf",
+def test_document_record_and_chunk_record_parsing():
+    """Verify document and chunk parsing with optional collection_id."""
+    doc_json = {
+        "document_id": "test_doc_01",
+        "title": "General System Specification",
+        "source_url": "https://example.com/spec.pdf",
+        "sha256": "92b4000fae4037c17bf2b57d5f16f92123c4ef3698cf09a36a14ff619a6c2a84",
+        "pdf_path": "data/raw/synthetic_general/test_doc_01.pdf",
     }
-    doc_record = DocumentRecord(**legacy_doc_json)
-    assert doc_record.document_id == "sebi_cscrf_2024_113"
+    doc_record = DocumentRecord(**doc_json)
+    assert doc_record.document_id == "test_doc_01"
     assert doc_record.collection_id is None
-    # Resolution helper confirms controlled compatibility
-    assert resolve_collection_identity(doc_record.document_id, doc_record.collection_id) == "sebi_cscrf"
+    assert resolve_collection_identity(doc_record.document_id, doc_record.collection_id) is None
 
-    legacy_chunk_json = {
-        "chunk_id": "sebi_cscrf_2024_113_p1_0",
-        "document_id": "sebi_cscrf_2024_113",
-        "text": "Cybersecurity framework provisions...",
+    chunk_json = {
+        "chunk_id": "test_doc_01_p1_0",
+        "document_id": "test_doc_01",
+        "text": "System architecture overview...",
         "page_start": 1,
         "page_end": 1,
     }
-    chunk_record = ChunkRecord(**legacy_chunk_json)
-    assert chunk_record.chunk_id == "sebi_cscrf_2024_113_p1_0"
+    chunk_record = ChunkRecord(**chunk_json)
+    assert chunk_record.chunk_id == "test_doc_01_p1_0"
     assert chunk_record.collection_id is None
 
 
-def test_verified_sebi_graph_fixtures_preserved():
-    """Confirm verified SEBI CSCRF relationship graph fixtures remain 100% intact."""
-    graph = create_verified_cscrf_graph()
-    assert graph is not None
-    # Total verified edges in verified graph
-    assert len(graph.edges) == 9
-
-    # Check that edges involve the 5 verified SEBI documents
-    involved_docs = {e.source_document_id for e in graph.edges.values()} | {e.target_document_id for e in graph.edges.values()}
-    assert involved_docs.issubset(LEGACY_SEBI_DOCUMENTS)
-
-    # Check known edges
-    timeline_amendments = [
-        e for e in graph.get_outgoing_edges("sebi_cscrf_2025_045")
-        if e.target_document_id == "sebi_cscrf_2024_113"
-    ]
-    assert len(timeline_amendments) >= 2
+def test_graph_edge_collection_operations():
+    """Confirm GraphEdgeCollection operations."""
+    graph = GraphEdgeCollection()
+    assert len(graph.edges) == 0
 
 
 def test_missing_or_empty_policy_rejected():

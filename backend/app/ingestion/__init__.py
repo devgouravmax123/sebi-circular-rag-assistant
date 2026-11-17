@@ -2,7 +2,6 @@
 from app.ingestion.extractor import PDFExtractor, compute_sha256
 from app.ingestion.chunker import TextChunker
 from app.ingestion.service import IngestionService, IngestionResult
-from app.ingestion.corpus_registry import SEBI_CSCRF_CORPUS
 from app.ingestion.downloader import (
     SecurePDFDownloader,
     DownloadResult,

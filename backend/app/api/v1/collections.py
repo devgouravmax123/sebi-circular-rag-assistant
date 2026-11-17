@@ -233,7 +233,7 @@ def create_collection_ingestion_job(
     if not doc:
         doc = RegulatoryDocumentModel(
             id=doc_id,
-            domain_id="SEBI_CSCRF",  # default taxonomy domain
+            domain_id=None,
             title=payload.title or f"Ingested Document {doc_id}",
             circular_number=payload.circular_number,
             workspace_id=col.workspace_id,
@@ -442,7 +442,7 @@ async def upload_collection_document(
     doc_title = title.strip() if title and title.strip() else (filename or f"Uploaded Document {doc_id}")
     doc = RegulatoryDocumentModel(
         id=doc_id,
-        domain_id="SEBI_CSCRF",
+        domain_id=None,
         title=doc_title,
         circular_number=circular_number.strip() if circular_number and circular_number.strip() else None,
         workspace_id=col.workspace_id,

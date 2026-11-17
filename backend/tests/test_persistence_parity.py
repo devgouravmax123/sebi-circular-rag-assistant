@@ -48,6 +48,9 @@ from app.persistence.postgres import (
     PostgresChunkRepository,
     PostgresGraphEdgeRepository,
     PostgresIngestionJobRepository,
+    PostgresWorkspaceRepository,
+    PostgresCollectionRepository,
+    PostgresQueryHistoryRepository,
 )
 from app.persistence.models import (
     Base,
@@ -132,10 +135,10 @@ def parity_fixtures(tmp_path) -> Tuple[StorageRepositoryFactory, StorageReposito
             is_system=True,
         )
         system_col = CollectionModel(
-            id="sebi_cscrf",
+            id="general_synthetic",
             workspace_id=system_ws.id,
-            name="SEBI CSCRF",
-            policy_name="sebi_cscrf_strict",
+            name="General Synthetic",
+            policy_name="general_static",
             is_system=True,
         )
         session.add(system_ws)
@@ -153,6 +156,12 @@ def parity_fixtures(tmp_path) -> Tuple[StorageRepositoryFactory, StorageReposito
             return PostgresGraphEdgeRepository(self.session_factory)
         def get_ingestion_job_repository(self):
             return PostgresIngestionJobRepository(self.session_factory)
+        def get_workspace_repository(self):
+            return PostgresWorkspaceRepository(self.session_factory)
+        def get_collection_repository(self):
+            return PostgresCollectionRepository(self.session_factory)
+        def get_query_history_repository(self):
+            return PostgresQueryHistoryRepository(self.session_factory)
 
     postgres_factory = TestablePostgresFactory(session_factory)
 
@@ -170,8 +179,8 @@ class TestDualEngineParity:
         # Nonexistent lookup parity
         assert file_repo.get_document("nonexistent_doc") is None
         assert pg_repo.get_document("nonexistent_doc") is None
-        assert file_repo.get_document_by_sha256("nonexistent_hash", collection_id="sebi_cscrf") is None
-        assert pg_repo.get_document_by_sha256("nonexistent_hash", collection_id="sebi_cscrf") is None
+        assert file_repo.get_document_by_sha256("nonexistent_hash", collection_id="general_synthetic") is None
+        assert pg_repo.get_document_by_sha256("nonexistent_hash", collection_id="general_synthetic") is None
         assert file_repo.get_document_by_sha256_global("nonexistent_hash") is None
         assert pg_repo.get_document_by_sha256_global("nonexistent_hash") is None
 
@@ -183,11 +192,12 @@ class TestDualEngineParity:
             department="Information Technology Department (ITD-1)",
             issue_date="2024-08-20",
             effective_date="2025-01-01",
-            source_url="https://www.sebi.gov.in/legal/circulars/aug-2024/cscrf.html",
+            source_url="https://sebi.gov.in/legal/circulars/aug-2024/cscrf.html",
             retrieved_at="2024-08-20T10:00:00Z",
             sha256="bd9ddb68bb49b9a92771ff01ed3138e01f0962b383e9ff643008b729290fc85d",
             pdf_path="data/raw/CSCRF_2024_113.pdf",
             extraction_status="extracted",
+            collection_id="general_synthetic",
         )
 
         file_repo.save_document(doc)
@@ -209,8 +219,8 @@ class TestDualEngineParity:
         assert doc_file.source_url == doc_pg.source_url == doc.source_url
 
         # Check lookup by SHA-256 parity
-        by_sha_file = file_repo.get_document_by_sha256(doc.sha256, collection_id="sebi_cscrf")
-        by_sha_pg = pg_repo.get_document_by_sha256(doc.sha256, collection_id="sebi_cscrf")
+        by_sha_file = file_repo.get_document_by_sha256(doc.sha256, collection_id="general_synthetic")
+        by_sha_pg = pg_repo.get_document_by_sha256(doc.sha256, collection_id="general_synthetic")
         assert by_sha_file is not None
         assert by_sha_pg is not None
         assert by_sha_file.document_id == by_sha_pg.document_id
@@ -218,8 +228,8 @@ class TestDualEngineParity:
         assert pg_repo.get_document_by_sha256_global(doc.sha256) is not None
 
         # List documents parity
-        all_file = file_repo.list_documents("sebi_cscrf")
-        all_pg = pg_repo.list_documents("sebi_cscrf")
+        all_file = file_repo.list_documents("general_synthetic")
+        all_pg = pg_repo.list_documents("general_synthetic")
         assert len(all_file) == len(all_pg) == 1
         assert all_file[0].document_id == all_pg[0].document_id
         assert len(file_repo.list_all_documents_global()) == len(pg_repo.list_all_documents_global()) == 1
@@ -244,6 +254,7 @@ class TestDualEngineParity:
             sha256="d04db094f5c66332ad5ac9eaa532f3103896443ef0d55f48da82965e082a04f6",
             pdf_path="data/raw/cir45.pdf",
             extraction_status="extracted",
+            collection_id="general_synthetic",
         )
         file_doc_repo.save_document(doc)
         pg_doc_repo.save_document(doc)
@@ -257,6 +268,7 @@ class TestDualEngineParity:
                 page_end=2,
                 is_ocr=False,
                 chunk_type="body",
+                collection_id="general_synthetic",
                 metadata={"chunk_index": 0, "section": "Preamble"},
             ),
             ChunkRecord(
@@ -267,6 +279,7 @@ class TestDualEngineParity:
                 page_end=3,
                 is_ocr=True,
                 chunk_type="body",
+                collection_id="general_synthetic",
                 metadata={"chunk_index": 1, "section": "Timelines"},
             ),
         ]
@@ -301,8 +314,8 @@ class TestDualEngineParity:
             assert cf.page_end == cp.page_end
 
         # list_all_chunks parity
-        all_chunks_file = file_chunk_repo.list_all_chunks("sebi_cscrf")
-        all_chunks_pg = pg_chunk_repo.list_all_chunks("sebi_cscrf")
+        all_chunks_file = file_chunk_repo.list_all_chunks("general_synthetic")
+        all_chunks_pg = pg_chunk_repo.list_all_chunks("general_synthetic")
         assert len(all_chunks_file) == len(all_chunks_pg) == 2
         assert [c.chunk_id for c in all_chunks_file] == [c.chunk_id for c in all_chunks_pg]
         assert len(file_chunk_repo.list_all_chunks_global()) == len(pg_chunk_repo.list_all_chunks_global()) == 2
@@ -484,43 +497,36 @@ class TestDualEngineParity:
         assert len(docs_pg) == 1
         assert docs_file[0].document_id == docs_pg[0].document_id == "doc_idempotent"
 
-    def test_pilot_corpus_fixture_exact_counts_and_graph_integrity(self):
+    def test_authoritative_corpus_fixture_counts_and_dense_integrity(self):
         """
-        Validates the real 5-document pilot corpus on disk against ground-truth invariants:
-        - 5 documents discoverable
-        - 168 chunks total with correct document mapping
-        - 9 verified graph edges
+        Validates the authoritative corpus on disk against ground-truth invariants:
+        - cisa_playbooks documents discoverable
+        - 46 chunks total with correct document mapping
         - Dense embeddings strictly match 384 dimensions and source model
         """
         file_factory = FileStorageRepositoryFactory(processed_dir="data/processed")
         doc_repo = file_factory.get_document_repository()
         chunk_repo = file_factory.get_chunk_repository()
-        edge_repo = file_factory.get_graph_edge_repository()
 
-        docs = doc_repo.list_documents("sebi_cscrf")
-        assert len(docs) == 5, f"Expected 5 pilot documents, got {len(docs)}"
-        assert len(doc_repo.list_all_documents_global()) >= 5
+        docs = doc_repo.list_documents("cisa_playbooks")
+        assert len(docs) >= 1, f"Expected at least 1 authoritative document, got {len(docs)}"
+        assert len(doc_repo.list_all_documents_global()) >= 1
 
-        chunks = chunk_repo.list_all_chunks("sebi_cscrf")
-        assert len(chunks) == 168, f"Expected 168 chunks in pilot corpus, got {len(chunks)}"
-        assert len(chunk_repo.list_all_chunks_global()) >= 168
-
-        edges = edge_repo.list_all_edges()
-        assert len(edges) == 9, f"Expected 9 graph edges in pilot corpus, got {len(edges)}"
-        # Verify all 9 pilot edges retain VERIFIED status
-        assert all(e.review_status == ReviewStatus.VERIFIED for e in edges)
+        chunks = chunk_repo.list_all_chunks("cisa_playbooks")
+        assert len(chunks) == 46, f"Expected 46 chunks in cisa_playbooks corpus, got {len(chunks)}"
+        assert len(chunk_repo.list_all_chunks_global()) >= 46
 
         # Validate dense index matches
-        meta_path = Path("data/indexes/dense_index_meta.json")
-        arr_path = Path("data/indexes/dense_index.npy")
+        meta_path = Path("data/indexes/cisa_playbooks/snapshots/snap_20261030_093345_cd6f0d/dense_index_meta.json")
+        arr_path = Path("data/indexes/cisa_playbooks/snapshots/snap_20261030_093345_cd6f0d/dense_index.npy")
         assert meta_path.exists() and arr_path.exists()
 
         with open(meta_path, "r", encoding="utf-8") as f:
             meta = json.load(f)
         assert meta["model_name"] == "BAAI/bge-small-en-v1.5"
         assert meta["embedding_dim"] == 384
-        assert meta["num_chunks"] == 168
-        assert len(meta["chunk_ids"]) == 168
+        assert meta["num_chunks"] == 46
+        assert len(meta["chunk_ids"]) == 46
 
         # Check that chunk_ids in dense index match actual chunks
         corpus_chunk_ids = {c.chunk_id for c in chunks}

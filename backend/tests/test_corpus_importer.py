@@ -232,34 +232,34 @@ def mock_corpus_dir(tmp_path):
 class TestCorpusImporterValidation:
     """Tests corpus loading and validation without database writes."""
 
-    def test_load_pilot_corpus_validation(self):
-        """Validates that real pilot corpus (5 docs, 168 chunks, 9 edges) validates 100% cleanly."""
-        importer = CorpusImporter(processed_dir="data/processed", indexes_dir="data/indexes")
+    def test_load_pilot_corpus_validation(self, mock_corpus_dir):
+        """Validates that corpus (2 docs, 3 chunks, 1 edge) validates 100% cleanly."""
+        importer = CorpusImporter(processed_dir=mock_corpus_dir[0], indexes_dir=mock_corpus_dir[1])
         docs_and_chunks, dense_vecs, edges, stats = importer.load_and_validate_corpus()
 
-        assert stats.documents_discovered == 5
-        assert stats.documents_validated == 5
-        assert len(docs_and_chunks) == 5
-        assert stats.chunks_validated == 168
-        assert stats.embeddings_validated == 168
-        assert stats.edges_validated == 9
-        assert len(edges) == 9
+        assert stats.documents_discovered == 2
+        assert stats.documents_validated == 2
+        assert len(docs_and_chunks) == 2
+        assert stats.chunks_validated == 3
+        assert stats.embeddings_validated == 3
+        assert stats.edges_validated == 1
+        assert len(edges) == 1
         assert stats.errors == []
         assert stats.conflicts == []
 
-    def test_dry_run_does_not_require_database_connection(self):
+    def test_dry_run_does_not_require_database_connection(self, mock_corpus_dir):
         """Verifies that dry-run operates successfully when session_factory is None."""
         importer = CorpusImporter(
             session_factory=None,
-            processed_dir="data/processed",
-            indexes_dir="data/indexes",
+            processed_dir=mock_corpus_dir[0],
+            indexes_dir=mock_corpus_dir[1],
         )
         stats = importer.import_corpus(dry_run=True)
-        assert stats.documents_validated == 5
-        assert stats.documents_inserted == 5
-        assert stats.chunks_inserted == 168
-        assert stats.embeddings_inserted == 168
-        assert stats.edges_inserted == 9
+        assert stats.documents_validated == 2
+        assert stats.documents_inserted == 2
+        assert stats.chunks_inserted == 3
+        assert stats.embeddings_inserted == 3
+        assert stats.edges_inserted == 1
         assert stats.errors == []
 
     def test_missing_manifest_raises_error(self, tmp_path):

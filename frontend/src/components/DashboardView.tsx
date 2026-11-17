@@ -70,14 +70,13 @@ export function DashboardView({
           <div className="space-y-3 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-800/60 text-xs font-medium text-cyan-400">
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-              Document Intelligence &amp; Research Platform
+              Citenza Platform
             </div>
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white">
-              AI-Powered Evidence Synthesis &amp; Multi-Tenant Research
+              Turn your documents into reliable answers.
             </h1>
             <p className="text-sm sm:text-base text-slate-300 leading-relaxed">
-              Turn your documents into answers. Evidence-grounded document intelligence with exact page citations,
-              private document collections, and strict hallucination defense.
+              Your documents. Verified answers. Upload documents, organize your knowledge, and ask questions with answers grounded in your sources.
             </p>
           </div>
 
@@ -309,59 +308,80 @@ export function DashboardView({
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {collections.map((col) => {
-            const isSebi = col.policy_type === 'sebi_cscrf_strict';
-            return (
-              <div
-                key={col.collection_id}
-                className="bg-slate-900/50 border border-slate-800 hover:border-slate-700 rounded-xl p-5 flex flex-col justify-between transition"
+        {collections.length === 0 ? (
+          <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-8 text-center space-y-4">
+            <div className="w-12 h-12 mx-auto rounded-full bg-cyan-950/60 border border-cyan-800/60 flex items-center justify-center text-xl text-cyan-400">
+              📁
+            </div>
+            <div className="space-y-1 max-w-md mx-auto">
+              <h3 className="text-base font-semibold text-white">Your research workspace is ready.</h3>
+              <p className="text-xs text-slate-400">
+                Create your first collection and upload documents to begin.
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => onNavigate('collections')}
+                className="px-4 py-2 text-xs font-semibold text-slate-950 bg-gradient-to-r from-teal-400 to-cyan-500 hover:from-teal-300 hover:to-cyan-400 rounded-lg transition shadow-sm cursor-pointer"
               >
-                <div>
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700">
-                        {col.is_private ? 'Private' : 'Public'}
-                      </span>
-                      <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${
-                          isSebi
-                            ? 'bg-rose-950/60 text-rose-300 border-rose-800/60'
-                            : 'bg-cyan-950/60 text-cyan-300 border-cyan-800/60'
-                        }`}
-                      >
-                        {isSebi ? 'Regulatory Policy' : 'General / Tech'}
-                      </span>
+                Create Collection
+              </button>
+              <button
+                onClick={() => onNavigate('research')}
+                className="px-4 py-2 text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg transition cursor-pointer"
+              >
+                Explore Citenza
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {collections.map((col) => {
+              return (
+                <div
+                  key={col.collection_id}
+                  className="bg-slate-900/50 border border-slate-800 hover:border-slate-700 rounded-xl p-5 flex flex-col justify-between transition"
+                >
+                  <div>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider bg-slate-800 text-slate-300 border border-slate-700">
+                          {col.is_private ? 'Private' : 'Public'}
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border bg-cyan-950/60 text-cyan-300 border-cyan-800/60">
+                          General
+                        </span>
+                      </div>
                     </div>
+
+                    <h3 className="font-semibold text-white text-base leading-snug">
+                      {col.name}
+                    </h3>
+                    <p className="text-xs text-slate-400 font-mono mt-0.5">
+                      {col.collection_id}
+                    </p>
+                    <p className="text-xs text-slate-300 mt-2 line-clamp-2 leading-relaxed">
+                      {col.description || 'Collection of indexed documents for evidence-grounded research.'}
+                    </p>
                   </div>
 
-                  <h3 className="font-semibold text-white text-base leading-snug">
-                    {col.name}
-                  </h3>
-                  <p className="text-xs text-slate-400 font-mono mt-0.5">
-                    {col.collection_id}
-                  </p>
-                  <p className="text-xs text-slate-300 mt-2 line-clamp-2 leading-relaxed">
-                    {col.description || 'Collection of indexed documents for evidence-grounded research.'}
-                  </p>
+                  <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
+                    <span className="text-[11px] text-slate-400">
+                      Policy: <span className="font-mono text-slate-300">{col.policy_type}</span>
+                    </span>
+                    <button
+                      onClick={() => onSelectCollectionAndResearch(col.collection_id)}
+                      className="px-3 py-1.5 text-xs font-semibold text-cyan-300 hover:text-white bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-800/60 rounded-lg transition cursor-pointer flex items-center gap-1"
+                    >
+                      <span>Ask Questions</span>
+                      <span>&rarr;</span>
+                    </button>
+                  </div>
                 </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
-                  <span className="text-[11px] text-slate-400">
-                    Policy: <span className="font-mono text-slate-300">{col.policy_type}</span>
-                  </span>
-                  <button
-                    onClick={() => onSelectCollectionAndResearch(col.collection_id)}
-                    className="px-3 py-1.5 text-xs font-semibold text-cyan-300 hover:text-white bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-800/60 rounded-lg transition cursor-pointer flex items-center gap-1"
-                  >
-                    <span>Ask Questions</span>
-                    <span>&rarr;</span>
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
       {/* Upgrade CTA if anonymous or guest */}

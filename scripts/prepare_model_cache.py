@@ -43,7 +43,7 @@ def download_model(target_dir: Path, revision: str = PINNED_REVISION) -> None:
 
     When staging into Docker or deploying to production, the ENTIRE contents of
     `target_dir` (including the `hub/` folder) must be placed at the root of the
-    persistent volume mounted to `/home/sebi/.cache/huggingface`.
+    persistent volume mounted to `/home/citenza/.cache/huggingface`.
     """
     print(f"[*] Preparing model download for '{MODEL_ID}' (revision: {revision})...")
     print(f"[*] Target directory root: {target_dir.resolve()}")
@@ -86,7 +86,7 @@ def validate_offline_cache(cache_dir: Path) -> bool:
         from sentence_transformers import SentenceTransformer
         # Attempt loading
         model = SentenceTransformer(MODEL_ID, device="cpu")
-        test_embedding = model.encode("SEBI regulatory circular compliance", normalize_embeddings=True)
+        test_embedding = model.encode("Document intelligence semantic verification", normalize_embeddings=True)
         print(f"[+] Offline model load SUCCESSFUL. Embedding shape: {test_embedding.shape}")
         return True
     except Exception as e:
@@ -117,7 +117,7 @@ def test_offline_failure(empty_dir: Path) -> bool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="HuggingFace Model Cache Tool for SEBI Assistant")
+    parser = argparse.ArgumentParser(description="HuggingFace Model Cache Tool for Citenza")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Download command

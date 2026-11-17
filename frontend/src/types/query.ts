@@ -1,5 +1,5 @@
 /**
- * TypeScript definitions for SEBI CSCRF Query API (POST /api/v1/query) and UI state.
+ * TypeScript definitions for Citenza Query API (POST /api/v1/query) and UI state.
  */
 
 export type AnswerDisposition =
@@ -68,7 +68,7 @@ export interface CollectionSummary {
   description?: string | null;
   domain?: string | null;
   regulator?: string | null;
-  policy_type: 'sebi_cscrf_strict' | 'general_static' | string;
+  policy_type: 'general_static' | string;
   status: 'active' | 'disabled' | 'unpublished' | string;
   is_private?: boolean;
 }

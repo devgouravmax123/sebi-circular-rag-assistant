@@ -74,7 +74,7 @@ class IndexPublisher:
         indexes_dir: str | Path = "data/indexes",
         processed_dir: str | Path = "data/processed",
         embedder: Optional[Any] = None,
-        collection_id: str = "sebi_cscrf",
+        collection_id: str = "general_synthetic",
         storage_adapter: Optional[BaseStorageAdapter] = None,
     ):
         self.factory = repository_factory
@@ -94,17 +94,7 @@ class IndexPublisher:
         )
 
         # Base directory for collection snapshots
-        if self.collection_id == "sebi_cscrf":
-            # For sebi_cscrf: if collection partition directory already exists, use it.
-            # Otherwise, use root indexes_dir (legacy SEBI pilot layout) so legacy readers and tests pass seamlessly.
-            partition_dir = self.indexes_dir / "sebi_cscrf"
-            if partition_dir.exists():
-                self.collection_dir = partition_dir
-            else:
-                self.collection_dir = self.indexes_dir
-        else:
-            self.collection_dir = self.indexes_dir / self.collection_id
-
+        self.collection_dir = self.indexes_dir / self.collection_id
         self._validate_path_containment(self.collection_dir, self.indexes_dir)
 
         self.snapshots_dir = self.collection_dir / "snapshots"
@@ -144,19 +134,9 @@ class IndexPublisher:
     @property
     def active_pointer_path(self) -> Path:
         """
-        Returns path to active_snapshot.json.
-        Prefers collection partition: data/indexes/{collection_id}/active_snapshot.json.
-        For sebi_cscrf only, falls back to legacy root data/indexes/active_snapshot.json
-        if the partition pointer does not exist.
+        Returns path to active_snapshot.json in collection partition.
         """
-        partition_pointer = self.collection_dir / "active_snapshot.json"
-        if partition_pointer.exists():
-            return partition_pointer
-        if self.collection_id == "sebi_cscrf":
-            root_pointer = self.indexes_dir / "active_snapshot.json"
-            if root_pointer.exists():
-                return root_pointer
-        return partition_pointer
+        return self.collection_dir / "active_snapshot.json"
 
     @property
     def legacy_root_pointer_path(self) -> Path:
@@ -164,12 +144,8 @@ class IndexPublisher:
         return self.indexes_dir / "active_snapshot.json"
 
     def is_using_legacy_pointer(self) -> bool:
-        """Returns True if the active pointer currently resolved is the legacy root pointer."""
-        if self.collection_id != "sebi_cscrf":
-            return False
-        partition_pointer = self.collection_dir / "active_snapshot.json"
-        root_pointer = self.indexes_dir / "active_snapshot.json"
-        return not partition_pointer.exists() and root_pointer.exists()
+        """Returns False as legacy pointers are deprecated."""
+        return False
 
     def get_active_pointer(self) -> Optional[ActiveSnapshotPointer]:
         """Read and validate the current active snapshot pointer."""
@@ -200,10 +176,8 @@ class IndexPublisher:
                     )
                     return None
             else:
-                # Missing collection_id in pointer: allowed ONLY for legacy sebi_cscrf pointer
-                if self.collection_id != "sebi_cscrf" or not self.is_using_legacy_pointer():
-                    logger.error(f"Pointer at '{pointer_path}' lacks collection ownership metadata.")
-                    return None
+                logger.error(f"Pointer at '{pointer_path}' lacks collection ownership metadata.")
+                return None
 
             return pointer
         except Exception as e:
@@ -250,10 +224,8 @@ class IndexPublisher:
                     )
                     return None
             else:
-                # Missing collection_id in manifest: allowed ONLY for legacy sebi_cscrf snapshots
-                if self.collection_id != "sebi_cscrf" or not self.is_using_legacy_pointer():
-                    logger.error(f"Snapshot manifest at '{manifest_path}' lacks collection ownership metadata.")
-                    return None
+                logger.error(f"Snapshot manifest at '{manifest_path}' lacks collection ownership metadata.")
+                return None
 
             return manifest
         except Exception as e:
@@ -554,22 +526,6 @@ class IndexPublisher:
                 f.write(pointer.model_dump_json(indent=2))
             os.replace(temp_pointer, target_pointer_path)
 
-            # Mirror to root data/indexes/active_snapshot.json and dense_index.npy for legacy backwards compatibility ONLY for sebi_cscrf
-            if self.collection_id == "sebi_cscrf":
-                try:
-                    root_temp_pointer = self.indexes_dir / f".tmp_root_pointer_{snap_id}.json"
-                    with open(root_temp_pointer, "w", encoding="utf-8") as f:
-                        f.write(pointer.model_dump_json(indent=2))
-                    os.replace(root_temp_pointer, self.indexes_dir / "active_snapshot.json")
-                except Exception as root_ptr_err:
-                    logger.warning(f"Legacy active_snapshot.json mirroring skipped or failed: {root_ptr_err}")
-
-                try:
-                    shutil.copy(final_snapshot_dir / "dense_index.npy", self.indexes_dir / "dense_index.npy")
-                    shutil.copy(final_snapshot_dir / "dense_index_meta.json", self.indexes_dir / "dense_index_meta.json")
-                except Exception as mirror_err:
-                    logger.warning(f"Legacy dense_index.npy mirroring skipped or failed on host mount: {mirror_err}")
-
             # 6. Synchronize searchability across ingestion jobs
             self._synchronize_job_searchability(manifest)
 
@@ -645,8 +601,6 @@ class IndexPublisher:
         if active_pointer:
             candidate_npy_paths.append((self.snapshots_dir / active_pointer.snapshot_id / "dense_index.npy", self.snapshots_dir / active_pointer.snapshot_id / "dense_index_meta.json"))
         candidate_npy_paths.append((self.collection_dir / "dense_index.npy", self.collection_dir / "dense_index_meta.json"))
-        if self.collection_id == "sebi_cscrf":
-            candidate_npy_paths.append((self.indexes_dir / "dense_index.npy", self.indexes_dir / "dense_index_meta.json"))
 
         for existing_npy, existing_meta in candidate_npy_paths:
             if existing_npy.exists() and existing_meta.exists():

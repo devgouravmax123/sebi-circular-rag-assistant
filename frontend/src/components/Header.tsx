@@ -23,22 +23,12 @@ export const Header = ({
   onOpenHistory,
 }: HeaderProps) => {
   const { isGuest, isAuthenticated } = useAuth();
-  const isSebiStrict = selectedCollection?.policy_type === 'sebi_cscrf_strict';
-  const isGeneralStatic = selectedCollection?.policy_type === 'general_static';
 
-  const avatarText = isSebiStrict ? 'SEBI' : 'DOC';
-  const headerTitle = isSebiStrict
-    ? 'SEBI CSCRF Regulatory Intelligence Assistant'
-    : 'Document Intelligence Platform';
-  const headerSubtitle = isSebiStrict
-    ? 'Evidence-First Retrieval & Citation-Validation Interface'
-    : 'Turn your documents into answers.';
+  const avatarText = 'C';
+  const headerTitle = 'Citenza';
+  const headerSubtitle = 'Your documents. Verified answers.';
 
-  const badgeLabel = isSebiStrict
-    ? 'SEBI CSCRF'
-    : isGeneralStatic
-    ? 'Documentation'
-    : 'Multi-Collection';
+  const badgeLabel = selectedCollection?.name || 'Document Intelligence';
 
   // Build navigation items (Supporting both Master Prompt 11 names and legacy accessibility queries)
   const navItems: { id: NavTab; label: string; icon: string; legacyLabel?: string }[] = [

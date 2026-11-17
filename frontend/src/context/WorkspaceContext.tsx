@@ -13,7 +13,8 @@ import {
 } from '../api/client';
 import { useAuth } from './AuthContext';
 
-const ACTIVE_WS_STORAGE_KEY = 'sebi_rag_active_workspace_id';
+const ACTIVE_WS_STORAGE_KEY = 'citenza_active_workspace_id';
+const LEGACY_ACTIVE_WS_STORAGE_KEY = 'sebi_rag_active_workspace_id';
 
 interface WorkspaceContextValue {
   workspaces: Workspace[];
@@ -71,7 +72,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => {
     try {
-      return localStorage.getItem(ACTIVE_WS_STORAGE_KEY);
+      return localStorage.getItem(ACTIVE_WS_STORAGE_KEY) || localStorage.getItem(LEGACY_ACTIVE_WS_STORAGE_KEY);
     } catch {
       return null;
     }
@@ -99,6 +100,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       setIsCollectionsLoading(false);
       try {
         localStorage.removeItem(ACTIVE_WS_STORAGE_KEY);
+        localStorage.removeItem(LEGACY_ACTIVE_WS_STORAGE_KEY);
       } catch {
         // Storage unavailable
       }
@@ -114,7 +116,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
       // Validate or assign active workspace
       if (list.length > 0) {
-        const storedId = localStorage.getItem(ACTIVE_WS_STORAGE_KEY);
+        const storedId = localStorage.getItem(ACTIVE_WS_STORAGE_KEY) || localStorage.getItem(LEGACY_ACTIVE_WS_STORAGE_KEY);
         const exists = list.some((w) => w.id === storedId);
         const nextId = exists && storedId ? storedId : list[0].id;
         if (nextId !== activeWorkspaceIdRef.current) {
@@ -137,6 +139,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
         setCollectionsError(null);
         try {
           localStorage.removeItem(ACTIVE_WS_STORAGE_KEY);
+          localStorage.removeItem(LEGACY_ACTIVE_WS_STORAGE_KEY);
         } catch {
           // Storage unavailable
         }

@@ -98,8 +98,8 @@ class RegulatoryDocumentModel(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)  # 'sebi_cscrf_2024_113'
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     collection_id: Mapped[str] = mapped_column(String(100), nullable=False)
-    domain_id: Mapped[str] = mapped_column(
-        String(64), ForeignKey("regulatory_domains.id", ondelete="RESTRICT"), nullable=False
+    domain_id: Mapped[Optional[str]] = mapped_column(
+        String(64), ForeignKey("regulatory_domains.id", ondelete="RESTRICT"), nullable=True, default=None
     )
     circular_number: Mapped[Optional[str]] = mapped_column(String(128), nullable=True, index=True)
     title: Mapped[str] = mapped_column(Text, nullable=False)
@@ -117,7 +117,7 @@ class RegulatoryDocumentModel(Base):
         nullable=False,
     )
 
-    domain: Mapped["RegulatoryDomainModel"] = orm_relationship(
+    domain: Mapped[Optional["RegulatoryDomainModel"]] = orm_relationship(
         "RegulatoryDomainModel", back_populates="documents"
     )
     versions: Mapped[List["DocumentVersionModel"]] = orm_relationship(

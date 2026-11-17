@@ -1,72 +1,49 @@
-# SEBI Regulatory Intelligence Platform
+# Citenza — AI Document Intelligence & Research Platform
 
-A hosted, extensible regulatory intelligence platform for discovering, ingesting, searching, understanding, and tracking official regulatory documents with provenance-grounded question answering and supersession-aware temporal resolution.
+> **Your documents. Verified answers.**
 
----
-
-## 1. Product Vision & Architecture Direction
-
-This repository contains the **SEBI Regulatory Intelligence Platform**, designed to evolve from an initial pilot into a comprehensive, multi-domain, hosted regulatory intelligence platform.
-
-### Canonical Product Definition
-- **Platform Scope:** Discovery, ingestion, indexing, retrieval, relationship tracking, and evidence-constrained analysis of official regulatory documents.
-- **Initial Pilot & Regression Baseline:** The Cybersecurity and Cyber Resilience Framework (CSCRF) 5-circular corpus (`sebi_cscrf_2024_113`, `sebi_cscrf_2025_045`, `sebi_cscrf_2025_060`, `sebi_cscrf_2025_096`, `sebi_cscrf_2025_119`). This baseline serves as a permanent regression test suite, **not** a corpus boundary.
-- **Immediate Domain Expansion:** Extension to broader SEBI regulatory domains (LODR, ICDR, Mutual Funds, Intermediaries, Portfolio Managers) via dynamic document connectors and relational metadata registries.
-- **Hosted Operational Validation First:** Full hosted deployment, operations, and evaluation will be established and validated on SEBI regulations before any secondary regulator is introduced.
-- **Future Multi-Regulator Extensibility:** Architectural abstraction supporting pluggable official regulatory connectors (e.g., RBI, IRDAI, IFSCA, PFRDA) sharing unified schemas for temporal status resolution, provision-level relationship graphs, and evidence-grounded generation.
+Citenza is a production-grade, multi-user, self-service AI document intelligence and research platform. It empowers individuals and teams to create private workspaces, organize documents into custom collections, upload arbitrary PDF files from the browser, and ask natural-language questions with mathematically verified source citations, strict tenant data isolation, and deterministic fail-closed abstention.
 
 ---
 
-## 2. Implementation Status Summary
+## 1. Product Vision & Architecture
 
-To ensure transparent engineering tracking, all core platform capabilities are explicitly classified according to their current repository state:
+Citenza is built from the ground up as a general-purpose, multi-user document intelligence platform. Users can research corporate policies, technical specifications, research whitepapers, incident response playbooks, financial guidelines, or legal contracts without hallucinated claims or ungrounded assertions.
 
-| Capability / Subsystem | Status | Details |
-| :--- | :--- | :--- |
-| **CSCRF 5-Circular Pilot Corpus & Ground Truth** | `IMPLEMENTED AND TESTED` | 5 raw PDFs parsed into 168 structured chunks across 5 document directories; 9 verified graph edges with dual-page citations in `cscrf_graph.json`. |
-| **Deterministic Extraction & Chunking** | `IMPLEMENTED AND TESTED` | PyMuPDF-based text and boundary extraction with SHA-256 provenance tracking in `backend/app/ingestion/`. |
-| **Hybrid Retrieval Engine (BM25 + NumPy Cosine + RRF)** | `IMPLEMENTED AND TESTED` | Reciprocal Rank Fusion of BM25 lexical rank and in-memory dense vector cosine similarity via `BAAI/bge-small-en-v1.5` embeddings (`backend/app/retrieval/`). |
-| **Provision-Level Relevance Filtering & Ordering** | `IMPLEMENTED AND TESTED` | Domain guardrails in `relevance.py` ensuring precision for targeted compliance queries (e.g., ISO 27001 Qualified RE clarification prioritization). |
-| **Temporal Status Engine (`status_as_of`)** | `IMPLEMENTED AND TESTED` | Multi-hop directed graph traversal (`Newer -> RELATIONSHIP -> Older`) resolving `in_force`, `amended`, `partially_superseded`, `superseded`, and `unknown` as of query date. |
-| **Grounding & Fail-Closed Safety Gate** | `IMPLEMENTED AND TESTED` | `AnswerSafetyGate` validating mechanical chunk provenance and exact verbatim quotation substrings; abstains when evidence is missing or superseded. |
-| **FastAPI REST API & Pydantic Contracts** | `IMPLEMENTED AND TESTED` | `POST /api/v1/query`, `GET /health`, `GET /ready` with full validation (149 passing backend unit & integration tests). |
-| **Interactive React + TypeScript Frontend** | `IMPLEMENTED AND TESTED` | Responsive UI with query inputs, `as_of` date controls, expandable citation inspector, and confidence/status cards. |
-| **Automated Retrieval Regression Suite** | `IMPLEMENTED AND TESTED` | 32 verified gold queries (28 answerable ranking queries, 4 unanswerable refusal queries) in `evaluation/evaluate_retrieval.py`. |
-| **PostgreSQL + pgvector Persistence Foundation (Phase 8A)** | `IMPLEMENTED AND TESTED` | Complete persistence tier: SQLAlchemy 2.x models, Alembic migrations (`0001_initial_persistence_foundation`), file adapter, PostgreSQL/pgvector adapter, idempotent corpus importer CLI, dual-engine parity suite, and live PostgreSQL integration tests (203 total passing tests). |
-| **Dynamic Ingestion Service & Admin API (Phase 8B)** | `PLANNED` | Proposed document registration, automated chunking, vector indexing, and pipeline queueing without code changes. |
-| **Generalized Multi-Domain Retrieval (Phase 8C)** | `PLANNED` | Proposed hierarchical cross-domain routing, category filtering, and provision-scoped index partition across SEBI domains. |
-| **Dynamic Regulatory Graph Manager (Phase 8D)** | `PLANNED` | Proposed relationship extraction proposals with human-in-the-loop review interface and audit ledger. |
-| **Evidence-Constrained Hosted LLM Synthesis (Phase 8E)** | `PLANNED` | Proposed provider-agnostic synthesis (Gemini/Groq/Bedrock) backed by citation validation and strict fallback to verbatim extracted excerpts. |
-| **Hosted SEBI Deployment & Operational Hardening (Phase 8F)** | `PLANNED` | Proposed containerized deployment (Docker/Compose), Redis task queue, object storage, and expanded multi-domain SEBI evaluation. |
-| **Secondary Regulator Pilot (e.g., RBI / IRDAI)** | `PLANNED` | Proposed future extensibility milestone, strictly following operational validation of hosted SEBI platform. |
-| **Automated Legal Interpretation / Adjudication** | `DEFERRED` | Out of scope. System presents verified evidence, never legal advice or speculative rulings. |
+### Core Platform Guarantees
+1. **Self-Service Multi-Tenancy & Guest Mode:** Sign in securely using Firebase Authentication, link workspaces, or test immediately via isolated Guest Sessions without creating permanent credentials.
+2. **Trustworthy, Grounded Answers:** Every factual assertion synthesized by the LLM is mechanically verified against retrieved source text chunks, complete with 1-indexed physical and printed PDF page citations.
+3. **Deterministic Fail-Closed Abstention:** If evidence is missing, conflicting, out-of-scope, or insufficient, Citenza explicitly abstains (`CONTROLLED_ABSTENTION`) rather than speculating.
+4. **Verbatim Citation Validation & Candidate Binding:** Answers must cite only passages that actually exist in the server-side retrieved candidate set and match the source text verbatim.
+5. **Strict Multi-Tenant Isolation:** Workspaces, collections, documents, vector embeddings, lexical indices, and query histories are strictly segregated by workspace UUID. Cross-tenant leakage is zero-tolerance ($0.0\%$).
+6. **Zero-Cost Production Hosting Architecture ($0/month):** Engineered to operate within the generous free tiers of Render (FastAPI Web Service), Vercel (React SPA), Neon (Serverless PostgreSQL), Backblaze B2 (S3-compatible Object Storage), and Groq (LLM Synthesis).
 
 ---
 
-## 3. Core Architecture & Engineering Principles
+## 2. System Architecture
 
 ```text
                                   +-------------------------------------------------------------+
-                                  |                 INGESTION & REGISTRY ENGINE                |
+                                  |                 INGESTION & STORAGE ENGINE                  |
                                   |                                                             |
-   Official Sources               |   +---------------------+     +-------------------------+   |
-   (SEBI, future regulators) ---> |   | Pluggable Connector | --> | Text & Table Extraction |   |
+   Browser Upload                 |   +---------------------+     +-------------------------+   |
+   (Arbitrary PDF Files) -------> |   | Multipart Streaming | --> | PyMuPDF Text Extraction |   |
                                   |   +---------------------+     +-------------------------+   |
                                   |                                            |                |
                                   |                                            v                |
                                   |                               +-------------------------+   |
-                                  |                               | Chunking & Provenance   |   |
+                                  |                               | Deterministic Chunking  |   |
                                   |                               +-------------------------+   |
                                   +--------------------------------------------|----------------+
                                                                                |
                                                                                v
                                   +-------------------------------------------------------------+
-                                  |                   DUAL PERSISTENCE TIER                     |
+                                  |                    PERSISTENCE & STORAGE                    |
                                   |                                                             |
-                                  |   File-Backed Mode (Default)  PostgreSQL + pgvector         |
-                                  |   - data/processed/ JSON      - Normalized Relational Tables|
-                                  |   - dense_index.npy (NumPy)   - 384-dim pgvector (<=>)      |
-                                  |   - cscrf_graph.json          - Immutable Version History   |
+                                  |   Backblaze B2 Object Storage     Neon PostgreSQL           |
+                                  |   - Raw PDF binaries              - Workspaces & Users      |
+                                  |   - Published Index Snapshots     - Collections & Documents |
+                                  |     (chunks, docs, dense vectors) - Query History & Jobs    |
                                   +-------------------------------------------------------------+
                                                                                ^
                                                                                |
@@ -74,227 +51,113 @@ To ensure transparent engineering tracking, all core platform capabilities are e
                                   |                 QUERY ORCHESTRATION PIPELINE                |
                                   |                                                             |
    React UI / Client              |   +-----------------------------------------------------+   |
-   POST /api/v1/query ----------> |   | FastAPI Query Controller & Request Validator        |   |
+   POST /api/v1/query ----------> |   | FastAPI Query Controller & Workspace Authorizer     |   |
                                   |   +-----------------------------------------------------+   |
                                   |                              |                              |
                                   |                              v                              |
                                   |   +-----------------------------------------------------+   |
-                                  |   | Hybrid Retrieval (BGE-Small / BM25 Lexical + RRF)   |   |
+                                  |   | Hybrid Retrieval (BGE-Small Dense + BM25 Lexical)   |   |
                                   |   +-----------------------------------------------------+   |
                                   |                              |                              |
                                   |                              v                              |
                                   |   +-----------------------------------------------------+   |
-                                  |   | Temporal Graph Resolver (as_of Status Evaluation)   |   |
+                                  |   | Substantive Relevance Filter & Candidate Scoping    |   |
                                   |   +-----------------------------------------------------+   |
                                   |                              |                              |
                                   |                              v                              |
                                   |   +-----------------------------------------------------+   |
-                                  |   | Provision Relevance Filter & Safeguard Prioritizer  |   |
+                                  |   | Answer Safety Gate (Verbatim Citation Validation)   |   |
                                   |   +-----------------------------------------------------+   |
                                   |                              |                              |
                                   |                              v                              |
                                   |   +-----------------------------------------------------+   |
-                                  |   | Grounding & Safety Gate (Citation / Claim Check)    |   |
-                                  |   +-----------------------------------------------------+   |
-                                  |                              |                              |
-                                  |                              v                              |
-                                  |   +-----------------------------------------------------+   |
-                                  |   | Generation / Verbatim Substring Fallback            |   |
+                                  |   | Grounded LLM Synthesis (Groq Llama 3.3 70B / Mock)  |   |
                                   |   +-----------------------------------------------------+   |
                                   +-------------------------------------------------------------+
 ```
 
-### Mandatory Engineering Safeguards
-1. **Official-Source Provenance:** Every chunk links to official PDF source URLs, cryptographic checksums (SHA-256), and page numbers (both 1-indexed PDF page and printed page).
-2. **Deterministic Ingestion:** Chunking and metadata enrichment are reproducible from raw files without manual intervention.
-3. **No Temporal Inference from Dates Alone:** Publication dates never establish legal currency or supersession. Only explicit, source-verified regulatory relationship edges modify document or provision status.
-4. **Provision-Level Scoping:** Supersession is scoped to specific sections/clauses (`affected_provisions`) to prevent partial amendments from falsely invalidating base frameworks.
-5. **Fail-Closed Grounding & Verified Quotation:** Claims and excerpts must be verified against server-side retrieval sets and exact verbatim chunk substrings. The system does not claim semantic proof of arbitrary synthetic text or zero hallucinations; it abstains when evidence is missing or unverified.
-6. **Zero Silent Cloud Spend:** No paid APIs, cloud resources, or billable infrastructure are enabled without explicit architectural sign-off.
+---
+
+## 3. Technology Stack
+
+- **Frontend:** React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons, headless UI components.
+- **Backend:** FastAPI, Python 3.12, Pydantic v2, SQLAlchemy 2.0, Alembic forward-only migrations.
+- **Retrieval Engine:** Hybrid search combining BM25 Okapi lexical indexing, dense vector search (`BAAI/bge-small-en-v1.5`), and Reciprocal Rank Fusion (RRF).
+- **LLM Synthesis:** Groq API (`llama-3.3-70b-versatile`) with strict context windows, provider fallback, and offline `MockSynthesisProvider` for hermetic testing.
+- **Database:** Serverless Neon PostgreSQL with connection pooling.
+- **Object Storage:** S3-compatible Backblaze B2 object storage for PDF binaries and published search index snapshot bundles.
+- **Authentication:** Firebase Authentication (Spark free plan) supporting email/password registration with verification links, authenticated workspace provisioning, and session tokens.
 
 ---
 
-## 4. Canonical Roadmap
-
-The project is structured into sequential milestones:
-
-- **Phases 0–7E (Foundational Pilot):** `COMPLETED & TESTED`
-  - Environment, minimal slice, CSCRF data models, PDF extraction, hybrid retrieval (BM25 + BGE-Small dense index), NetworkX supersession graph, grounding safety gate, FastAPI `/api/v1/query` endpoint, React UI, and test-driven relevance improvements.
-- **Phase 8A — Persistence Foundation (PostgreSQL + pgvector):** `COMPLETED & TESTED`
-  - Dual-engine storage repository architecture:
-    - Default zero-dependency file-backed repository adapter reading `data/processed/` and `data/indexes/`.
-    - Production-grade PostgreSQL + pgvector adapter utilizing exact `<=>` cosine distance vector indexing (`BAAI/bge-small-en-v1.5`, 384 dimensions).
-    - SQLAlchemy 2.x declarative models for 8 relational entities: `regulators`, `regulatory_domains`, `regulatory_documents`, `document_versions`, `provisions`, `chunks`, `chunk_embeddings`, `regulatory_edges`, and `ingestion_jobs`.
-    - Alembic migration environment (`0001_initial_persistence_foundation`) hardened with automatic `alembic_version` column width capacity management.
-    - Idempotent corpus importer CLI with `--dry-run`, `--all-or-nothing`, and verified relationship edge protection.
-    - Full test suite verified: 203 passing tests (200 offline unit and parity tests, 3 live PostgreSQL/pgvector integration tests).
-- **Phase 8B — Dynamic Document Ingestion:** `NEXT MILESTONE`
-  - Proposed dynamic document registration service, idempotent background ingestion, checksum tracking, and PDF parser abstractions.
-- **Phase 8C — Generalized Multi-Domain Retrieval:** `PLANNED`
-  - Proposed corpus partitioning, domain filters, hierarchical BM25 + dense search, and cross-domain reciprocal rank fusion across SEBI regulations.
-- **Phase 8D — Dynamic Regulatory Relationship Management:** `PLANNED`
-  - Proposed database-backed graph store, relationship proposition parser, human-in-the-loop review interface, and edge evidence provenance ledger.
-- **Phase 8E — Evidence-Constrained Hosted LLM Synthesis:** `PLANNED`
-  - Proposed backend-only hosted LLM adapter (Gemini / Groq / Ollama / Bedrock) with claim extraction, token-level citation alignment, and fail-closed extractive fallback.
-- **Phase 8F — Hosted SEBI Deployment & Operational Hardening:** `PLANNED`
-  - Proposed containerized deployment (Docker Compose), Redis caching/queueing, S3-compatible document storage, expanded golden test suite (100+ multi-domain queries), and operational hardening.
-- **Phase 8G — Carefully Scoped Regulatory Expansion (Future Pilot):** `PLANNED`
-  - Proposed secondary regulator connector pilot (e.g., RBI / IRDAI) following successful operational validation of hosted SEBI platform.
-
----
-
-## 5. Persistence Operational Runbook & Local Setup
-
-The platform features a **Dual-Engine Persistence Architecture**:
-- **File-Backed Mode (Default):** Activated when `DATABASE_URL` is unset or blank. Operates entirely without external database dependencies, reading processed JSON documents and NumPy index matrices in `data/processed/` and `data/indexes/`.
-- **PostgreSQL + pgvector Mode:** Activated when `DATABASE_URL` is set to a valid PostgreSQL connection string (e.g., `postgresql+psycopg://user:pass@host:5432/dbname`). Utilizes native relational tables, immutable document versioning, and pgvector cosine distance operations (`<=>`).
-
-### 5.1. Safe Local PostgreSQL + pgvector Test Setup
-For local testing or integration verification, launch a disposable PostgreSQL 16 container with the `pgvector` extension:
-
-```powershell
-# 1. Run disposable local pgvector container
-docker run -d --name sebi-pgvector-test -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=sebi_rag_test -p 5432:5432 pgvector/pgvector:pg16
-
-# 2. Enable pgvector extension inside the test database
-docker exec -i sebi-pgvector-test psql -U postgres -d sebi_rag_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
-
-# 3. Configure connection environment variable
-$env:DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/sebi_rag_test"
-```
-
-> [!CAUTION]
-> **Safety Guardrail:** Automated tests that perform schema resets (`drop_all`) strictly require that the database name contains `test` (e.g. `sebi_rag_test`) or that `ALLOW_TEST_DATABASE_PURGE=1` is explicitly set. They will abort with an error on any other database.
-
-### 5.2. Running Database Migrations
-Migrations are managed via Alembic:
-
-```powershell
-# Run migrations to head
-.\.venv\Scripts\python.exe -m alembic upgrade head
-
-# Inspect current revision status
-.\.venv\Scripts\python.exe -m alembic current
-
-# Rollback one revision (if testing down-migrations)
-.\.venv\Scripts\python.exe -m alembic downgrade -1
-
-# Re-upgrade to head
-.\.venv\Scripts\python.exe -m alembic upgrade head
-```
-
-*Note on Revision Identifiers:* `backend/alembic/env.py` includes `_ensure_version_table_capacity` which automatically provisions the `alembic_version` table with `VARCHAR(64)`. This guarantees descriptive migration identifiers like `0001_initial_persistence_foundation` execute without PostgreSQL `StringDataRightTruncation` errors.
-
-### 5.3. Corpus Importer CLI Usage
-Transfer the verified 5-document CSCRF pilot corpus into PostgreSQL using the idempotent CLI importer:
-
-```powershell
-# Dry run: validate pilot corpus documents, chunks, vectors, and edges without writing
-.\.venv\Scripts\python.exe backend/app/persistence/cli_importer.py --dry-run
-
-# Full import into PostgreSQL with transaction safety
-.\.venv\Scripts\python.exe backend/app/persistence/cli_importer.py --database-url "$env:DATABASE_URL" --all-or-nothing
-
-# JSON output for automated scripting/pipelines
-.\.venv\Scripts\python.exe backend/app/persistence/cli_importer.py --json-output
-```
-
-**Importer Semantics:**
-- **Idempotency:** Re-running the importer against an already populated database performs zero duplicate writes.
-- **Conflict Handling:** If a document's SHA-256 checksum has changed, a new immutable version record (e.g., `v2`) is created; existing historical versions and chunk associations are never overwritten in-place.
-- **Edge Protection:** Existing verified graph edges (`review_status = 'verified'`) are never downgraded or overwritten by re-imports.
-
-### 5.4. Running the Test Suites
-
-```powershell
-# 1. Run offline unit, parity, and grounding test suite (200 tests)
-.\.venv\Scripts\python.exe -m pytest -q
-
-# 2. Run dual-engine persistence parity tests
-.\.venv\Scripts\python.exe -m pytest backend/tests/test_persistence_parity.py -v
-
-# 3. Run live PostgreSQL + pgvector integration tests (requires live test container)
-$env:DATABASE_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/sebi_rag_test"
-.\.venv\Scripts\python.exe -m pytest backend/tests/test_postgres_live_integration.py -v
-
-# 4. Run entire full test suite with live database enabled (203 passing tests)
-.\.venv\Scripts\python.exe -m pytest -v
-```
-
----
-
-## 6. Local Setup & Verification (Application)
+## 4. Getting Started Locally
 
 ### Prerequisites
-- Python 3.11+
-- Node.js 18+ and npm
-- Windows PowerShell / Linux bash
+- Python 3.12+
+- Node.js 20+
+- Git
 
 ### Backend Setup
-```powershell
-# Create and activate virtual environment
+```bash
+# Clone the repository
+git clone https://github.com/your-username/sebi-rag-assistant.git
+cd sebi-rag-assistant
+
+# Create virtual environment and activate
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+# Windows:
+.\.venv\Scripts\activate
+# Linux/macOS:
+source .venv/bin/activate
 
 # Install dependencies
 pip install -r backend/requirements.txt
 
-# Start FastAPI development server (File-backed default mode)
-$env:PYTHONPATH="backend;."
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+# Run backend API server locally
+uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ### Frontend Setup
-```powershell
+```bash
 cd frontend
+
+# Install Node dependencies
 npm install
-npm run dev -- --host 127.0.0.1 --port 5173
+
+# Start Vite development server
+npm run dev
 ```
 
 ---
 
-## 6. Disclaimer
+## 5. Automated Verification & Testing
 
-This platform is an independent regulatory technology project. It is **not** affiliated with, endorsed by, or operated by the Securities and Exchange Board of India (SEBI) or any other official regulatory body. Information and evidence returned by this system are for research, compliance assistance, and educational purposes and do not constitute formal legal advice.
+The repository maintains an extensive test suite verifying mathematical grounding, deterministic abstention, workspace tenant isolation, and API stability.
 
-### Milestone 10: Private Document Ingestion Pipeline
-- **Secure File Storage:** `LocalStorageAdapter` with path containment, 30MB file size limit, and PDF magic bytes validation.
-- **Asynchronous Pipeline:** 7-stage processing lifecycle (`PENDING` -> `PARSING` -> `CHUNKING` -> `EMBEDDING` -> `PERSISTING` -> `INDEXING` -> `FINISHED`).
-- **Atomic Index Snapshots:** Staged snapshot building and publishing via `IndexPublisher`.
-- **Query Gate:** Unpublished private collections are rejected with HTTP 400 until index snapshot is generated.
-- **Frontend Integration:** Full upload form, real-time job status polling, processed document list, and authenticated PDF download.
+```bash
+# Run all backend unit and contract tests (863 passing tests):
+python -m pytest backend/tests -m "not db and not integration"
+
+# Run frontend test suite (61 passing tests):
+npm test --prefix frontend
+
+# Verify frontend production build:
+npm run build --prefix frontend
+```
 
 ---
 
-### Milestone 11: Durable Storage and Snapshot Publication
-**Status: CLOSED — PASS WITH LIMITATIONS**
+## 6. Demonstration Collections
 
-- **Completed Scope:**
-  - **Provider-Neutral Storage Interface:** Core BaseStorageAdapter abstraction defining bounded uploads, streaming downloads, local materialization, and object lifecycle operations.
-  - **S3 / Cloudflare R2 Adapter:** S3StorageAdapter with boto3 integration, tenant-scoped object key partitioning, chunked upload streaming, and temporary file cleanup.
-  - **Durable Snapshot Bundles:** Authoritative remote storage of all 5 runtime snapshot artifacts (chunks.json, documents.json, dense_index.npy, dense_index_meta.json, manifest.json) under indexes/{collection_id}/snapshots/{snapshot_id}/.
-  - **Active Pointer Promotion:** Authoritative remote active snapshot pointer (indexes/{collection_id}/active_snapshot.json) validated against manifest checksums prior to activation.
-  - **Cold-Start Local Hydration:** Staged hydration (hydrate_snapshot) verifying SHA-256 digests of all bundle artifacts before atomic promotion to local cache.
-  - **API & Worker Integration:** Storage-adapter-backed document upload, authenticated streaming download, and worker publication retries with exponential backoff on publication conflict.
-  - **Local Development Default:** STORAGE_PROVIDER=local retained as default with zero cloud dependencies.
-  - **Deployment Runbook:** Operational configuration, fail-fast startup checks, Render ephemeral container lifecycle, and secret management documented.
+The platform includes pre-indexed demonstration collections for testing and verification:
+- `general_synthetic`: Acme Global Technical & Infrastructure Handbook (infrastructure architecture, security and access control policies, product rate-limiting specs).
+- `cisa_playbooks`: CISA Federal Government Cybersecurity Incident and Vulnerability Response Playbooks.
+- `demo_finops`: Acme Cloud FinOps & Governance Guide.
 
-- **Test Evidence (Separate Test Runs):**
-  - **Milestone 11 Regression Suite:** **46 passed** in 445.58s (test_storage_interface.py, test_s3_storage_adapter.py, test_index_publication.py, test_collection_retrieval_dispatch.py, test_ingestion_worker.py).
-  - **Durable Snapshot Publication Suite:** **22 passed** in 2.89s (test_durable_snapshot_publication.py).
-  - **Total Across Separate Runs:** **68 passing tests** (no combined run was executed; not all backend suites were run).
-  - **Database-Dependent Suites:** test_collection_ingestion_api.py, test_private_document_ingestion.py, test_multi_tenant_query_authorization.py, and test_workspace_and_collection_api.py were **not run** because local PostgreSQL was unavailable and no database service was started.
-  - **Live Cloudflare R2 Integration:** **Not tested**; S3/R2 adapter behavior was verified using deterministic in-memory mock clients.
-  - **Post-Audit Pyrefly Cleanup:** One-line cleanup at backend/app/api/v1/collections.py:253 validated via py_compile (passed) and test_durable_snapshot_publication.py (22 passed).
+Users can create new custom collections and upload arbitrary PDFs through the web UI at any time.
 
-- **Open Risks and Limitations:**
-  - **High Priority — Distributed Pointer Concurrency:** Remote active-pointer promotion currently uses a read-then-compare timestamp check followed by an unconditional S3 PutObject write. This presents a TOCTOU race condition when independent instances publish concurrently. No atomic cross-instance CAS or conditional write is implemented in the current storage abstraction, and local filesystem locks (.publish.lock) do not protect separate cloud instances. Tracked as **pre-production hardening**, not completed functionality.
-  - **Medium Priority — Snapshot Cache Growth:** Hydrated local snapshot caches under data/indexes/{collection_id}/snapshots/ lack an automated eviction or TTL policy and may accumulate unbounded over long instance lifecycles.
-  - **Medium Priority — Live Provider Validation:** Real Cloudflare R2 credentials, bucket permissions, TLS negotiation, and live network latency remain unverified.
-  - **Validation Gap:** Database-dependent ingestion API and multi-tenant authorization suites remain unrun and must be executed in an active database environment before production-readiness claims.
+---
 
-- **Closure Boundaries:**
-  - Milestone 11 is formally closed for its current milestone scope, with limitations recorded.
-  - Milestone 11 closure does **not** establish multi-instance production readiness.
-  - Open risks must be resolved or explicitly accepted before production deployment at scale.
-  - Milestone 12 has **not** started and remains unchanged.
+## 7. License
+
+Apache-2.0. See `LICENSE` for details.

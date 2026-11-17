@@ -352,7 +352,7 @@ def test_8_public_api_still_abstains_for_general_static_even_with_mock_synthesis
         assert "Production database snapshots must be retained for 30 calendar days in encrypted storage." in data["answer_text"]
         assert len(data["claim_citations"]) >= 1
         assert data["claim_citations"][0]["supporting_chunk_ids"] == ["corp_infra_p2_1"]
-        assert data["pilot_corpus_scope_limitation"] == "Static document collection: excerpts verified verbatim from General Corporate Documents (general_corp)."
+        assert data["pilot_corpus_scope_limitation"] == "Verified document collection: excerpts verified verbatim from General Corporate Documents (general_corp)."
     finally:
         app.dependency_overrides.pop(get_collection_registry, None)
         app.dependency_overrides.pop(get_retrieval_service, None)

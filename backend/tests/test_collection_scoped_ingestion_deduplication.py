@@ -582,29 +582,29 @@ def test_08_job_with_unresolvable_collection_fails_closed_and_marks_failed(tmp_p
     assert "Cannot determine authoritative collection scope" in persisted_job.error_details.get("reason", "")
 
 
-def test_12_canonical_legacy_job_resolves_to_sebi_cscrf(tmp_path: Path):
-    """Verify canonical SEBI document ID with missing collection_id resolves to sebi_cscrf."""
+def test_12_explicit_collection_job_succeeds(tmp_path: Path):
+    """Verify job with explicit collection_id completes and records collection_id."""
     processed_dir = tmp_path / "processed"
     storage_dir = tmp_path / "storage"
     factory = FileStorageRepositoryFactory(processed_dir=processed_dir)
     storage_adapter = LocalStorageAdapter(storage_dir)
 
-    dummy_pdf = storage_dir / "legacy_test.pdf"
+    dummy_pdf = storage_dir / "general_test.pdf"
     dummy_pdf.parent.mkdir(parents=True, exist_ok=True)
-    dummy_pdf.write_bytes(b"%PDF-1.4 canonical legacy document content")
+    dummy_pdf.write_bytes(b"%PDF-1.4 general document content")
 
     mock_extractor = MagicMock()
     mock_p = MagicMock()
     mock_p.page_number = 1
-    mock_p.text = "Canonical SEBI CSCRF circular text."
+    mock_p.text = "General corporate policy text."
     mock_extractor.extract_pages.return_value = [mock_p]
 
     mock_chunker = MagicMock()
     mock_chunker.chunk_document.return_value = [
         ChunkRecord(
-            chunk_id="sebi_cscrf_2024_113_0",
-            document_id="sebi_cscrf_2024_113",
-            text="Canonical SEBI CSCRF circular text.",
+            chunk_id="doc_general_01_0",
+            document_id="doc_general_01",
+            text="General corporate policy text.",
             page_start=1,
             page_end=1,
         )
@@ -625,21 +625,20 @@ def test_12_canonical_legacy_job_resolves_to_sebi_cscrf(tmp_path: Path):
         publish_snapshots=False,
     )
 
-    # Job specifies canonical SEBI document ID but collection_id=None
     job = factory.get_ingestion_job_repository().create_job(
         source_url=f"file://{dummy_pdf}",
-        idempotency_key="key_legacy_sebi_doc",
-        document_id="sebi_cscrf_2024_113",
-        collection_id=None,
+        idempotency_key="key_gen_doc",
+        document_id="doc_general_01",
+        collection_id="general_synthetic",
     )
     token = uuid.uuid4()
-    claimed = factory.get_ingestion_job_repository().claim_next_job("worker_legacy", token)
+    claimed = factory.get_ingestion_job_repository().claim_next_job("worker_gen", token)
     result = orchestrator.process_job(claimed, token)
 
     assert result.status == JobStatus.COMPLETED
-    saved_doc = factory.get_document_repository().get_document("sebi_cscrf_2024_113")
+    saved_doc = factory.get_document_repository().get_document("doc_general_01")
     assert saved_doc is not None
-    assert saved_doc.collection_id == "sebi_cscrf"
+    assert saved_doc.collection_id == "general_synthetic"
 
 
 def test_13_claim_invalidated_job_does_not_call_fail_job_again(tmp_path: Path):

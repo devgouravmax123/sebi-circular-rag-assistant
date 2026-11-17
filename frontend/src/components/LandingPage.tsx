@@ -45,12 +45,12 @@ export function LandingPage({ onStartGuest, onOpenAuth }: LandingPageProps) {
       <header className="border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md sticky top-0 z-30 px-4 sm:px-8 py-3.5 flex items-center justify-between">
         <div className="flex items-center space-x-3">
           <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-teal-500 to-cyan-600 flex items-center justify-center font-bold text-slate-950 shadow-md shadow-teal-500/20 text-base tracking-tight select-none">
-            DI
+            C
           </div>
           <div>
-            <span className="text-base font-bold tracking-tight text-white">Document Intelligence</span>
+            <span className="text-base font-bold tracking-tight text-white">Citenza</span>
             <span className="hidden sm:inline-block ml-2 px-2 py-0.5 rounded text-[10px] font-semibold bg-cyan-950 text-cyan-400 border border-cyan-800/60">
-              AI Research
+              Document Intelligence
             </span>
           </div>
         </div>
@@ -84,20 +84,20 @@ export function LandingPage({ onStartGuest, onOpenAuth }: LandingPageProps) {
         {/* Badge */}
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-950/80 border border-cyan-800/60 text-xs sm:text-sm font-medium text-cyan-400 mb-6 shadow-sm">
           <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-          <span>General-Purpose AI Document Intelligence Platform</span>
+          <span>Citenza — Your documents. Verified answers.</span>
         </div>
 
         {/* Main Headline */}
         <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white max-w-4xl leading-tight sm:leading-none">
-          Turn your documents <br className="hidden sm:inline" />
+          Turn your documents into <br className="hidden sm:inline" />
           <span className="bg-gradient-to-r from-teal-400 via-cyan-400 to-sky-400 bg-clip-text text-transparent">
-            into trusted answers.
+            reliable answers.
           </span>
         </h1>
 
         {/* Subtitle */}
         <p className="mt-6 text-base sm:text-xl text-slate-300 max-w-3xl leading-relaxed">
-          Evidence-grounded AI research for business, technical, legal, and operational documents.
+          Upload documents, organize your knowledge, and ask questions with answers grounded in your sources.
           Every answer is backed by exact source citations and verified quotes—evidence-grounded with controlled abstention when sources do not cover the query.
         </p>
 
@@ -202,7 +202,7 @@ export function LandingPage({ onStartGuest, onOpenAuth }: LandingPageProps) {
         {/* How It Works Section */}
         <section className="mt-24 w-full text-center max-w-4xl">
           <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-            How Document Intelligence Works
+            How Citenza Works
           </h2>
           <p className="text-sm sm:text-base text-slate-400 mt-2">
             Three simple steps to transform static documents into verifiable knowledge
@@ -263,11 +263,11 @@ export function LandingPage({ onStartGuest, onOpenAuth }: LandingPageProps) {
       {/* Footer */}
       <footer className="border-t border-slate-900 bg-slate-950/80 px-6 py-6 text-center text-xs text-slate-500">
         <div className="max-w-4xl mx-auto space-y-1">
-          <p>
-            Document Intelligence &amp; Multi-Tenant AI Research Platform.
+          <p className="font-medium text-slate-400">
+            Citenza — Your documents. Verified answers.
           </p>
           <p className="text-[11px] text-slate-600">
-            Evidence-grounded synthesis with deterministic citation validation. Public regulatory materials are provided for demonstration purposes.
+            Evidence-grounded synthesis with deterministic citation validation.
           </p>
         </div>
       </footer>

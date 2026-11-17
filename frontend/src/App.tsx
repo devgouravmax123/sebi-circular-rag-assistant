@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import type { QueryRequest, QueryResponse, QueryError, CollectionSummary } from './types/query';
+import type { GuestCollection } from './types/guest';
 import {
   queryRegulatoryAssistant,
   probeHealth,
   fetchCollections,
+  fetchGuestCollections,
   recordGuestQuery,
 } from './api/client';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -38,7 +40,8 @@ function AssistantMain() {
 
   // Collections state
   const [publicCollections, setPublicCollections] = useState<CollectionSummary[]>([]);
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string>('sebi_cscrf');
+  const [guestCollections, setGuestCollections] = useState<GuestCollection[]>([]);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string>('');
   const [isCollectionsLoading, setIsCollectionsLoading] = useState<boolean>(true);
   const [collectionsError, setCollectionsError] = useState<string | null>(null);
 
@@ -59,6 +62,25 @@ function AssistantMain() {
     }
     setApiStatus(result.ok ? 'connected' : 'disconnected');
   };
+
+  // Fetch guest collections when in guest mode
+  useEffect(() => {
+    let ignore = false;
+    if (isGuest && guestToken) {
+      fetchGuestCollections(guestToken)
+        .then((cols) => {
+          if (!ignore) setGuestCollections(cols);
+        })
+        .catch(() => {
+          if (!ignore) setGuestCollections([]);
+        });
+    } else {
+      setGuestCollections([]);
+    }
+    return () => {
+      ignore = true;
+    };
+  }, [isGuest, guestToken]);
 
   useEffect(() => {
     let ignore = false;
@@ -83,13 +105,8 @@ function AssistantMain() {
         if (!ignore) {
           setPublicCollections(colls);
           setCollectionsError(null);
-          if (colls.length > 0) {
-            const hasSebi = colls.some((c) => c.collection_id === 'sebi_cscrf');
-            if (hasSebi) {
-              setSelectedCollectionId('sebi_cscrf');
-            } else {
-              setSelectedCollectionId(colls[0].collection_id);
-            }
+          if (colls.length > 0 && !selectedCollectionId) {
+            setSelectedCollectionId(colls[0].collection_id);
           }
         }
       })
@@ -97,7 +114,6 @@ function AssistantMain() {
         if (!ignore) {
           const msg = err instanceof Error ? err.message : 'Failed to load collections catalog';
           setCollectionsError(msg);
-          setSelectedCollectionId('sebi_cscrf');
         }
       })
       .finally(() => {
@@ -111,30 +127,41 @@ function AssistantMain() {
     };
   }, []);
 
-  // Merge public and private workspace collections
-  const combinedCollections: CollectionSummary[] = useMemo(
-    () => [
-      ...publicCollections,
-      ...workspaceCollections.map((wc) => ({
+  // Compute active collections based on session context
+  const combinedCollections: CollectionSummary[] = useMemo(() => {
+    if (isAuthenticated) {
+      // Authenticated users strictly work with their workspace collections
+      return workspaceCollections.map((wc) => ({
         collection_id: wc.id,
         name: wc.name,
         description: wc.description,
         policy_type: wc.policy_name,
         status: 'active',
         is_private: true,
-      })),
-    ],
-    [publicCollections, workspaceCollections]
-  );
+      }));
+    }
+    if (isGuest) {
+      return guestCollections.map((gc) => ({
+        collection_id: gc.id,
+        name: gc.name,
+        description: gc.description,
+        policy_type: 'general_static',
+        status: 'active',
+        is_private: true,
+      }));
+    }
+    return publicCollections;
+  }, [isAuthenticated, isGuest, workspaceCollections, guestCollections, publicCollections]);
 
   // Validate that selected collection still exists in combined collections
   useEffect(() => {
     if (combinedCollections.length > 0) {
       const exists = combinedCollections.some((c) => c.collection_id === selectedCollectionId);
       if (!exists) {
-        const hasSebi = combinedCollections.some((c) => c.collection_id === 'sebi_cscrf');
-        setSelectedCollectionId(hasSebi ? 'sebi_cscrf' : combinedCollections[0].collection_id);
+        setSelectedCollectionId(combinedCollections[0].collection_id);
       }
+    } else {
+      setSelectedCollectionId('');
     }
   }, [combinedCollections, selectedCollectionId]);
 
@@ -156,7 +183,7 @@ function AssistantMain() {
         try {
           await recordGuestQuery(
             request.query,
-            request.collection_id || 'sebi_cscrf',
+            request.collection_id || '',
             res.disposition,
             res.answer_text || undefined,
             res.verified_excerpts?.length || 0,
@@ -335,10 +362,10 @@ function AssistantMain() {
       <footer className="border-t border-slate-900 bg-slate-950/80 px-6 py-6 text-center text-xs text-slate-500">
         <div className="max-w-4xl mx-auto space-y-1">
           <p>
-            Document Intelligence &amp; Multi-Tenant AI Research Platform.
+            Citenza — Multi-Tenant AI Document Intelligence &amp; Research Platform.
           </p>
           <p className="text-[11px] text-slate-600">
-            Answers are strictly limited to the selected indexed collection and verified evidence citations. Pre-indexed regulatory materials are demonstration reference corpora.
+            Answers are strictly limited to the selected indexed collection and verified evidence citations.
           </p>
         </div>
       </footer>

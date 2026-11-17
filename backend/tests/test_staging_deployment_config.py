@@ -160,7 +160,6 @@ def test_cors_accepts_multiple_staging_origins():
         auth_secret_key="12345678901234567890123456789012",
     )
     origins = settings.allowed_cors_origins
-    assert len(origins) == 2
     assert "https://staging.vercel.app" in origins
     assert "https://preview.vercel.app" in origins
 

@@ -280,7 +280,7 @@ test('8. Query API: public collection query omits Authorization header when toke
     return {
       status: 200,
       data: {
-        query: 'What is CSCRF?',
+        query: 'What is the server retention policy?',
         disposition: 'CONTROLLED_ABSTENTION',
         verified_excerpts: [],
         historical_superseded_excerpts: [],
@@ -295,7 +295,7 @@ test('8. Query API: public collection query omits Authorization header when toke
   });
 
   try {
-    const res = await queryRegulatoryAssistant({ query: 'What is CSCRF?' }, null);
+    const res = await queryRegulatoryAssistant({ query: 'What is the server retention policy?' }, null);
     assert.equal(authHeaderPresent, false);
     assert.equal(res.disposition, 'CONTROLLED_ABSTENTION');
   } finally {
@@ -420,7 +420,7 @@ test('12. QueryHistory API: fetchQueryHistory and fetchQueryHistoryDetail', asyn
         status: 200,
         data: {
           id: 'rec-999',
-          collection_id: 'sebi_cscrf',
+          collection_id: 'general_synthetic',
           query_text: 'Mandatory SOC SLA?',
           query_options: { top_k: 5 },
           disposition: 'VERIFIED_HISTORICAL_EXCERPTS',
@@ -439,7 +439,7 @@ test('12. QueryHistory API: fetchQueryHistory and fetchQueryHistoryDetail', asyn
         items: [
           {
             id: 'rec-999',
-            collection_id: 'sebi_cscrf',
+            collection_id: 'general_synthetic',
             query_text: 'Mandatory SOC SLA?',
             disposition: 'VERIFIED_HISTORICAL_EXCERPTS',
             verified_excerpts_count: 2,
@@ -904,9 +904,9 @@ test('22. QueryForm: displays private collection snapshot readiness guidance', a
 
   const collections = [
     {
-      collection_id: 'sebi_cscrf',
-      name: 'SEBI CSCRF',
-      policy_type: 'sebi_cscrf_strict',
+      collection_id: 'general_synthetic',
+      name: 'General Technical Knowledge',
+      policy_type: 'general_static',
       is_private: false,
     },
     {

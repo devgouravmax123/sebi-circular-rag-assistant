@@ -1,5 +1,5 @@
 /**
- * Robust API Client for SEBI CSCRF Regulatory Intelligence Assistant & Multi-Tenant SaaS.
+ * Robust API Client for Citenza Document Intelligence Platform.
  * Connects to:
  * - Auth endpoints: /api/v1/auth/signup, /api/v1/auth/login, /api/v1/auth/logout, /api/v1/auth/me
  * - Workspace endpoints: /api/v1/workspaces, /api/v1/workspaces/{id}/members, /api/v1/workspaces/{id}/collections
@@ -481,7 +481,7 @@ export async function downloadCollectionDocumentBlob(
 // 4. Query API (Public & Private Multi-Tenant)
 // ============================================================================
 
-export async function queryRegulatoryAssistant(
+export async function queryDocuments(
   request: QueryRequest,
   token?: string | null,
   timeoutMs: number = DEFAULT_TIMEOUT_MS
@@ -508,7 +508,7 @@ export async function queryRegulatoryAssistant(
     query: normalizedQuery,
     top_k: request.top_k ?? 5,
     include_superseded: request.include_superseded ?? false,
-    collection_id: request.collection_id || 'sebi_cscrf',
+    collection_id: request.collection_id,
   };
 
   const controller = new AbortController();
@@ -589,6 +589,8 @@ export async function queryRegulatoryAssistant(
     throw error;
   }
 }
+
+export const queryRegulatoryAssistant = queryDocuments;
 
 // ============================================================================
 // 5. Query History APIs

@@ -17,6 +17,10 @@ import os
 from pathlib import Path
 import tempfile
 import uuid
+import json
+import os
+from pathlib import Path
+from typing import Dict, Any
 import pytest
 import numpy as np
 from fastapi.testclient import TestClient
@@ -37,21 +41,38 @@ TEST_ADMIN_KEY = "test-secret-publisher-key-999"
 
 @pytest.fixture
 def pub_env(tmp_path, monkeypatch):
-    """Fixture providing isolated environment for publication tests."""
+    """Fixture providing isolated environment for publication tests using general_synthetic corpus."""
     processed_dir = tmp_path / "processed"
     processed_dir.mkdir(parents=True, exist_ok=True)
     indexes_dir = tmp_path / "indexes"
     indexes_dir.mkdir(parents=True, exist_ok=True)
 
-    # Copy pilot corpus documents and chunks from real data/processed
-    real_processed = Path("data/processed")
-    for doc_folder in real_processed.iterdir():
-        if doc_folder.is_dir() and not doc_folder.name.startswith((".", "_")):
-            target_folder = processed_dir / doc_folder.name
-            target_folder.mkdir(parents=True, exist_ok=True)
-            for f in doc_folder.iterdir():
-                if f.is_file():
-                    target_folder.joinpath(f.name).write_bytes(f.read_bytes())
+    # Populate processed_dir with the 3 documents and chunks from general_synthetic snapshot
+    snap_dir = Path("data/indexes/general_synthetic/snapshots/snap_20261022_062310_395f75")
+    with open(snap_dir / "documents.json", "r", encoding="utf-8") as f:
+        docs_data = json.load(f)
+    with open(snap_dir / "chunks.json", "r", encoding="utf-8") as f:
+        chunks_data = json.load(f)
+
+    manifest_docs = {}
+    for doc_id, doc_info in docs_data.items():
+        target_folder = processed_dir / doc_id
+        target_folder.mkdir(parents=True, exist_ok=True)
+        with open(target_folder / "document.json", "w", encoding="utf-8") as f:
+            json.dump(doc_info, f, indent=2)
+        doc_chunks = [c for c in chunks_data if c["document_id"] == doc_id]
+        with open(target_folder / "chunks.json", "w", encoding="utf-8") as f:
+            json.dump(doc_chunks, f, indent=2)
+        manifest_docs[doc_id] = {
+            "document_id": doc_id,
+            "title": doc_info["title"],
+            "sha256": doc_info["sha256"],
+            "chunk_count": len(doc_chunks),
+            "processed_path": str(target_folder),
+        }
+
+    with open(processed_dir / "manifest.json", "w", encoding="utf-8") as f:
+        json.dump({"documents": manifest_docs}, f, indent=2)
 
     factory = FileStorageRepositoryFactory(processed_dir=processed_dir)
 
@@ -66,6 +87,7 @@ def pub_env(tmp_path, monkeypatch):
         repository_factory=factory,
         indexes_dir=indexes_dir,
         processed_dir=processed_dir,
+        collection_id="general_synthetic",
     )
 
     app.dependency_overrides[get_settings] = lambda: test_settings
@@ -88,32 +110,33 @@ def pub_env(tmp_path, monkeypatch):
         "processed_dir": processed_dir,
         "auth_headers": {"X-Admin-Key": TEST_ADMIN_KEY},
         "settings": test_settings,
+        "docs_data": docs_data,
     }
 
     app.dependency_overrides.clear()
 
 
 def test_1_build_and_publish_pilot_snapshot(pub_env):
-    """Test 1: Build candidate snapshot from the 5-document pilot corpus and verify manifest."""
+    """Test 1: Build candidate snapshot from general synthetic corpus and verify manifest."""
     publisher = pub_env["publisher"]
     indexes_dir = pub_env["indexes_dir"]
 
     # Before publication: has_active_snapshot is False
     status_before = publisher.get_index_status()
     assert status_before.has_active_snapshot is False
-    assert len(status_before.pending_document_ids) == 5
+    assert len(status_before.pending_document_ids) == 3
 
     # Publish
     res = publisher.build_and_publish_snapshot()
     assert res.success is True
-    assert res.total_documents == 5
-    assert res.total_chunks == 168
-    assert len(res.newly_published_documents) == 5
+    assert res.total_documents == 3
+    assert res.total_chunks == 3
+    assert len(res.newly_published_documents) == 3
 
     # Check files created
-    active_ptr = indexes_dir / "active_snapshot.json"
+    active_ptr = publisher.active_pointer_path
     assert active_ptr.exists()
-    snap_dir = indexes_dir / "snapshots" / res.snapshot_id
+    snap_dir = publisher.snapshots_dir / res.snapshot_id
     assert snap_dir.exists()
     assert (snap_dir / "manifest.json").exists()
     assert (snap_dir / "dense_index.npy").exists()
@@ -125,21 +148,20 @@ def test_1_build_and_publish_pilot_snapshot(pub_env):
     assert status_after.has_active_snapshot is True
     assert status_after.active_snapshot_id == res.snapshot_id
     assert len(status_after.pending_document_ids) == 0
-    assert status_after.total_chunks == 168
+    assert status_after.total_chunks == 3
 
 
 def test_2_dry_run_validation_does_not_activate(pub_env):
     """Test 2: Dry-run builds and validates candidate index without activating or modifying pointer."""
     publisher = pub_env["publisher"]
-    indexes_dir = pub_env["indexes_dir"]
 
     res = publisher.build_and_publish_snapshot(dry_run=True)
     assert res.success is True
-    assert res.total_documents == 5
-    assert res.total_chunks == 168
+    assert res.total_documents == 3
+    assert res.total_chunks == 3
 
     # active pointer must not exist
-    assert not (indexes_dir / "active_snapshot.json").exists()
+    assert not publisher.active_pointer_path.exists()
     assert publisher.get_active_pointer() is None
 
 
@@ -161,7 +183,7 @@ def test_3_validation_rejects_nan_and_dimension_mismatch(pub_env):
         publisher._validate_candidate_artifacts(chunks, bad_dim_matrix)
 
     # Case C: Row count mismatch
-    bad_row_matrix = np.zeros((len(chunks) - 5, 384), dtype=np.float32)
+    bad_row_matrix = np.zeros((len(chunks) - 1, 384), dtype=np.float32)
     with pytest.raises(IndexValidationError, match="Embedding row count"):
         publisher._validate_candidate_artifacts(chunks, bad_row_matrix)
 
@@ -211,7 +233,7 @@ def test_5_admin_rest_api_publish_and_status(pub_env):
     assert pub_live.status_code == 200
     live_data = pub_live.json()
     assert live_data["success"] is True
-    assert live_data["total_documents"] == 5
+    assert live_data["total_documents"] == 3
 
     # 4. GET status after publish
     st_after = client.get("/api/v1/admin/indexes/status", headers=headers)
@@ -227,12 +249,17 @@ def test_6_document_searchability_updates_upon_publication(pub_env):
     factory = pub_env["factory"]
     publisher = pub_env["publisher"]
     job_repo = factory.get_ingestion_job_repository()
+    docs_data = pub_env["docs_data"]
 
-    # Register an ingestion job for an existing pilot document
+    target_doc_id = "acme_security_policy"
+    target_sha256 = docs_data[target_doc_id]["sha256"]
+
+    # Register an ingestion job for an existing document
     job = job_repo.create_job(
-        source_url="https://sebi.gov.in/test.pdf",
+        source_url="https://acme.internal/docs/security_policy.pdf",
         idempotency_key="key_searchability_1",
-        document_id="sebi_cscrf_2025_119",
+        document_id=target_doc_id,
+        collection_id="general_synthetic",
     )
     # Claim job so it transitions to PROCESSING
     claimed = job_repo.claim_next_job(worker_id="worker_test_pub")
@@ -242,8 +269,8 @@ def test_6_document_searchability_updates_upon_publication(pub_env):
     job_repo.mark_completed(
         job_id=job.id,
         claim_token=claimed.claim_token,
-        document_id="sebi_cscrf_2025_119",
-        sha256="7eb58ae065db764eec8a118c35777c8d4fb3a3b4ceee15878c28cb9599f1c31d",
+        document_id=target_doc_id,
+        sha256=target_sha256,
     )
 
     # Before snapshot publication: searchable is False, publication_status is pending_publication
@@ -275,12 +302,12 @@ def test_7_retrieval_service_snapshot_loading_and_reload(pub_env):
     # Instantiate RetrievalService
     service = RetrievalService(processed_dir=processed_dir, indexes_dir=indexes_dir)
     doc_cnt, chunk_cnt = service.load_and_index_corpus()
-    assert doc_cnt == 5
-    assert chunk_cnt == 168
+    assert doc_cnt == 3
+    assert chunk_cnt == 3
     assert service.active_snapshot_id == res.snapshot_id
 
     # Verify search operates over published snapshot
-    search_res = service.search_hybrid("ISO 27001", top_k=3)
+    search_res = service.search_hybrid("security policy password", top_k=3)
     assert search_res.total_results > 0
 
     # No reload needed if pointer unchanged
@@ -312,85 +339,84 @@ def test_8_cli_publish_and_inspect_index(pub_env, monkeypatch, capsys):
     assert code == 0
     captured = capsys.readouterr()
     assert '"has_active_snapshot": true' in captured.out
-    assert '"total_chunks": 168' in captured.out
+    assert '"total_chunks": 3' in captured.out
 
 
 def test_9_sixth_document_dynamic_inclusion_and_retrieval(pub_env):
     """
-    Test 9 (Acceptance Condition 1 & 2):
-    Verify dynamic corpus expansion: ingest a 6th regulatory document with new chunks,
-    publish a new snapshot, and verify that the 6th document is indexed and retrievable,
-    while leaving the baseline pilot corpus intact.
+    Test 9:
+    Verify dynamic corpus expansion: ingest a new document with new chunks,
+    publish a new snapshot, and verify that the document is indexed and retrievable.
     """
     factory = pub_env["factory"]
     publisher = pub_env["publisher"]
     indexes_dir = pub_env["indexes_dir"]
     processed_dir = pub_env["processed_dir"]
 
-    # 1. Initially publish 5-document pilot snapshot
+    # 1. Initially publish 3-document snapshot
     res1 = publisher.build_and_publish_snapshot()
     assert res1.success is True
-    assert res1.total_documents == 5
-    assert res1.total_chunks == 168
+    assert res1.total_documents == 3
+    assert res1.total_chunks == 3
 
-    # 2. Dynamically add a 6th regulatory document
+    # 2. Dynamically add a 4th document
     doc_repo = factory.get_document_repository()
     chunk_repo = factory.get_chunk_repository()
 
-    sixth_doc_id = "sebi_circular_2026_test_audit"
+    fourth_doc_id = "acme_audit_guide_2026"
     doc_record = DocumentRecord(
-        document_id=sixth_doc_id,
-        title="SEBI Circular on Dynamic Regulatory Search Acceptance Testing",
-        circular_number="SEBI/HO/MRD/2026/099",
+        document_id=fourth_doc_id,
+        title="Acme Global Audit and Governance Guide",
+        circular_number=None,
         issue_date="2026-10-11",
         effective_date="2026-10-11",
-        source_url="https://www.sebi.gov.in/legal/circulars/oct-2026/test_audit.pdf",
+        source_url="https://acme.internal/docs/audit_guide.pdf",
         sha256="deadbeef1234567890abcdef1234567890abcdef1234567890abcdef12345678",
-        pdf_path="raw_documents/test_audit.pdf",
+        pdf_path="raw_documents/audit_guide.pdf",
         total_pages=1,
-        collection_id="sebi_cscrf",
+        collection_id="general_synthetic",
     )
     doc_repo.save_document(doc_record)
 
-    sixth_chunk = ChunkRecord(
-        chunk_id=f"{sixth_doc_id}_p1_001",
-        document_id=sixth_doc_id,
-        text="All Qualified REs must maintain dynamic search index synchronization under Regulation 8B.6.",
+    fourth_chunk = ChunkRecord(
+        chunk_id=f"{fourth_doc_id}_p1_001",
+        document_id=fourth_doc_id,
+        text="All organizational units must maintain dynamic search index synchronization under Governance Rule 8.",
         page_start=1,
         page_end=1,
-        metadata={"provisions": ["Clause 8B.6"]},
-        collection_id="sebi_cscrf",
+        metadata={"provisions": ["Rule 8"]},
+        collection_id="general_synthetic",
     )
-    chunk_repo.save_chunks([sixth_chunk])
+    chunk_repo.save_chunks([fourth_chunk])
 
-    # Before publishing second snapshot: 6th document is pending publication
+    # Before publishing second snapshot: 4th document is pending publication
     status_mid = publisher.get_index_status()
     assert status_mid.has_active_snapshot is True
-    assert sixth_doc_id in status_mid.pending_document_ids
-    assert publisher.is_document_searchable(sixth_doc_id) is False
+    assert fourth_doc_id in status_mid.pending_document_ids
+    assert publisher.is_document_searchable(fourth_doc_id) is False
 
     # 3. Publish second snapshot
     res2 = publisher.build_and_publish_snapshot()
     assert res2.success is True
-    assert res2.total_documents == 6
-    assert res2.total_chunks == 169
-    assert sixth_doc_id in res2.newly_published_documents
+    assert res2.total_documents == 4
+    assert res2.total_chunks == 4
+    assert fourth_doc_id in res2.newly_published_documents
 
     # Verify searchability transitioned to True
-    assert publisher.is_document_searchable(sixth_doc_id) is True
+    assert publisher.is_document_searchable(fourth_doc_id) is True
 
-    # 4. Verify RetrievalService reload & retrieval of sixth document
+    # 4. Verify RetrievalService reload & retrieval of fourth document
     service = RetrievalService(processed_dir=processed_dir, indexes_dir=indexes_dir)
     service.load_and_index_corpus()
     service.load_and_index_dense()
 
-    assert len(service.documents) == 6
-    assert len(service.chunks) == 169
+    assert len(service.documents) == 4
+    assert len(service.chunks) == 4
 
-    search_res = service.search_hybrid("dynamic search index synchronization Regulation 8B.6", top_k=3)
+    search_res = service.search_hybrid("dynamic search index synchronization Governance Rule 8", top_k=3)
     assert search_res.total_results > 0
     top_chunk_ids = [r.chunk_id for r in search_res.results]
-    assert f"{sixth_doc_id}_p1_001" in top_chunk_ids
+    assert f"{fourth_doc_id}_p1_001" in top_chunk_ids
 
 
 def test_10_concurrent_publication_lock_protection(pub_env):
@@ -399,10 +425,10 @@ def test_10_concurrent_publication_lock_protection(pub_env):
     Verify that concurrent publication attempts are safely blocked by the atomic lock file.
     """
     publisher = pub_env["publisher"]
-    indexes_dir = pub_env["indexes_dir"]
 
     # Artificially create active lock file simulating an ongoing build
-    lock_file = indexes_dir / ".publish.lock"
+    publisher.collection_dir.mkdir(parents=True, exist_ok=True)
+    lock_file = publisher.collection_dir / ".publish.lock"
     lock_file.write_text("99999:2026-10-11T16:00:00Z\n", encoding="utf-8")
 
     # Concurrent attempt must fail safely without modifying pointer
@@ -432,7 +458,7 @@ def test_11_corrupted_manifest_checksum_rejection(pub_env):
     assert res.success is True
 
     # Tamper with manifest in active snapshot directory
-    manifest_file = indexes_dir / "snapshots" / res.snapshot_id / "manifest.json"
+    manifest_file = publisher.snapshots_dir / res.snapshot_id / "manifest.json"
     manifest_data = json.loads(manifest_file.read_text(encoding="utf-8"))
     manifest_data["total_chunks"] = 9999  # Tamper with manifest
     manifest_file.write_text(json.dumps(manifest_data), encoding="utf-8")

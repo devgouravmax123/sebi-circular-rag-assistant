@@ -7,38 +7,38 @@ import { EvidenceCard } from '../src/components/EvidenceCard.tsx';
 
 const baseExcerpt = {
   excerpt_id: 'exc_test_001',
-  document_id: 'doc_cscrf_2024',
-  circular_number: 'SEBI/HO/ITD/ITD_PoD_2/P/CIR/2024/115',
+  document_id: 'doc_acme_2024',
+  circular_number: 'ACME-SEC-2024-001',
   issue_date: '2024-08-20',
-  title: 'Cybersecurity and Cyber Resilience Framework (CSCRF)',
+  title: 'Acme Information Security Policy',
   page_start: 13,
   page_end: 13,
-  source_chunk_id: 'cscrf_2024_p13_11',
+  source_chunk_id: 'acme_sec_p13_01',
   match_confidence: 1.0,
   mechanical_match_verified: true,
   regulatory_status: 'UNRESOLVED',
-  status_reason: 'Pilot corpus scope limitation: provision currency unverified globally.',
-  acting_document_ids: ['doc_cscrf_2024'],
+  status_reason: 'Corpus scope limitation: provision currency unverified globally.',
+  acting_document_ids: ['doc_acme_2024'],
   applicable_edge_ids: [],
-  excerpt_text: 'The Cybersecurity and Cyber Resilience Framework (CSCRF) has been formulated to provide a structured approach to cybersecurity resilience for REs.',
+  excerpt_text: 'The Information Security Policy has been formulated to provide a structured approach to cybersecurity resilience for systems.',
 };
 
 const baseResponse = {
-  query_text: 'What is CSCRF?',
+  query_text: 'What is the security policy?',
   retrieval_candidate_count: 5,
   verified_excerpts: [baseExcerpt],
   historical_superseded_excerpts: [],
   disposition: 'QUALIFIED_HISTORICAL_EXCERPTS',
-  summary_narrative: 'Found 1 verified excerpt in active pilot corpus.',
-  regulatory_warnings: ['Pilot Scope: Verification limited to 5 indexed circulars.'],
-  pilot_corpus_scope_limitation: '5 indexed documents in demo snapshot.',
+  summary_narrative: 'Found 1 verified excerpt in active corpus.',
+  regulatory_warnings: ['Scope Warning: Verification limited to indexed documents.'],
+  pilot_corpus_scope_limitation: 'Indexed documents in active snapshot.',
   abstention_reason: null,
 };
 
 test('1. ResultsPanel: renders non-empty answer_text in direct grounded answer card', () => {
   const resp = {
     ...baseResponse,
-    answer_text: 'CSCRF is a comprehensive cybersecurity framework formulated by SEBI to consolidate cyber resiliency requirements.',
+    answer_text: 'The security policy provides a structured approach to cybersecurity resilience across systems.',
     synthesis_status: 'FULLY_ANSWERED',
   };
 
@@ -49,7 +49,7 @@ test('1. ResultsPanel: renders non-empty answer_text in direct grounded answer c
   }));
 
   assert.match(html, /Direct Grounded Answer/);
-  assert.match(html, /CSCRF is a comprehensive cybersecurity framework formulated by SEBI/);
+  assert.match(html, /The security policy provides a structured approach to cybersecurity resilience across systems\./);
   assert.match(html, /Fully Supported by Evidence/);
 });
 
@@ -112,12 +112,12 @@ test('3. ResultsPanel: displays distinct synthesis status labels accurately and 
 test('4. ResultsPanel: displays unresolved subquestions compactly', () => {
   const resp = {
     ...baseResponse,
-    answer_text: 'CSCRF establishes baseline cyber requirements.',
+    answer_text: 'The security policy establishes baseline cyber requirements.',
     synthesis_status: 'PARTIALLY_ANSWERED',
     unresolved_subquestions: [
       {
         subquestion: 'What is the compliance penalty schedule under Section 15HA?',
-        reason: 'Penalty schedules are not contained in the 5-document pilot snapshot.',
+        reason: 'Penalty schedules are not contained in the indexed document snapshot.',
       },
     ],
   };
@@ -130,7 +130,7 @@ test('4. ResultsPanel: displays unresolved subquestions compactly', () => {
 
   assert.match(html, /Unresolved Sub-questions \(1\)/);
   assert.match(html, /What is the compliance penalty schedule under Section 15HA\?/);
-  assert.match(html, /Penalty schedules are not contained in the 5-document pilot snapshot\./);
+  assert.match(html, /Penalty schedules are not contained in the indexed document snapshot\./);
 });
 
 test('5. ResultsPanel: displays synthesis failure reason only when safe and useful', () => {
@@ -154,17 +154,17 @@ test('5. ResultsPanel: displays synthesis failure reason only when safe and usef
 test('6. ResultsPanel: preserves safety-gate disposition, warnings, and corpus boundary', () => {
   const resp = {
     ...baseResponse,
-    answer_text: 'CSCRF details.',
+    answer_text: 'Security policy details.',
     synthesis_status: 'FULLY_ANSWERED',
   };
 
-  const sebiCollection = {
-    collection_id: 'sebi_cscrf',
-    name: 'SEBI CSCRF Regulatory Intelligence',
-    description: 'Master circulars and guidelines',
-    domain: 'CSCRF',
-    regulator: 'SEBI',
-    policy_type: 'sebi_cscrf_strict',
+  const demoCollection = {
+    collection_id: 'general_synthetic',
+    name: 'General Technical Knowledge',
+    description: 'Master documentation and guidelines',
+    domain: 'TECHNICAL',
+    regulator: null,
+    policy_type: 'general_static',
     status: 'active',
   };
 
@@ -172,14 +172,14 @@ test('6. ResultsPanel: preserves safety-gate disposition, warnings, and corpus b
     isLoading: false,
     error: null,
     response: resp,
-    selectedCollection: sebiCollection,
+    selectedCollection: demoCollection,
   }));
 
   assert.match(html, /Safety Gate Disposition/);
-  assert.match(html, /Historical Excerpts — Qualifications Apply/);
+  assert.match(html, /Document Excerpts — Qualifications Apply/);
   assert.match(html, /Regulatory Warnings &amp; Caveats \(1\)/);
   assert.match(html, /Corpus Boundary:/);
-  assert.match(html, /5 indexed documents in demo snapshot\./);
+  assert.match(html, /Indexed documents in active snapshot\./);
 });
 
 test('7. EvidenceCard: clarifies unresolved currency without implying active law', () => {
@@ -218,8 +218,8 @@ test('9. EvidenceCard: preserves document metadata, page numbers, and source lin
     index: 0,
   }));
 
-  assert.match(html, /SEBI\/HO\/ITD\/ITD_PoD_2\/P\/CIR\/2024\/115/);
+  assert.match(html, /ACME-SEC-2024-001/);
   assert.match(html, /2024-08-20/);
   assert.match(html, /Page 13/);
-  assert.match(html, /cscrf_2024_p13_11/);
+  assert.match(html, /acme_sec_p13_01/);
 });

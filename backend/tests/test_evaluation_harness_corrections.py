@@ -160,7 +160,6 @@ def test_7_baseline_and_result_artifacts_untouched():
     assert (data_dir / "general_evaluation_results.json").exists()
     assert (data_dir / "broader_general_evaluation_dataset.json").exists()
     assert (data_dir / "broader_general_evaluation_results.json").exists()
-    assert (data_dir / "gold_evaluation_dataset.json").exists()
 
 
 def test_8_output_path_safety_prevents_overwrite(tmp_path):

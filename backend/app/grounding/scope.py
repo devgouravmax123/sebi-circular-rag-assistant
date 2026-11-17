@@ -44,7 +44,7 @@ KNOWN_GOVERNING_FRAMEWORKS = {
             r"\bqualified\s+res?\b",
             r"\bmiis?\s+and\s+qualified\s+res?\b",
         ],
-        "compatible_collections": {"sebi_cscrf"},
+        "compatible_collections": set(),
         "compatible_regulators": {"SEBI"},
     },
     "CISA_PLAYBOOKS": {
@@ -178,15 +178,12 @@ def evaluate_query_collection_scope(
                         continue
 
             # Bidirectional framework exclusivity:
-            # - SEBI_CSCRF requested against non-SEBI collections (e.g. cisa_playbooks) -> EXPLICIT_MISMATCH
-            # - CISA_PLAYBOOKS requested against non-CISA collections (e.g. sebi_cscrf) -> EXPLICIT_MISMATCH
-            # - GDPR / ACME_FINOPS requested against collections outside their declared scope -> EXPLICIT_MISMATCH
-            # - General synthetic collections preserve evidence-grounded answering for supported factual queries
+            # - External frameworks requested against incompatible collections -> EXPLICIT_MISMATCH
             is_exclusive_framework = (
-                (fw_key == "SEBI_CSCRF" and norm_cid != "sebi_cscrf" and norm_regulator != "SEBI")
+                (fw_key == "SEBI_CSCRF" and norm_regulator != "SEBI")
                 or (fw_key == "CISA_PLAYBOOKS" and norm_cid != "cisa_playbooks" and norm_regulator not in ("CISA", "DHS"))
-                or (fw_key == "GDPR" and norm_cid in ("sebi_cscrf", "cisa_playbooks", "demo_finops"))
-                or (fw_key == "ACME_FINOPS" and norm_cid in ("sebi_cscrf", "cisa_playbooks"))
+                or (fw_key == "GDPR" and norm_cid in ("cisa_playbooks", "demo_finops", "general_synthetic"))
+                or (fw_key == "ACME_FINOPS" and norm_cid in ("cisa_playbooks", "general_synthetic"))
             )
 
             if is_exclusive_framework:

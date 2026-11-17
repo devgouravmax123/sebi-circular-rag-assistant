@@ -16,7 +16,6 @@ Tests:
 import pytest
 from app.schemas.graph import GraphEdge, RelationshipType, ScopeType, ConfidenceLevel, ReviewStatus
 from app.schemas.graph_collection import GraphEdgeCollection
-from app.schemas.cscrf_graph_data import create_verified_cscrf_graph
 from app.schemas.retrieval import RetrievalResult, RetrievalResponse
 from app.schemas.grounding import RegulatoryStatus, GroundedEvidencePackage
 from app.grounding.resolver import ConservativeGraphResolver, detect_provisions_in_text
@@ -24,7 +23,20 @@ from app.grounding.resolver import ConservativeGraphResolver, detect_provisions_
 
 @pytest.fixture
 def verified_graph():
-    return create_verified_cscrf_graph()
+    graph = GraphEdgeCollection()
+    graph.add_edge(
+        GraphEdge(
+            edge_id="edge_cscrf_2025_119_amends_2024_113_technical_clarifications",
+            source_document_id="sebi_cscrf_2025_119",
+            target_document_id="sebi_cscrf_2024_113",
+            relationship=RelationshipType.AMENDS,
+            scope=ScopeType.PARTIAL,
+            affected_provisions=["Section 4.2 & PR.IP.S16 (ISO 27001 Recommendation / Clause 6.11)"],
+            evidence_text="Clause 6.11 clarifies ISO 27001 certification requirement",
+            review_status=ReviewStatus.VERIFIED,
+        )
+    )
+    return graph
 
 
 @pytest.fixture

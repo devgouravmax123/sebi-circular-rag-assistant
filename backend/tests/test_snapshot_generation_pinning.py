@@ -125,7 +125,7 @@ def test_01_hybrid_search_pins_single_generation_across_bm25_and_dense(test_setu
     processed_dir = test_setup["processed_dir"]
     factory = test_setup["factory"]
     embedder = test_setup["embedder"]
-    cid = "sebi_cscrf"
+    cid = "general_synthetic"
 
     snap_id = _publish_collection_snapshot(
         factory=factory,
@@ -169,7 +169,7 @@ def test_02_reload_between_bm25_and_dense_does_not_mix_generations(test_setup):
     processed_dir = test_setup["processed_dir"]
     factory = test_setup["factory"]
     embedder = test_setup["embedder"]
-    cid = "sebi_cscrf"
+    cid = "general_synthetic"
 
     # Publish Snapshot 1
     snap_1_id = _publish_collection_snapshot(
@@ -271,7 +271,7 @@ def test_03_subsequent_query_uses_newly_reloaded_generation(test_setup):
     processed_dir = test_setup["processed_dir"]
     factory = test_setup["factory"]
     embedder = test_setup["embedder"]
-    cid = "sebi_cscrf"
+    cid = "general_synthetic"
 
     snap_1_id = _publish_collection_snapshot(
         factory, indexes_dir, processed_dir, embedder, cid, "doc_v1", "chunk_v1", "Old security rule"
@@ -309,7 +309,7 @@ def test_04_failed_reload_preserves_valid_active_generation(test_setup):
     processed_dir = test_setup["processed_dir"]
     factory = test_setup["factory"]
     embedder = test_setup["embedder"]
-    cid = "sebi_cscrf"
+    cid = "general_synthetic"
 
     snap_1_id = _publish_collection_snapshot(
         factory, indexes_dir, processed_dir, embedder, cid, "doc_v1", "chunk_v1", "Baseline valid index"
@@ -369,7 +369,7 @@ def test_05_collection_generations_strictly_isolated(test_setup):
     factory = test_setup["factory"]
     embedder = test_setup["embedder"]
 
-    cid_a = "sebi_cscrf"
+    cid_a = "general_synthetic"
     cid_b = "amfi_nav"
 
     snap_a1 = _publish_collection_snapshot(
@@ -429,20 +429,20 @@ def test_06_lru_cache_capacity_enforced(test_setup):
         max_cached_collections=2,
     )
 
-    # Initial state contains default 'sebi_cscrf'
+    # Initial state contains default 'general_synthetic'
     assert service.cached_collection_count == 1
-    assert "sebi_cscrf" in service.cached_collection_ids
+    assert "general_synthetic" in service.cached_collection_ids
 
-    # Load coll_alpha: capacity reached (2) -> [sebi_cscrf, coll_alpha]
+    # Load coll_alpha: capacity reached (2) -> [general_synthetic, coll_alpha]
     service.get_active_generation(collection_id="coll_alpha")
     assert service.cached_collection_count == 2
-    assert service.cached_collection_ids == ["sebi_cscrf", "coll_alpha"]
+    assert service.cached_collection_ids == ["general_synthetic", "coll_alpha"]
 
-    # Load coll_beta: capacity exceeded -> sebi_cscrf is evicted -> [coll_alpha, coll_beta]
+    # Load coll_beta: capacity exceeded -> general_synthetic is evicted -> [coll_alpha, coll_beta]
     service.get_active_generation(collection_id="coll_beta")
     assert service.cached_collection_count == 2
     assert service.cached_collection_ids == ["coll_alpha", "coll_beta"]
-    assert "sebi_cscrf" not in service.cached_collection_ids
+    assert "general_synthetic" not in service.cached_collection_ids
 
     # Load coll_gamma: capacity exceeded -> coll_alpha is evicted -> [coll_beta, coll_gamma]
     service.get_active_generation(collection_id="coll_gamma")
@@ -472,7 +472,7 @@ def test_07_lru_cache_access_updates_recency(test_setup):
         max_cached_collections=2,
     )
 
-    # Load coll_one and coll_two (evicting sebi_cscrf)
+    # Load coll_one and coll_two (evicting general_synthetic)
     service.get_active_generation(collection_id="coll_one")
     service.get_active_generation(collection_id="coll_two")
     assert service.cached_collection_ids == ["coll_one", "coll_two"]

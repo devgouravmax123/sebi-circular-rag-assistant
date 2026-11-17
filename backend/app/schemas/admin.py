@@ -10,13 +10,14 @@ from app.schemas.ingestion_job import JobStatus, ProcessingStage
 
 
 class RegisterDocumentRequest(BaseModel):
-    """Payload for registering a regulatory document for ingestion."""
-    source_url: str = Field(..., description="HTTPS URL of the regulatory document to ingest")
-    regulator: str = Field(default="SEBI", description="Regulatory authority (e.g. SEBI)")
-    domain: str = Field(default="CSCRF", description="Regulatory domain (e.g. CSCRF, LODR)")
+    """Payload for registering a document for ingestion."""
+    source_url: str = Field(..., description="HTTPS URL of the document to ingest")
+    regulator: Optional[str] = Field(default=None, description="Optional authority or source organization")
+    domain: Optional[str] = Field(default=None, description="Optional document domain or category")
+    collection_id: Optional[str] = Field(default=None, description="Target collection identifier")
     idempotency_key: str = Field(..., min_length=4, max_length=128, description="Client idempotency key")
     document_id: Optional[str] = Field(None, min_length=3, max_length=100, description="Optional logical document ID")
-    circular_number: Optional[str] = Field(None, max_length=150, description="Official circular reference number")
+    circular_number: Optional[str] = Field(None, max_length=150, description="Official reference or identifier number")
     title: Optional[str] = Field(None, max_length=300, description="Document title")
     max_attempts: int = Field(default=3, ge=1, le=10, description="Maximum retry attempts")
 

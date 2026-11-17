@@ -1,5 +1,5 @@
 """
-Corpus loader and retrieval service for the processed SEBI circulars.
+Corpus loader and retrieval service for document intelligence collections.
 """
 import hashlib
 import json
@@ -92,7 +92,7 @@ class CollectionRetrievalState:
 class RetrievalService:
     """
     Service orchestrating corpus loading, lexical BM25 indexing, dense vector search, and hybrid fusion.
-    Supports collection-isolated retrieval dispatch while maintaining backward compatibility for the SEBI pilot.
+    Supports collection-isolated retrieval dispatch across user and public collections.
     """
 
     def __init__(
@@ -150,8 +150,8 @@ class RetrievalService:
         # Per-collection isolated retrieval state LRU cache
         self._collection_states: OrderedDict[str, CollectionRetrievalState] = OrderedDict()
 
-        # Eagerly initialize default legacy SEBI state in cache
-        self._get_or_create_collection_state("sebi_cscrf")
+        # Eagerly initialize default collection state in cache
+        self._get_or_create_collection_state("general_synthetic")
 
     @property
     def cached_collection_ids(self) -> List[str]:
@@ -167,8 +167,8 @@ class RetrievalService:
 
     @property
     def _default_state(self) -> CollectionRetrievalState:
-        """Legacy default SEBI state accessor ensuring state exists and LRU recency is maintained."""
-        return self._get_or_create_collection_state("sebi_cscrf")
+        """Default collection state accessor ensuring state exists and LRU recency is maintained."""
+        return self._get_or_create_collection_state("general_synthetic")
 
     def _validate_collection_id(self, collection_id: str) -> str:
         """Validate collection_id against safe character and naming rules."""
@@ -222,7 +222,7 @@ class RetrievalService:
                 documents=state.documents,
             )
 
-    # --- Backward compatibility properties mapping to default 'sebi_cscrf' state ---
+    # --- Backward compatibility properties mapping to default collection state ---
     @property
     def bm25_index(self) -> BM25Index:
         if self._default_state.active_generation is not None:
@@ -304,7 +304,7 @@ class RetrievalService:
         self._default_state.dense_index = value
         self._sync_state_generation(self._default_state)
 
-    def get_chunks(self, collection_id: str = "sebi_cscrf") -> List[ChunkRecord]:
+    def get_chunks(self, collection_id: str = "general_synthetic") -> List[ChunkRecord]:
         """Returns the loaded chunks for the specified collection."""
         cid = self._validate_collection_id(collection_id)
         gen = self.get_active_generation(collection_id=cid)
@@ -313,7 +313,7 @@ class RetrievalService:
         state = self._get_or_create_collection_state(cid)
         return state.chunks
 
-    def get_documents(self, collection_id: str = "sebi_cscrf") -> Dict[str, DocumentRecord]:
+    def get_documents(self, collection_id: str = "general_synthetic") -> Dict[str, DocumentRecord]:
         """Returns the loaded document records for the specified collection."""
         cid = self._validate_collection_id(collection_id)
         gen = self.get_active_generation(collection_id=cid)
@@ -322,11 +322,10 @@ class RetrievalService:
         state = self._get_or_create_collection_state(cid)
         return state.documents
 
-    def get_active_snapshot_dir(self, collection_id: str = "sebi_cscrf") -> Optional[Path]:
+    def get_active_snapshot_dir(self, collection_id: str = "general_synthetic") -> Optional[Path]:
         """
         Returns Path to active snapshot directory for collection_id if active_snapshot.json exists and is valid.
         When remote storage is configured, resolves and hydrates from remote storage into local cache.
-        For sebi_cscrf only, falls back to legacy root pointer data/indexes/active_snapshot.json if partition pointer is missing.
         """
         cid = self._validate_collection_id(collection_id)
 
@@ -335,8 +334,6 @@ class RetrievalService:
             hydrated = self.durable_store.hydrate_snapshot(cid)
             if hydrated is not None:
                 return hydrated
-            if cid != "sebi_cscrf":
-                return None
 
         # 1. Check collection partition: data/indexes/{collection_id}/active_snapshot.json
         partition_dir = self.indexes_dir / cid
@@ -346,16 +343,13 @@ class RetrievalService:
             return None
 
         pointer_file = partition_dir / "active_snapshot.json"
-        is_legacy = False
+        is_partition = True
 
         if not pointer_file.exists():
-            if cid == "sebi_cscrf":
-                legacy_file = self.indexes_dir / "active_snapshot.json"
-                if legacy_file.exists():
-                    pointer_file = legacy_file
-                    is_legacy = True
-                else:
-                    return None
+            root_file = self.indexes_dir / "active_snapshot.json"
+            if root_file.exists():
+                pointer_file = root_file
+                is_partition = False
             else:
                 return None
 
@@ -372,13 +366,17 @@ class RetrievalService:
             if ptr_coll and ptr_coll != cid:
                 logger.error(f"Cross-collection pointer detected: expected '{cid}', found '{ptr_coll}'.")
                 return None
-            if not ptr_coll and (not is_legacy or cid != "sebi_cscrf"):
+            if not ptr_coll and is_partition:
                 logger.error(f"Pointer at '{pointer_file}' missing required collection_id for '{cid}'.")
                 return None
 
             # Resolve snapshot directory
-            if is_legacy:
+            if not is_partition:
                 snap_dir = self.indexes_dir / "snapshots" / snap_id
+                if not snap_dir.exists() and ptr_coll:
+                    candidate_snap_dir = self.indexes_dir / ptr_coll / "snapshots" / snap_id
+                    if candidate_snap_dir.exists():
+                        snap_dir = candidate_snap_dir
             else:
                 snap_dir = partition_dir / "snapshots" / snap_id
 
@@ -407,7 +405,7 @@ class RetrievalService:
                 if m_coll and m_coll != cid:
                     logger.error(f"Cross-collection manifest: expected '{cid}', found '{m_coll}'.")
                     return None
-                if not m_coll and (not is_legacy or cid != "sebi_cscrf"):
+                if not m_coll and is_partition:
                     logger.error(f"Manifest at '{manifest_path}' missing required collection_id for '{cid}'.")
                     return None
 
@@ -460,7 +458,7 @@ class RetrievalService:
 
     def _load_isolated_generation(
         self,
-        collection_id: str = "sebi_cscrf",
+        collection_id: str = "general_synthetic",
         target_snapshot_dir: Optional[Path] = None,
     ) -> Optional[SnapshotGeneration]:
         """
@@ -517,8 +515,8 @@ class RetrievalService:
                         documents=filtered_docs,
                     )
 
-        # Fallback to processed_dir (allowed only for sebi_cscrf baseline)
-        if cid != "sebi_cscrf" or not self.processed_dir.exists():
+        # Fallback to processed_dir
+        if not self.processed_dir.exists():
             return SnapshotGeneration(
                 collection_id=cid,
                 snapshot_id=None,
@@ -602,7 +600,7 @@ class RetrievalService:
             documents=docs_map,
         )
 
-    def get_active_generation(self, collection_id: str = "sebi_cscrf") -> SnapshotGeneration:
+    def get_active_generation(self, collection_id: str = "general_synthetic") -> SnapshotGeneration:
         """
         Retrieves the currently pinned active SnapshotGeneration for the specified collection.
         If no generation is active, initializes it under thread lock and returns it.
@@ -632,7 +630,7 @@ class RetrievalService:
             assert state.active_generation is not None
             return state.active_generation
 
-    def reload_if_stale(self, collection_id: str = "sebi_cscrf") -> bool:
+    def reload_if_stale(self, collection_id: str = "general_synthetic") -> bool:
         """
         Checks if active_snapshot.json pointer changed for the collection; if so, atomically reloads the snapshot.
         Loads the new generation in isolation and performs an atomic pointer swap under self._state_lock.
@@ -691,7 +689,7 @@ class RetrievalService:
         if latest_id is None:
             partition_dir = self.indexes_dir / cid
             pointer_file = partition_dir / "active_snapshot.json"
-            if not pointer_file.exists() and cid == "sebi_cscrf":
+            if not pointer_file.exists():
                 pointer_file = self.indexes_dir / "active_snapshot.json"
 
             if pointer_file.exists():
@@ -726,10 +724,10 @@ class RetrievalService:
 
         return False
 
-    def load_and_index_corpus(self, collection_id: str = "sebi_cscrf") -> Tuple[int, int]:
+    def load_and_index_corpus(self, collection_id: str = "general_synthetic") -> Tuple[int, int]:
         """
         Load document records and chunks for collection_id from its active published snapshot if available,
-        otherwise fall back to processed_dir (pilot baseline for sebi_cscrf).
+        otherwise fall back to processed_dir.
         Builds the BM25 index over the loaded chunks.
 
         Returns:
@@ -750,9 +748,9 @@ class RetrievalService:
                 # Fail closed: do not silently fall back to stale or missing disk files
                 raise
 
-            # If documents exist in PostgreSQL or collection has no snapshot on disk and is not sebi_cscrf
+            # If documents exist in PostgreSQL or collection has no snapshot on disk
             snap_dir = self.get_active_snapshot_dir(collection_id=cid)
-            if docs or (snap_dir is None and cid != "sebi_cscrf"):
+            if docs or (snap_dir is None):
                 filtered_docs = {d.document_id: d for d in docs}
                 filtered_chunks = list(chunks)
 
@@ -806,8 +804,8 @@ class RetrievalService:
                         logger.warning(f"Failed loading snapshot data for collection '{cid}': {e}")
                         pass
 
-        # Fallback to processed_dir (allowed only for sebi_cscrf baseline)
-        if cid != "sebi_cscrf" or not self.processed_dir.exists():
+        # Fallback to processed_dir
+        if not self.processed_dir.exists():
             state.is_indexed = True
             state.documents = {}
             state.chunks = []
@@ -876,7 +874,7 @@ class RetrievalService:
         self._sync_state_generation(state)
         return len(state.documents), len(state.chunks)
 
-    def load_and_index_dense(self, auto_rebuild: bool = True, collection_id: str = "sebi_cscrf") -> bool:
+    def load_and_index_dense(self, auto_rebuild: bool = True, collection_id: str = "general_synthetic") -> bool:
         """
         Load persisted dense vector index for collection_id from active snapshot or indexes_dir.
         In lexical_only mode, dense indexing is safely skipped.
@@ -934,7 +932,7 @@ class RetrievalService:
 
             # Check collection partition or indexes_dir
             if state.dense_index is None:
-                index_dir = self.indexes_dir / cid if cid != "sebi_cscrf" else self.indexes_dir
+                index_dir = self.indexes_dir / cid
                 state.dense_index = DenseIndex(embedder=self._dense_embedder, index_dir=index_dir)
 
             loaded = state.dense_index.load(state.chunks, state.documents)
@@ -995,7 +993,7 @@ class RetrievalService:
         query: str,
         top_k: int = 5,
         filters: Optional[RetrievalFilter] = None,
-        collection_id: str = "sebi_cscrf",
+        collection_id: str = "general_synthetic",
     ) -> RetrievalResponse:
         """
         Execute lexical BM25 search over the specified collection's isolated index.
@@ -1014,7 +1012,7 @@ class RetrievalService:
         query: str,
         top_k: int = 5,
         filters: Optional[RetrievalFilter] = None,
-        collection_id: str = "sebi_cscrf",
+        collection_id: str = "general_synthetic",
     ) -> RetrievalResponse:
         """
         Execute dense vector cosine search over the specified collection's isolated index.
@@ -1032,7 +1030,7 @@ class RetrievalService:
         candidate_k: int = 20,
         rrf_k: int = 60,
         filters: Optional[RetrievalFilter] = None,
-        collection_id: str = "sebi_cscrf",
+        collection_id: str = "general_synthetic",
     ) -> RetrievalResponse:
         """
         Execute hybrid retrieval combining BM25 lexical and dense vector search via Reciprocal Rank Fusion (RRF)

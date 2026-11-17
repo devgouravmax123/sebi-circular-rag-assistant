@@ -20,6 +20,7 @@ Verifies:
 from typing import List, Dict, Set
 from unittest.mock import MagicMock, patch
 import pytest
+from pydantic import ValidationError
 
 from app.schemas.manifest import (
     GroundingPolicyDeclaration,
@@ -210,13 +211,23 @@ def test_factory_rejects_empty_collection_id(sebi_policy):
         resolve_relationship_and_temporal_policies(policy=sebi_policy, collection_id="")
 
 
-def test_factory_rejects_regulatory_policy_for_unauthorized_collection(sebi_policy):
-    """RegulatorySupersessionPolicy fails closed if requested for a collection other than 'sebi_cscrf'."""
-    with pytest.raises(ValueError, match="not authorized for collection 'cisa_playbooks'"):
-        resolve_relationship_and_temporal_policies(policy=sebi_policy, collection_id="cisa_playbooks")
+def test_factory_rejects_contradictory_policy():
+    """Factory and schema fail closed if policy configuration is internally contradictory."""
+    with pytest.raises(ValidationError, match="requires enforce_regulatory_graph=True"):
+        GroundingPolicyDeclaration(
+            policy_type=GroundingPolicyType.SEBI_CSCRF_STRICT,
+            enforce_regulatory_graph=False,
+            enforce_verbatim_citation=True,
+            enforce_retrieval_binding=True,
+        )
 
-    with pytest.raises(ValueError, match="not authorized for collection 'rbi_cyber'"):
-        resolve_relationship_and_temporal_policies(policy=sebi_policy, collection_id="rbi_cyber")
+    with pytest.raises(ValidationError, match="requires enforce_regulatory_graph=False"):
+        GroundingPolicyDeclaration(
+            policy_type=GroundingPolicyType.GENERAL_STATIC,
+            enforce_regulatory_graph=True,
+            enforce_verbatim_citation=True,
+            enforce_retrieval_binding=True,
+        )
 
 
 def test_factory_resolves_valid_policies(sebi_policy, general_policy):
@@ -238,34 +249,33 @@ def test_factory_resolves_valid_policies(sebi_policy, general_policy):
 # 2. Graph Loading Isolation Tests
 # -----------------------------------------------------------------------------
 
-def test_general_static_construction_does_not_call_create_verified_cscrf_graph(general_sample_chunk, general_sample_doc, general_policy):
-    """AnswerSafetyGate for general/static collection must not call create_verified_cscrf_graph()."""
+def test_general_static_construction_does_not_load_graph(general_sample_chunk, general_sample_doc, general_policy):
+    """AnswerSafetyGate for general/static collection operates without a relationship graph."""
     validator = CitationValidator(
         collection_id="cisa_playbooks",
         corpus_chunks={"cisa_pb_p10_1": general_sample_chunk},
         corpus_documents={"cisa_ir_playbook_2021": general_sample_doc},
     )
-    with patch("app.grounding.safety_gate.create_verified_cscrf_graph") as mock_graph_loader:
-        gate = AnswerSafetyGate(validator=validator)
-        payload = ExcerptDraftPayload(
-            query="When must incidents be reported to CISA?",
-            excerpts=[
-                CandidateExcerptDraft(
-                    excerpt_id="exc_cisa_1",
-                    source_chunk_id="cisa_pb_p10_1",
-                    proposed_excerpt_text="Agencies must report confirmed major cybersecurity incidents within 1 hour to CISA.",
-                )
-            ],
-        )
-        resp = gate.evaluate_draft(
-            payload=payload,
-            retrieval_candidates={"cisa_pb_p10_1"},
-            policy=general_policy,
-            collection_id="cisa_playbooks",
-        )
-        assert resp.technical_validation_passed is True
-        # Proof: create_verified_cscrf_graph was NEVER invoked
-        mock_graph_loader.assert_not_called()
+    gate = AnswerSafetyGate(validator=validator)
+    payload = ExcerptDraftPayload(
+        query="When must incidents be reported to CISA?",
+        excerpts=[
+            CandidateExcerptDraft(
+                excerpt_id="exc_cisa_1",
+                source_chunk_id="cisa_pb_p10_1",
+                proposed_excerpt_text="Agencies must report confirmed major cybersecurity incidents within 1 hour to CISA.",
+            )
+        ],
+    )
+    resp = gate.evaluate_draft(
+        payload=payload,
+        retrieval_candidates={"cisa_pb_p10_1"},
+        policy=general_policy,
+        collection_id="cisa_playbooks",
+    )
+    assert resp.technical_validation_passed is True
+    assert resp.verified_excerpts[0].regulatory_status == RegulatoryStatus.INFORMATIONAL
+    assert resp.verified_excerpts[0].applicable_edge_ids == []
 
 
 def test_validator_lazy_graph_loading_does_not_load_for_citation_check(general_sample_chunk):
@@ -314,10 +324,26 @@ def test_passthrough_policy_returns_informational_status(general_sample_chunk):
 
 def test_sebi_supersession_behavior_preserved(sebi_sample_chunks, sebi_sample_docs, sebi_policy):
     """Existing SEBI supersession detection and warnings are preserved under RegulatorySupersessionPolicy."""
+    from app.schemas.graph import GraphEdge, RelationshipType, ScopeType, ReviewStatus
+    from app.schemas.graph_collection import GraphEdgeCollection
+    edge = GraphEdge(
+        edge_id="edge_cscrf_045_amends_113_p17",
+        source_document_id="sebi_cscrf_2025_045",
+        target_document_id="sebi_cscrf_2024_113",
+        relationship=RelationshipType.AMENDS,
+        scope=ScopeType.PARTIAL,
+        affected_provisions=["Paragraph 17"],
+        description="CIR/2025/045 amends Paragraph 17 timeline",
+        evidence_text="Paragraph 17 is amended to extend compliance timeline",
+        review_status=ReviewStatus.VERIFIED,
+        confidence_score=1.0,
+    )
+    graph_col = GraphEdgeCollection(edges=[edge])
     validator = CitationValidator(
         collection_id="sebi_cscrf",
         corpus_chunks=sebi_sample_chunks,
         corpus_documents=sebi_sample_docs,
+        graph_collection=graph_col,
     )
     gate = AnswerSafetyGate(validator=validator)
 

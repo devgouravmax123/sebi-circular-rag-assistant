@@ -115,6 +115,8 @@ def get_readiness(current_settings: "Settings" = Depends(get_settings)) -> dict:
                 errors.append("Active search index pointer is missing 'snapshot_id'")
             else:
                 snap_dir = indexes_dir / "snapshots" / snap_id
+                if not snap_dir.exists() and ptr_data.get("collection_id"):
+                    snap_dir = indexes_dir / ptr_data["collection_id"] / "snapshots" / snap_id
                 manifest_path = snap_dir / "manifest.json"
                 if not manifest_path.exists():
                     errors.append(f"Manifest for active snapshot '{snap_id}' does not exist on disk")

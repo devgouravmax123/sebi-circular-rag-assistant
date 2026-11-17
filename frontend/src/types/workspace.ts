@@ -70,7 +70,7 @@ export interface WorkspaceCollectionCreateInput {
   id: string;
   name: string;
   description?: string;
-  policy_name?: 'general_static' | 'sebi_cscrf_strict';
+  policy_name?: 'general_static';
 }
 
 export type IngestionJobStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'duplicate';

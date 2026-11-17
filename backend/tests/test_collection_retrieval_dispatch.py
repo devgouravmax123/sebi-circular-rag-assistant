@@ -287,70 +287,72 @@ def test_cross_collection_pointer_and_manifest_fails_closed(test_env):
     assert pub_b.get_active_manifest() is None
 
 
-def test_legacy_pointer_compatibility_restricted_to_sebi(test_env):
+def test_partition_pointer_isolation(test_env):
     """
-    Verify legacy pointer fallback:
-    - sebi_cscrf falls back to legacy root data/indexes/active_snapshot.json if partition pointer is missing.
-    - Non-SEBI collection NEVER falls back to legacy root active_snapshot.json.
+    Verify partition-scoped pointer isolation:
+    - Resolving for a collection requires its partition pointer.
+    - Resolving for a collection without an active partition snapshot fails closed (returns None).
     """
     indexes_dir = test_env["indexes_dir"]
     processed_dir = test_env["processed_dir"]
-    factory = test_env["factory"]
     embedder = test_env["embedder"]
 
-    # Write a legacy root active_snapshot.json and snapshot without collection_id (legacy pilot format)
-    legacy_snap_dir = indexes_dir / "snapshots" / "snap_legacy_001"
-    legacy_snap_dir.mkdir(parents=True, exist_ok=True)
+    # Write a partition pointer for general_synthetic
+    synth_snap_dir = indexes_dir / "general_synthetic" / "snapshots" / "snap_synth_001"
+    synth_snap_dir.mkdir(parents=True, exist_ok=True)
 
     manifest_content = {
-        "snapshot_id": "snap_legacy_001",
-        "created_at": "2026-10-11T10:45:12Z",
+        "snapshot_id": "snap_synth_001",
+        "collection_id": "general_synthetic",
+        "created_at": "2026-10-22T06:23:10Z",
         "format_version": "1.0.0",
         "embedding_model": "BAAI/bge-small-en-v1.5",
         "embedding_dim": 384,
         "total_documents": 1,
         "total_chunks": 1,
-        "document_ids": ["sebi_cscrf_2024_113"],
-        "document_versions": {"sebi_cscrf_2024_113": "aaa111" + "0" * 58},
-        "chunk_ids": ["sebi_cscrf_2024_113_p1_0"],
+        "document_ids": ["acme_infra_handbook"],
+        "document_versions": {"acme_infra_handbook": "aaa111" + "0" * 58},
+        "chunk_ids": ["acme_infra_handbook_p1_0"],
         "corpus_fingerprint": "fingerprint123",
         "artifact_checksums": {},
         "metadata": {},
     }
-    manifest_file = legacy_snap_dir / "manifest.json"
+    manifest_file = synth_snap_dir / "manifest.json"
     manifest_file.write_text(json.dumps(manifest_content), encoding="utf-8")
 
-    chunks_file = legacy_snap_dir / "chunks.json"
+    chunks_file = synth_snap_dir / "chunks.json"
     chunks_file.write_text(
         json.dumps([{
-            "chunk_id": "sebi_cscrf_2024_113_p1_0",
-            "document_id": "sebi_cscrf_2024_113",
-            "text": "Legacy cybersecurity framework content.",
+            "chunk_id": "acme_infra_handbook_p1_0",
+            "document_id": "acme_infra_handbook",
+            "text": "Acme infrastructure handbook content.",
             "page_start": 1,
             "page_end": 1,
         }]),
         encoding="utf-8",
     )
 
-    docs_file = legacy_snap_dir / "documents.json"
+    docs_file = synth_snap_dir / "documents.json"
     docs_file.write_text(
         json.dumps({
-            "sebi_cscrf_2024_113": {
-                "document_id": "sebi_cscrf_2024_113",
-                "title": "Legacy SEBI",
-                "source_url": "https://sebi.gov.in",
+            "acme_infra_handbook": {
+                "document_id": "acme_infra_handbook",
+                "title": "Acme Infrastructure",
+                "source_url": "https://acme.org",
                 "sha256": "aaa111" + "0" * 58,
-                "pdf_path": "legacy.pdf",
+                "pdf_path": "handbook.pdf",
             }
         }),
         encoding="utf-8",
     )
 
-    root_pointer = indexes_dir / "active_snapshot.json"
-    root_pointer.write_text(
+    partition_pointer = indexes_dir / "general_synthetic" / "active_snapshot.json"
+    partition_pointer.parent.mkdir(parents=True, exist_ok=True)
+    partition_pointer.write_text(
         json.dumps({
-            "snapshot_id": "snap_legacy_001",
-            "activated_at": "2026-10-11T10:45:12Z",
+            "snapshot_id": "snap_synth_001",
+            "collection_id": "general_synthetic",
+            "activated_at": "2026-10-22T06:23:10Z",
             "manifest_checksum": "",
             "total_documents": 1,
             "total_chunks": 1,
@@ -358,14 +360,14 @@ def test_legacy_pointer_compatibility_restricted_to_sebi(test_env):
         encoding="utf-8",
     )
 
-    # 1. RetrievalService resolving for sebi_cscrf -> successfully uses legacy root pointer
+    # 1. RetrievalService resolving for general_synthetic -> successfully finds partition snapshot
     service = RetrievalService(processed_dir=processed_dir, indexes_dir=indexes_dir, dense_embedder=embedder)
-    snap_dir_sebi = service.get_active_snapshot_dir(collection_id="sebi_cscrf")
-    assert snap_dir_sebi is not None
-    assert snap_dir_sebi == legacy_snap_dir
+    snap_dir = service.get_active_snapshot_dir(collection_id="general_synthetic")
+    assert snap_dir is not None
+    assert snap_dir == synth_snap_dir
 
-    # 2. RetrievalService resolving for a non-SEBI collection -> fails closed (None), NEVER falls back to root
-    snap_dir_other = service.get_active_snapshot_dir(collection_id="amfi_nav")
+    # 2. RetrievalService resolving for an unpartitioned collection -> fails closed (None)
+    snap_dir_other = service.get_active_snapshot_dir(collection_id="unpartitioned_coll")
     assert snap_dir_other is None
 
 

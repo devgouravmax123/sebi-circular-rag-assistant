@@ -609,7 +609,7 @@ async def upload_guest_document(
             if not db_doc:
                 db_doc = RegulatoryDocumentModel(
                     id=doc_id,
-                    domain_id="SEBI_CSCRF",
+                    domain_id=None,
                     title=doc_title,
                     workspace_id=guest_ws_id,
                     collection_id=collection_id,

@@ -45,7 +45,6 @@ from app.schemas.graph import (
     RevokeEdgeRequest,
     ReconcileBaselineEdgesRequest,
 )
-from app.schemas.cscrf_graph_data import VERIFIED_CSCRF_EDGES_DATA
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +189,7 @@ def register_document_for_ingestion(
             document_id=doc_id,
             max_attempts=payload.max_attempts,
             workspace_id=system_ws,
-            collection_id="sebi_cscrf",
+            collection_id=payload.collection_id or "general_synthetic",
         )
 
         return RegisterDocumentResponse(
@@ -631,11 +630,11 @@ def reconcile_baseline_edges(
     factory: StorageRepositoryFactory = Depends(get_repository_factory),
 ) -> Dict[str, Any]:
     """
-    Idempotently reconcile baseline regulatory edges (e.g. 9 CSCRF verified edges)
+    Idempotently reconcile baseline regulatory edges
     into storage without destructive overwriting.
     """
     edge_repo = factory.get_graph_edge_repository()
-    baseline_edges = [GraphEdge(**e) for e in VERIFIED_CSCRF_EDGES_DATA]
+    baseline_edges: List[GraphEdge] = []
     return edge_repo.reconcile_baseline_edges(
         baseline_edges=baseline_edges,
         allow_overwrite=req.allow_overwrite,

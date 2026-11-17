@@ -23,8 +23,10 @@ import {
   onAuthStateSubscription,
 } from '../api/firebase';
 
-const TOKEN_STORAGE_KEY = 'sebi_rag_access_token';
-const GUEST_TOKEN_STORAGE_KEY = 'doc_intel_guest_token';
+const TOKEN_STORAGE_KEY = 'citenza_access_token';
+const LEGACY_TOKEN_STORAGE_KEY = 'sebi_rag_access_token';
+const GUEST_TOKEN_STORAGE_KEY = 'citenza_guest_token';
+const LEGACY_GUEST_TOKEN_STORAGE_KEY = 'doc_intel_guest_token';
 
 interface AuthContextValue {
   user: User | null;
@@ -88,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(() => {
     try {
-      return localStorage.getItem(TOKEN_STORAGE_KEY);
+      return localStorage.getItem(TOKEN_STORAGE_KEY) || localStorage.getItem(LEGACY_TOKEN_STORAGE_KEY);
     } catch {
       return null;
     }
@@ -96,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const [guestToken, setGuestToken] = useState<string | null>(() => {
     try {
-      return localStorage.getItem(GUEST_TOKEN_STORAGE_KEY);
+      return localStorage.getItem(GUEST_TOKEN_STORAGE_KEY) || localStorage.getItem(LEGACY_GUEST_TOKEN_STORAGE_KEY);
     } catch {
       return null;
     }
@@ -420,6 +422,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setPendingLegacyLinkToken(null);
     try {
       localStorage.removeItem(TOKEN_STORAGE_KEY);
+      localStorage.removeItem(LEGACY_TOKEN_STORAGE_KEY);
     } catch {}
   };
 
@@ -456,6 +459,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setGuestSession(null);
       try {
         localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
+        localStorage.removeItem(LEGACY_GUEST_TOKEN_STORAGE_KEY);
       } catch {}
       return result;
     } catch {
@@ -463,6 +467,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setGuestSession(null);
       try {
         localStorage.removeItem(GUEST_TOKEN_STORAGE_KEY);
+        localStorage.removeItem(LEGACY_GUEST_TOKEN_STORAGE_KEY);
       } catch {}
       return null;
     }

@@ -47,37 +47,6 @@ const SYNTHESIS_STATUS_CONFIG: Partial<Record<SynthesisStatus, { label: string; 
   },
 };
 
-const SEBI_DISPOSITION_CONFIG: Record<AnswerDisposition, { label: string; bg: string; text: string; border: string; description: string }> = {
-  VERIFIED_HISTORICAL_EXCERPTS: {
-    label: 'Verified Historical Excerpts',
-    bg: 'bg-emerald-950/80',
-    text: 'text-emerald-300',
-    border: 'border-emerald-700/60',
-    description: 'All returned excerpts mechanically verified against official SEBI CSCRF corpus with resolved status.',
-  },
-  QUALIFIED_HISTORICAL_EXCERPTS: {
-    label: 'Historical Excerpts — Qualifications Apply',
-    bg: 'bg-amber-950/80',
-    text: 'text-amber-300',
-    border: 'border-amber-700/60',
-    description: 'Corpus text verified; contains baseline circular provisions whose legal currency is not fully resolved beyond the indexed SEBI CSCRF collection.',
-  },
-  CONTROLLED_ABSTENTION: {
-    label: 'Unable to Provide a Supported Excerpt',
-    bg: 'bg-slate-900',
-    text: 'text-slate-300',
-    border: 'border-slate-700',
-    description: 'The system abstained safely due to lack of supported evidence or full supersession.',
-  },
-  REJECTED_UNSAFE: {
-    label: 'Response Rejected by Safety Checks',
-    bg: 'bg-rose-950/80',
-    text: 'text-rose-300',
-    border: 'border-rose-700/60',
-    description: 'Draft payload failed mechanical integrity or candidate binding checks.',
-  },
-};
-
 const GENERIC_DISPOSITION_CONFIG: Record<AnswerDisposition, { label: string; bg: string; text: string; border: string; description: string }> = {
   VERIFIED_HISTORICAL_EXCERPTS: {
     label: 'Verified Document Excerpts',
@@ -117,7 +86,6 @@ export const ResultsPanel = ({
   onRetry,
 }: ResultsPanelProps) => {
   if (isLoading) {
-    const isSebi = selectedCollection?.policy_type === 'sebi_cscrf_strict';
     return (
       <div className="w-full bg-slate-900/60 border border-slate-800 rounded-2xl p-10 flex flex-col items-center justify-center text-center space-y-4 shadow-xl">
         <div className="relative">
@@ -128,9 +96,7 @@ export const ResultsPanel = ({
             Retrieving & Validating Evidence Passages
           </h3>
           <p className="text-xs text-slate-400 mt-1 max-w-md">
-            {isSebi
-              ? 'Running hybrid retrieval (BM25 + Dense RRF), binding candidate excerpts, and resolving relationship graphs...'
-              : 'Running hybrid retrieval (BM25 + Dense RRF), binding candidate excerpts, and verifying verbatim provenance...'}
+            Running hybrid retrieval (BM25 + Dense RRF), binding candidate excerpts, and verifying verbatim provenance...
           </p>
         </div>
       </div>
@@ -174,16 +140,7 @@ export const ResultsPanel = ({
     return null;
   }
 
-  const isGeneralStatic = selectedCollection?.policy_type === 'general_static';
-  const isSebiStrict = selectedCollection?.policy_type === 'sebi_cscrf_strict';
-
-  const dispMap = isGeneralStatic
-    ? GENERIC_DISPOSITION_CONFIG
-    : isSebiStrict
-    ? SEBI_DISPOSITION_CONFIG
-    : GENERIC_DISPOSITION_CONFIG;
-
-  const dispCfg = dispMap[response.disposition] || {
+  const dispCfg = GENERIC_DISPOSITION_CONFIG[response.disposition] || {
     label: response.disposition || 'UNKNOWN DISPOSITION',
     bg: 'bg-slate-900',
     text: 'text-slate-300',
@@ -195,20 +152,12 @@ export const ResultsPanel = ({
   const hasHistorical =
     response.historical_superseded_excerpts && response.historical_superseded_excerpts.length > 0;
 
-  // Resolve collection-aware corpus boundary text:
-  // For GENERAL_STATIC, avoid misleading 5-document SEBI CSCRF text.
+  // Resolve collection-aware corpus boundary text
   let boundaryText = response.pilot_corpus_scope_limitation;
-  if (isGeneralStatic) {
-    if (!boundaryText || boundaryText.includes('SEBI CSCRF') || boundaryText.includes('CIR/')) {
-      const collName = selectedCollection?.name || 'General Static Collection';
-      const collId = selectedCollection?.collection_id ? ` (${selectedCollection.collection_id})` : '';
-      boundaryText = `Static document collection: excerpts verified verbatim from ${collName}${collId}.`;
-    }
-  } else if (!isSebiStrict) {
-    // Missing or unknown collection context: do not display SEBI-specific text if not explicitly sebi_cscrf_strict
-    if (boundaryText && (boundaryText.includes('SEBI CSCRF') || boundaryText.includes('CIR/'))) {
-      boundaryText = 'Document collection: verified verbatim against indexed technical document snapshots.';
-    }
+  if (!boundaryText || boundaryText.toLowerCase().includes('pilot') || boundaryText.toLowerCase().includes('sebi')) {
+    const collName = selectedCollection?.name || 'Verified Collection';
+    const collId = selectedCollection?.collection_id ? ` (${selectedCollection.collection_id})` : '';
+    boundaryText = `Verified document collection: excerpts verified verbatim from ${collName}${collId}.`;
   }
 
   return (
@@ -262,11 +211,7 @@ export const ResultsPanel = ({
             <span className="font-semibold text-amber-400 block">Abstention Reason:</span>
             <p className="text-slate-300">{response.abstention_reason}</p>
             <p className="text-[11px] text-amber-400/80 pt-1">
-              {isGeneralStatic
-                ? `Note: Abstention indicates no sufficiently relevant passages with verified textual provenance exist in ${selectedCollection?.name || 'the selected collection'}.`
-                : isSebiStrict
-                ? 'Note: Abstention indicates that sufficient verified evidence was not available within the indexed SEBI CSCRF collection. It does not establish that no relevant SEBI material exists elsewhere.'
-                : 'Note: Abstention indicates no sufficiently relevant passages with verified textual provenance exist in the indexed collection.'}
+              Note: Abstention indicates no sufficiently relevant passages with verified textual provenance exist in {selectedCollection?.name || 'the selected collection'}.
             </p>
           </div>
         )}

@@ -284,8 +284,8 @@ def main():
         # 1. Evaluate golden benchmark dataset
         golden_metrics = evaluate_dataset(
             client,
-            "evaluation/data/gold_evaluation_dataset.json",
-            "GOLDEN EVALUATION DATASET (32 QUERIES)"
+            "evaluation/data/general_evaluation_dataset.json",
+            "GENERAL BENCHMARK DATASET"
         )
         with open("evaluation/data/application_safety_gate_results.json", "w", encoding="utf-8") as out_f:
             json.dump(golden_metrics, out_f, indent=2)

@@ -53,6 +53,8 @@ _collection_registry: Optional[CollectionRegistry] = None
 def get_collection_registry(settings: Settings = Depends(get_settings)) -> CollectionRegistry:
     """Dependency provider for the shared CollectionRegistry instance."""
     global _collection_registry
+    if not isinstance(settings, Settings):
+        settings = get_settings()
     if (
         _collection_registry is None
         or str(_collection_registry.indexes_dir) != settings.indexes_dir
@@ -67,6 +69,8 @@ def get_collection_registry(settings: Settings = Depends(get_settings)) -> Colle
 def get_retrieval_service(settings: Settings = Depends(get_settings)) -> RetrievalService:
     """Dependency provider for the shared RetrievalService instance."""
     global _retrieval_service
+    if not isinstance(settings, Settings):
+        settings = get_settings()
     if (
         _retrieval_service is None
         or str(_retrieval_service.processed_dir) != settings.processed_dir
@@ -145,17 +149,17 @@ def build_response_narrative(
     if collection_name:
         corpus_label = collection_name
     elif domain:
-        corpus_label = f"SEBI {domain} corpus"
+        corpus_label = f"{domain} corpus"
     else:
-        corpus_label = "SEBI regulatory corpus"
+        corpus_label = "document collection"
 
     if disposition == AnswerDisposition.CONTROLLED_ABSTENTION:
         if intent == QueryIntent.OUT_OF_SCOPE_OR_UNESTABLISHED:
             return f"Controlled Abstention: The query is outside the demonstrated scope of {corpus_label}."
         if len(historical_superseded_excerpts) > 0 and not verified_excerpts:
             return (
-                f"Controlled Abstention: All relevant excerpts in {corpus_label} for this current-compliance query "
-                "are SUPERSEDED by subsequent circulars."
+                f"Controlled Abstention: All relevant excerpts in {corpus_label} for this query "
+                "are SUPERSEDED by subsequent updates."
             )
         if candidate_count is not None and candidate_count > 0 and not verified_excerpts:
             return (
@@ -260,13 +264,13 @@ async def list_available_collections(
     "/query",
     response_model=QueryResponse,
     status_code=status.HTTP_200_OK,
-    summary="Query SEBI regulatory circulars with deterministic grounding",
+    summary="Query document collections with deterministic grounding",
     description=(
-        "Executes hybrid retrieval over the published SEBI corpus with optional domain and date filtering, "
+        "Executes hybrid retrieval over the authorized collection, "
         "verifies excerpts through the AnswerSafetyGate, and returns grounded excerpts or controlled abstention."
     ),
 )
-async def query_cscrf(
+async def query_documents(
     request: QueryRequest,
     http_request: Request,
     retrieval_service: Optional[RetrievalService] = Depends(get_retrieval_service),
@@ -291,7 +295,12 @@ async def query_cscrf(
         collection_registry = get_collection_registry()
 
     # Step 1 & 2: Authoritative Collection & Multi-Tenant Authorization Resolution
-    requested_cid = request.collection_id.strip() if request.collection_id else "sebi_cscrf"
+    if not request.collection_id or not request.collection_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A valid collection_id must be specified.",
+        )
+    requested_cid = request.collection_id.strip()
 
     # Enforce database catalog check first to determine multi-tenant ownership
     db_col = None
@@ -387,11 +396,7 @@ async def query_cscrf(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Collection '{requested_cid}' is unpublished; no active published index snapshot was found.",
                 )
-            policy_type_val = (
-                GroundingPolicyType.SEBI_CSCRF_STRICT
-                if db_col.policy_name == "sebi_cscrf_strict"
-                else GroundingPolicyType.GENERAL_STATIC
-            )
+            policy_type_val = GroundingPolicyType.GENERAL_STATIC
             enforce_graph_flag = bool(getattr(db_col, "enforce_regulatory_graph", False) or False)
             grounding_policy = GroundingPolicyDeclaration(
                 policy_type=policy_type_val,
@@ -448,31 +453,16 @@ async def query_cscrf(
                 detail=f"Collection '{resolved_cid}' has an invalid or unresolvable grounding policy.",
             )
 
-    if grounding_policy is None or grounding_policy.policy_type not in (
-        GroundingPolicyType.SEBI_CSCRF_STRICT,
-        GroundingPolicyType.GENERAL_STATIC,
-    ):
+    if grounding_policy is None or not hasattr(grounding_policy, "policy_type"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Collection '{resolved_cid}' declares an unsupported or invalid grounding policy.",
         )
 
-    # Phase 5.2B: Define collection-aware scope notice based on authoritative policy
-    if grounding_policy.policy_type == GroundingPolicyType.GENERAL_STATIC:
-        collection_scope_notice = (
-            f"Static document collection: excerpts verified verbatim from {collection_name} ({resolved_cid})."
-        )
-    elif grounding_policy.policy_type == GroundingPolicyType.SEBI_CSCRF_STRICT:
-        collection_scope_notice = (
-            "Educational & Pilot Assistant: Operating strictly over the 5-document SEBI CSCRF circular corpus "
-            "(CIR/2024/113, CIR/2025/045, CIR/2025/060, CIR/2025/096, CIR/2025/119). "
-            "Excerpts represent technical document grounding only and do not establish universal legal currency."
-        )
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Collection '{resolved_cid}' has an unrecognized grounding policy type.",
-        )
+    # Define collection-aware scope notice based on authoritative policy
+    collection_scope_notice = (
+        f"Verified document collection: excerpts verified verbatim from {collection_name} ({resolved_cid})."
+    )
 
     query = request.query.strip()
     top_k = request.top_k
@@ -563,7 +553,7 @@ async def query_cscrf(
 
     relevant_results = isolated_relevant_results[:top_k]
 
-    corpus_label = f"SEBI {request.domain} corpus" if request.domain else f"{collection_name} ({resolved_cid})"
+    corpus_label = f"{request.domain} corpus" if request.domain else f"{collection_name} ({resolved_cid})"
 
     # Phase 6.3C: Explicit collection-aware scope evaluation
     candidate_texts = " ".join([r.text for r in relevant_results]) if relevant_results else ""
@@ -824,7 +814,7 @@ async def query_cscrf(
 
     # Phase 2.2B.7 / Phase 5.2B: Apply authoritative collection_scope_notice
     # 7. Execute Grounded Synthesis over verified excerpts with authoritative policy
-    # Allowed strictly for validated SEBI_CSCRF_STRICT and GENERAL_STATIC policies.
+    # Allowed strictly for validated GENERAL_STATIC and related policies.
     policy_str = (
         grounding_policy.policy_type.value
         if hasattr(grounding_policy.policy_type, "value")

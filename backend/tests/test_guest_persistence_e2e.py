@@ -168,7 +168,7 @@ def test_expired_guest_token_denied():
     # Query endpoint check with expired guest token
     query_resp = client.post(
         "/api/v1/query",
-        json={"query": "what is cybersecurity audit?", "collection_id": "sebi_cscrf"},
+        json={"query": "What is the password requirement?", "collection_id": "general_synthetic"},
         headers=expired_headers,
     )
     assert query_resp.status_code == 401
@@ -183,7 +183,7 @@ def test_guest_query_public_collection_succeeds_and_records_history():
 
     query_resp = client.post(
         "/api/v1/query",
-        json={"query": "What are cybersecurity audit requirements?", "collection_id": "sebi_cscrf"},
+        json={"query": "What is the required password length under the Acme security policy?", "collection_id": "general_synthetic"},
         headers=headers,
     )
     assert query_resp.status_code == 200
@@ -196,7 +196,7 @@ def test_guest_query_public_collection_succeeds_and_records_history():
     assert hist_resp.status_code == 200
     items = hist_resp.json()["items"]
     assert len(items) >= 1
-    assert items[0]["collection_id"] == "sebi_cscrf"
+    assert items[0]["collection_id"] == "general_synthetic"
 
 
 def test_guest_termination_and_sweeper_cleanup():

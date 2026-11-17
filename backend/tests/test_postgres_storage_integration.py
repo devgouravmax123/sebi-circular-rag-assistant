@@ -207,10 +207,8 @@ class TestPostgresDocumentRepositoryIntegration:
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )
-        # Sequence of execute queries: regulator, domain, collection, doc_model, existing_version, latest_version
+        # Sequence of execute queries: collection, doc_model, existing_version
         mock_session.execute.return_value.scalar_one_or_none.side_effect = [
-            None,  # regulator
-            None,  # domain
             mock_col,  # collection
             None,  # doc_model
             None,  # existing_version

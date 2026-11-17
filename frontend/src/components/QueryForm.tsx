@@ -14,33 +14,6 @@ interface QueryFormProps {
   initialIncludeSuperseded?: boolean;
 }
 
-const SEBI_EXAMPLE_QUERIES = [
-  {
-    label: 'Cyber Incident Timeline',
-    query: 'What is the mandatory reporting timeline for cyber incidents under SEBI CSCRF?',
-    top_k: 5,
-    include_superseded: false,
-  },
-  {
-    label: 'SOC Operations & CSIRT',
-    query: 'What are the technical requirements for setting up a Cyber Security Operations Center (SOC)?',
-    top_k: 5,
-    include_superseded: false,
-  },
-  {
-    label: 'Superseded Timeline Query',
-    query: 'What was the earlier cybersecurity compliance timeline before recent extensions?',
-    top_k: 5,
-    include_superseded: true,
-  },
-  {
-    label: 'RE / MII Classification',
-    query: 'How are Qualified REs and Market Infrastructure Institutions categorized?',
-    top_k: 5,
-    include_superseded: false,
-  },
-];
-
 const GENERAL_EXAMPLE_QUERIES = [
   {
     label: 'Key Findings & Conclusions',
@@ -72,7 +45,7 @@ export const QueryForm = ({
   isLoading,
   onSubmit,
   collections = [],
-  selectedCollectionId = 'sebi_cscrf',
+  selectedCollectionId = '',
   onSelectCollection,
   isCollectionsLoading = false,
   collectionsError = null,
@@ -92,7 +65,6 @@ export const QueryForm = ({
   const isValid = trimmedLength >= 2 && charCount <= 500;
 
   const currentCollection = collections.find((c) => c.collection_id === selectedCollectionId);
-  const isGeneralStatic = currentCollection?.policy_type === 'general_static';
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -121,7 +93,7 @@ export const QueryForm = ({
     setClientError(null);
   };
 
-  const activeExamples = isGeneralStatic ? GENERAL_EXAMPLE_QUERIES : SEBI_EXAMPLE_QUERIES;
+  const activeExamples = GENERAL_EXAMPLE_QUERIES;
 
   return (
     <div className="w-full bg-slate-900/80 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl backdrop-blur-sm">
@@ -139,7 +111,9 @@ export const QueryForm = ({
               <span className="text-[11px] text-cyan-400 animate-pulse">Loading catalog...</span>
             )}
             {collectionsError && (
-              <span className="text-[11px] text-amber-400 font-mono">Catalog offline: default SEBI active</span>
+              <span className="text-[11px] text-amber-400 font-mono">
+                Catalog offline: {collections.length > 0 ? 'using cached collections' : 'no collections available'}
+              </span>
             )}
           </div>
 
@@ -162,7 +136,7 @@ export const QueryForm = ({
                   </option>
                 ))
               ) : (
-                <option value="sebi_cscrf">SEBI Cybersecurity Framework (sebi_cscrf)</option>
+                <option value="">No collections available</option>
               )}
             </select>
           </div>
@@ -182,7 +156,7 @@ export const QueryForm = ({
         <div>
           <div className="flex justify-between items-center mb-1.5">
             <label htmlFor="query-input" className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-              {isGeneralStatic ? 'Documentation Question / Search Topic' : 'Regulatory Question / Topic'}
+              Documentation Question / Search Topic
             </label>
             <span
               className={`text-xs font-mono transition-colors ${
@@ -207,11 +181,7 @@ export const QueryForm = ({
               if (clientError) setClientError(null);
             }}
             disabled={isLoading}
-            placeholder={
-              isGeneralStatic
-                ? 'e.g. What are the recovery point objectives and backup retention standards?'
-                : 'e.g. What are the audit and reporting timelines for cyber incidents under CSCRF?'
-            }
+            placeholder="e.g. What are the key findings, definitions, or procedural steps in these documents?"
             className={`w-full bg-slate-950/80 border rounded-xl p-3.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 transition-all resize-y min-h-[90px] ${
               clientError || isTooLong
                 ? 'border-rose-500/80 focus:ring-rose-500/30'
@@ -252,7 +222,7 @@ export const QueryForm = ({
 
           <div className="flex items-center justify-between sm:justify-start gap-3 bg-slate-950/50 px-3.5 py-2.5 rounded-xl border border-slate-800">
             <label htmlFor="include-superseded-toggle" className="text-xs text-slate-300 font-medium cursor-pointer">
-              {isGeneralStatic ? 'Include Archived Versions:' : 'Include Historical / Superseded:'}
+              Include Archived / Superseded Versions:
             </label>
             <input
               id="include-superseded-toggle"
@@ -295,7 +265,7 @@ export const QueryForm = ({
       {/* Suggested Example Queries */}
       <div className="mt-5 pt-4 border-t border-slate-800/80">
         <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold block mb-2">
-          Sample {isGeneralStatic ? 'Technical Documentation' : 'Regulatory'} Queries (Click to Populate):
+          Sample Queries (Click to Populate):
         </span>
         <div className="flex flex-wrap gap-2">
           {activeExamples.map((ex, idx) => (

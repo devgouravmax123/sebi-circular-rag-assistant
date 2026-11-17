@@ -306,9 +306,31 @@ def test_8_claim_to_excerpt_binding_and_verbatim_quotation(general_chunks_and_do
 
 def test_9_sebi_citation_and_temporal_regression_compatibility():
     """Existing SEBI CSCRF citation and temporal invariants remain fully intact."""
-    validator = CitationValidator(collection_id="sebi_cscrf")
-    # Verify CIR/2025/045 chunk
     exact_text = "Recognising the need for robust cybersecurity measures and protection of data and IT infrastructure"
+    c1 = ChunkRecord(
+        chunk_id="sebi_cscrf_2025_045_p1_0",
+        document_id="sebi_cscrf_2025_045",
+        page_start=1,
+        page_end=1,
+        text=exact_text,
+        collection_id="sebi_cscrf",
+    )
+    d1 = DocumentRecord(
+        document_id="sebi_cscrf_2025_045",
+        circular_number="SEBI/HO/ITD-1/ITD_CSC_EXT/P/CIR/2025/45",
+        title="SEBI Cybersecurity and Cyber Resilience Framework",
+        issue_date="2025-03-28",
+        collection_id="sebi_cscrf",
+        source_url="https://example.com/cscrf_045.pdf",
+        sha256="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        pdf_path="sebi_cscrf/045.pdf",
+    )
+    validator = CitationValidator(
+        collection_id="sebi_cscrf",
+        corpus_chunks={"sebi_cscrf_2025_045_p1_0": c1},
+        corpus_documents={"sebi_cscrf_2025_045": d1},
+    )
+    # Verify CIR/2025/045 chunk
     cit = CitationItem(
         chunk_id="sebi_cscrf_2025_045_p1_0",
         document_id="sebi_cscrf_2025_045",

@@ -99,10 +99,8 @@ class PostgresDocumentRepository(DocumentRepository):
                     .order_by(DocumentVersionModel.version_number.desc())
                 ).scalars().first()
 
-                # Determine domain code (e.g. CSCRF from SEBI_CSCRF)
-                domain_code = "CSCRF"
-                if doc.domain_id:
-                    domain_code = doc.domain_id.replace("SEBI_", "")
+                # Determine domain code if available
+                domain_code = doc.domain_id if doc.domain_id else None
 
                 return DocumentRecord(
                     document_id=doc.id,
@@ -116,7 +114,7 @@ class PostgresDocumentRepository(DocumentRepository):
                     sha256=latest_version.sha256 if latest_version else "",
                     pdf_path=latest_version.storage_path if latest_version else "",
                     extraction_status=(latest_version.extraction_status if (latest_version and latest_version.extraction_status) else "pending"),
-                    regulator="SEBI",
+                    regulator=None,
                     domain=domain_code,
                     collection_id=doc.collection_id,
                 )
@@ -154,9 +152,7 @@ class PostgresDocumentRepository(DocumentRepository):
                         .limit(1)
                     ).scalars().first()
 
-                    domain_code = "CSCRF"
-                    if doc.domain_id:
-                        domain_code = doc.domain_id.replace("SEBI_", "")
+                    domain_code = doc.domain_id if doc.domain_id else None
 
                     results.append(
                         DocumentRecord(
@@ -171,7 +167,7 @@ class PostgresDocumentRepository(DocumentRepository):
                             sha256=latest_version.sha256 if latest_version else "",
                             pdf_path=latest_version.storage_path if latest_version else "",
                             extraction_status=(latest_version.extraction_status if (latest_version and latest_version.extraction_status) else "indexed"),
-                            regulator="SEBI",
+                            regulator=None,
                             domain=domain_code,
                             collection_id=doc.collection_id,
                         )
@@ -186,34 +182,8 @@ class PostgresDocumentRepository(DocumentRepository):
         try:
             with self.session_factory() as session:
                 with session.begin():
-                    # 1. Ensure default regulator and domain exist
-                    regulator = session.execute(
-                        select(RegulatorModel).where(RegulatorModel.id == "SEBI")
-                    ).scalar_one_or_none()
-                    if not regulator:
-                        session.add(
-                            RegulatorModel(
-                                id="SEBI",
-                                name="Securities and Exchange Board of India",
-                                official_portal_url="https://www.sebi.gov.in",
-                            )
-                        )
-
-                    domain = session.execute(
-                        select(RegulatoryDomainModel).where(RegulatoryDomainModel.id == "SEBI_CSCRF")
-                    ).scalar_one_or_none()
-                    if not domain:
-                        session.add(
-                            RegulatoryDomainModel(
-                                id="SEBI_CSCRF",
-                                regulator_id="SEBI",
-                                code="CSCRF",
-                                title="Cybersecurity and Cyber Resilience Framework",
-                            )
-                        )
-
-                    # 2. Upsert Logical Document
-                    col_id = getattr(document, "collection_id", None) or "sebi_cscrf"
+                    # Upsert Logical Document
+                    col_id = getattr(document, "collection_id", None) or "general_synthetic"
                     col_row = session.execute(
                         select(CollectionModel).where(func.lower(CollectionModel.id) == col_id.lower())
                     ).scalar_one_or_none()
@@ -231,7 +201,7 @@ class PostgresDocumentRepository(DocumentRepository):
                             id=document.document_id,
                             workspace_id=ws_id,
                             collection_id=col_id,
-                            domain_id="SEBI_CSCRF",
+                            domain_id=None,
                             circular_number=document.circular_number,
                             title=document.title,
                             department=document.department,
@@ -926,7 +896,7 @@ class PostgresIngestionJobRepository(IngestionJobRepository):
                         return self._to_record(existing)
 
                     actual_ws = workspace_id
-                    actual_col = collection_id or "sebi_cscrf"
+                    actual_col = collection_id or "general_synthetic"
                     if document_id:
                         doc = session.execute(
                             select(RegulatoryDocumentModel).where(RegulatoryDocumentModel.id == document_id)
@@ -941,36 +911,11 @@ class PostgresIngestionJobRepository(IngestionJobRepository):
                                 ).scalar_one_or_none()
                                 actual_ws = col_row.workspace_id if col_row else uuid.UUID("00000000-0000-0000-0000-000000000000")
 
-                            # Ensure default regulator and domain exist
-                            regulator = session.execute(
-                                select(RegulatorModel).where(RegulatorModel.id == "SEBI")
-                            ).scalar_one_or_none()
-                            if not regulator:
-                                session.add(
-                                    RegulatorModel(
-                                        id="SEBI",
-                                        name="Securities and Exchange Board of India",
-                                        official_portal_url="https://www.sebi.gov.in",
-                                    )
-                                )
-                            domain = session.execute(
-                                select(RegulatoryDomainModel).where(RegulatoryDomainModel.id == "SEBI_CSCRF")
-                            ).scalar_one_or_none()
-                            if not domain:
-                                session.add(
-                                    RegulatoryDomainModel(
-                                        id="SEBI_CSCRF",
-                                        regulator_id="SEBI",
-                                        code="CSCRF",
-                                        title="Cybersecurity and Cyber Resilience Framework",
-                                    )
-                                )
-
                             doc = RegulatoryDocumentModel(
                                 id=document_id,
                                 workspace_id=actual_ws,
                                 collection_id=actual_col,
-                                domain_id="SEBI_CSCRF",
+                                domain_id=None,
                                 title=document_id,
                                 created_at=datetime.now(timezone.utc),
                             )

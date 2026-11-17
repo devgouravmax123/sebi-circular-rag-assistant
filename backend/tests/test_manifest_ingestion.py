@@ -378,26 +378,15 @@ def test_local_snapshot_generation_without_database(test_env):
     assert (snap_dir / "dense_index.npy").exists()
 
 
-def test_sebi_cscrf_manifest_schema_compatibility():
-    """Verify that the official data/manifests/sebi_cscrf.json conforms to CollectionManifest schema."""
-    cscrf_manifest_path = Path("data/manifests/sebi_cscrf.json")
-    assert cscrf_manifest_path.exists(), "data/manifests/sebi_cscrf.json must exist"
-
-    manifest = load_and_validate_manifest(cscrf_manifest_path)
-    assert manifest.collection_id == "sebi_cscrf"
-    assert len(manifest.documents) == 5
-
-    expected_ids = [
-        "sebi_cscrf_2024_113",
-        "sebi_cscrf_2025_045",
-        "sebi_cscrf_2025_060",
-        "sebi_cscrf_2025_096",
-        "sebi_cscrf_2025_119",
+def test_official_manifests_schema_compatibility():
+    """Verify that official active manifests conform to CollectionManifest schema."""
+    manifest_paths = [
+        Path("data/manifests/general_synthetic.json"),
+        Path("data/manifests/cisa_playbooks.json"),
+        Path("data/manifests/demo_finops.json"),
     ]
-    actual_ids = [d.document_id for d in manifest.documents]
-    assert actual_ids == expected_ids
-
-    # Confirm all referenced PDFs exist in data/raw/
-    for doc in manifest.documents:
-        pdf_file = Path(doc.pdf_path)
-        assert pdf_file.exists(), f"PDF file '{doc.pdf_path}' for '{doc.document_id}' must exist"
+    for m_path in manifest_paths:
+        assert m_path.exists(), f"{m_path} must exist"
+        manifest = load_and_validate_manifest(m_path)
+        assert manifest.collection_id in ("general_synthetic", "cisa_playbooks", "demo_finops")
+        assert len(manifest.documents) >= 1

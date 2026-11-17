@@ -21,7 +21,6 @@ from app.schemas.grounding import GroundedEvidenceItem, RegulatoryStatus
 from app.schemas.graph_collection import GraphEdgeCollection
 from app.schemas.safety_gate import ValidatedExcerptItem, AnswerDisposition, SafetyGateResponse
 from app.grounding.resolver import ConservativeGraphResolver
-from app.schemas.cscrf_graph_data import create_verified_cscrf_graph
 
 logger = logging.getLogger(__name__)
 
@@ -78,17 +77,12 @@ class RegulatorySupersessionPolicy(RelationshipPolicy):
         resolver: Optional[ConservativeGraphResolver] = None,
     ):
         self.collection_id = collection_id.strip().lower()
-        if self.collection_id != "sebi_cscrf":
-            raise ValueError(
-                f"RegulatorySupersessionPolicy is not authorized for collection '{collection_id}'. "
-                f"Currently only 'sebi_cscrf' has an authorized regulatory graph dataset."
-            )
 
         if resolver is not None:
             self._resolver = resolver
             self._graph = resolver.graph
         else:
-            self._graph = graph_collection if graph_collection is not None else create_verified_cscrf_graph()
+            self._graph = graph_collection if graph_collection is not None else GraphEdgeCollection()
             self._resolver = ConservativeGraphResolver(graph_collection=self._graph)
 
     @property
@@ -182,7 +176,7 @@ class RegulatoryTemporalPolicy(TemporalPolicy):
     against verified and superseded excerpt partitions for regulatory collections.
     """
 
-    def __init__(self, collection_id: str = "sebi_cscrf"):
+    def __init__(self, collection_id: str = "general_synthetic"):
         self.collection_id = collection_id.strip().lower()
 
     @property
@@ -210,7 +204,7 @@ class RegulatoryTemporalPolicy(TemporalPolicy):
                     historical_superseded_excerpts=superseded_items,
                     summary_narrative=(
                         "Controlled Abstention: All relevant excerpts in the corpus for this current-compliance query "
-                        "are SUPERSEDED by subsequent circulars."
+                        "are SUPERSEDED by subsequent updates."
                     ),
                     technical_validation_passed=True,
                     retrieval_candidate_count=candidate_count,
@@ -224,7 +218,7 @@ class RegulatoryTemporalPolicy(TemporalPolicy):
                     verified_excerpts=[],
                     historical_superseded_excerpts=superseded_items,
                     summary_narrative=(
-                        f"Historical Excerpts: {len(superseded_items)} excerpt(s) verified from earlier circulars, "
+                        f"Historical Excerpts: {len(superseded_items)} excerpt(s) verified from earlier versions, "
                         f"which are superseded in the current framework."
                     ),
                     technical_validation_passed=True,
@@ -239,15 +233,15 @@ class RegulatoryTemporalPolicy(TemporalPolicy):
         if not has_unresolved:
             disposition = AnswerDisposition.VERIFIED_HISTORICAL_EXCERPTS
             narrative = (
-                f"Verified Historical Excerpts: {len(verified_items)} excerpt(s) verified against authoritative SEBI CSCRF corpus "
-                f"with fully resolved graph status."
+                f"Verified Historical Excerpts: {len(verified_items)} excerpt(s) verified against authoritative collection "
+                f"with fully resolved relationship status."
             )
         else:
             disposition = AnswerDisposition.QUALIFIED_HISTORICAL_EXCERPTS
             narrative = (
-                f"Qualified Historical Excerpts: {len(verified_items)} excerpt(s) verified as authentic text from SEBI CSCRF circulars. "
-                f"Provisions with UNRESOLVED status reflect historical baseline circular content; active legal currency "
-                f"is not independently established beyond the 5-document pilot."
+                f"Qualified Historical Excerpts: {len(verified_items)} excerpt(s) verified as authentic text from collection documents. "
+                f"Provisions with UNRESOLVED status reflect historical baseline content; active currency "
+                f"is not independently established."
             )
 
         return SafetyGateResponse(

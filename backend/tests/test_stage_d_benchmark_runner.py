@@ -69,12 +69,11 @@ def make_test_query(
 def test_runner_adapter_integration_and_counts(runner):
     """Verifies adapter integration, query loading, and pinned snapshot mapping resolution."""
     all_queries = runner.adapter.load_all()
-    assert len(all_queries) == 79
+    assert len(all_queries) == 47
 
     # Verify pinned snapshot mappings
     runner.initialize_retrievers(verify_snapshots=True)
-    assert len(runner._pinned_mappings) == 3
-    assert runner._pinned_mappings["sebi_cscrf"].snapshot_id == "snap_20261011_104512_23a014"
+    assert len(runner._pinned_mappings) == 2
     assert runner._pinned_mappings["cisa_playbooks"].snapshot_id == "snap_20261030_093345_cd6f0d"
     assert runner._pinned_mappings["general_synthetic"].snapshot_id == "snap_20261022_062310_395f75"
 
@@ -261,17 +260,17 @@ def test_cross_collection_leakage_detection(runner):
     runner.initialize_retrievers(verify_snapshots=True)
 
     query = make_test_query(
-        query_id="sebi_leak_test",
-        collection_id="sebi_cscrf",
-        expected_docs=["sebi_cscrf_2024_113"],
-        expected_chunks=["sebi_cscrf_2024_113_p80_67"],
+        query_id="gen_leak_test",
+        collection_id="general_synthetic",
+        expected_docs=["acme_security_policy"],
+        expected_chunks=["acme_security_policy_p1_0"],
     )
 
-    # Contaminate SEBI results with an Acme doc from general_synthetic
+    # Contaminate general_synthetic results with a doc from cisa_playbooks
     retrieved = [
         RetrievalResult(
-            chunk_id="acme_security_policy_p1_0",
-            document_id="acme_security_policy",  # Not a SEBI document!
+            chunk_id="cisa_chunk_1",
+            document_id="cisa_ir_playbook_2021",  # Not a general_synthetic document!
             page_start=1,
             page_end=1,
             text="Foreign collection text",
@@ -288,7 +287,7 @@ def test_retrieval_failure_handling(runner):
     """Verifies that exceptions during retrieval are captured cleanly with FAILED status."""
     runner.initialize_retrievers(verify_snapshots=True)
 
-    query = make_test_query(query_id="failing_query", collection_id="sebi_cscrf")
+    query = make_test_query(query_id="failing_query", collection_id="general_synthetic")
 
     # Mock execute_retrieval to raise an error
     runner.execute_retrieval = lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("Simulated index corruption"))
@@ -304,10 +303,9 @@ def test_no_active_pointer_fallback(runner):
     and does not fall back to the 1-chunk test snapshot in data/indexes/active_snapshot.json.
     """
     runner.initialize_retrievers(verify_snapshots=True)
-    sebi_gen = runner._generations["sebi_cscrf"]
-    # Pinned snapshot must have the 168 baseline chunks, not the 1 chunk from active_snapshot.json
-    assert len(sebi_gen.chunks) == 168
-    assert len(sebi_gen.documents) == 5
+    cisa_gen = runner._generations["cisa_playbooks"]
+    assert len(cisa_gen.chunks) == 46
+    assert len(cisa_gen.documents) == 1
 
 
 def test_save_results_protects_baseline_files(runner, tmp_path):
@@ -450,15 +448,14 @@ def test_deterministic_ordering_and_aggregation(runner):
     runner.execute_retrieval = mock_execute
     summary = runner.run_all(top_k=5)
 
-    assert summary.total_queries == 79
-    assert len(summary.per_query_results) == 79
+    assert summary.total_queries == 47
+    assert len(summary.per_query_results) == 47
 
     # Verify deterministic ordering: sorted by (collection_id, query_id)
     result_keys = [(r.collection_id, r.query_id) for r in summary.per_query_results]
     assert result_keys == sorted(result_keys)
 
     # Verify per-collection breakdowns
-    assert summary.per_collection["sebi_cscrf"].total_queries == 32
     assert summary.per_collection["cisa_playbooks"].total_queries == 15
     assert summary.per_collection["general_synthetic"].total_queries == 32
 
@@ -471,8 +468,8 @@ def test_failed_query_penalizes_recall_denominator(runner):
     from evaluation.stage_d_benchmark import StageDBenchmarkSummary
 
     # Suppose 1 query succeeds (recall 1.0) and 1 query fails retrieval (recall 0.0)
-    q1 = make_test_query(query_id="q1", outcome=NormalizedOutcome.ANSWERABLE)
-    q2 = make_test_query(query_id="q2", outcome=NormalizedOutcome.ANSWERABLE)
+    q1 = make_test_query(query_id="q1", collection_id="cisa_playbooks", outcome=NormalizedOutcome.ANSWERABLE)
+    q2 = make_test_query(query_id="q2", collection_id="cisa_playbooks", outcome=NormalizedOutcome.ANSWERABLE)
 
     res1 = StageDQueryResult(
         query_id=q1.query_id,
@@ -494,7 +491,7 @@ def test_failed_query_penalizes_recall_denominator(runner):
         primary_recall_at_k={5: 0.0},
     )
 
-    runner._pinned_mappings = {"sebi_cscrf": APPROVED_SNAPSHOT_MAPPINGS["sebi_cscrf"]}
+    runner._pinned_mappings = {"cisa_playbooks": APPROVED_SNAPSHOT_MAPPINGS["cisa_playbooks"]}
     runner._is_initialized = True
 
     # Use runner to aggregate these two results

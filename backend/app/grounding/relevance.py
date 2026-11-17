@@ -1,5 +1,5 @@
 """
-Deterministic relevance safeguard for SEBI CSCRF Regulatory Q&A Assistant.
+Deterministic relevance safeguard for Citenza Document Intelligence Platform.
 
 Evaluates retrieval candidate passages against query intent and content anchors:
 - Prevents out-of-scope or unrelated passages from being presented as responsive evidence.
@@ -392,14 +392,18 @@ def _filter_general_candidates(
         text_lower = c.text.lower()
         if unique_query_tokens:
             matched = [t for t in unique_query_tokens if check_token_match(t, text_lower)]
-            if matched:
+            min_matched = 3 if len(unique_query_tokens) >= 6 else (2 if len(unique_query_tokens) >= 3 else 1)
+            min_coverage = 0.30 if len(unique_query_tokens) >= 5 else 0.20
+            coverage = len(matched) / len(unique_query_tokens) if unique_query_tokens else 0.0
+
+            if len(matched) >= min_matched and coverage >= min_coverage:
                 is_relevant = True
                 decision_code = RelevanceDecisionCode.RELEVANT_EVIDENCE
-                reason = f"Passage matches {len(matched)} of {len(unique_query_tokens)} query term(s): {matched[:4]}."
+                reason = f"Passage matches {len(matched)} of {len(unique_query_tokens)} query term(s) (coverage {coverage:.1%}): {matched[:4]}."
             else:
                 is_relevant = False
                 decision_code = RelevanceDecisionCode.INSUFFICIENT_RELEVANCE
-                reason = f"Passage does not contain substantive query terms ({unique_query_tokens[:4]})."
+                reason = f"Passage does not contain sufficient substantive query terms (matched {len(matched)}/{len(unique_query_tokens)}, required {min_matched})."
         else:
             # Query has no substantive filter terms (e.g. very short query or only stop words)
             # Allow retrieval results to proceed to safety gate

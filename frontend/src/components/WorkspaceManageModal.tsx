@@ -56,7 +56,7 @@ export function WorkspaceManageModal({
   const [newColId, setNewColId] = useState('');
   const [newColName, setNewColName] = useState('');
   const [newColDesc, setNewColDesc] = useState('');
-  const [newColPolicy, setNewColPolicy] = useState<'general_static' | 'sebi_cscrf_strict'>('general_static');
+  const [newColPolicy, setNewColPolicy] = useState<'general_static'>('general_static');
   const [isCreatingCol, setIsCreatingCol] = useState(false);
   const [createColError, setCreateColError] = useState<string | null>(null);
 
@@ -592,12 +592,11 @@ export function WorkspaceManageModal({
                         <select
                           value={newColPolicy}
                           onChange={(e) =>
-                            setNewColPolicy(e.target.value as 'general_static' | 'sebi_cscrf_strict')
+                            setNewColPolicy(e.target.value as 'general_static')
                           }
                           className="w-full px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-100 focus:ring-1 focus:ring-cyan-500"
                         >
-                          <option value="general_static">General Static (Text Quotation)</option>
-                          <option value="sebi_cscrf_strict">SEBI CSCRF Strict (Regulatory Graph)</option>
+                          <option value="general_static">General Static (General Documents, Text Quotation)</option>
                         </select>
                       </div>
                     </div>
@@ -710,11 +709,11 @@ export function WorkspaceManageModal({
                             </div>
                             <div>
                               <label className="text-[11px] text-slate-400 block mb-1">
-                                Circular / Reference Number (Optional)
+                                Document Reference / ID (Optional)
                               </label>
                               <input
                                 type="text"
-                                placeholder="e.g. SEBI/HO/MRD/2026/01"
+                                placeholder="e.g. DOC-REF-2026-01"
                                 value={uploadCircularNumber}
                                 onChange={(e) => setUploadCircularNumber(e.target.value)}
                                 className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-100 focus:ring-1 focus:ring-cyan-500"

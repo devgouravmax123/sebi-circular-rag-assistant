@@ -6,9 +6,8 @@ interface TechnicalInfoDrawerProps {
   initialOpen?: boolean;
 }
 
-export const TechnicalInfoDrawer = ({ selectedCollection, initialOpen = false }: TechnicalInfoDrawerProps) => {
+export const TechnicalInfoDrawer = ({ selectedCollection: _selectedCollection, initialOpen = false }: TechnicalInfoDrawerProps) => {
   const [isOpen, setIsOpen] = useState(initialOpen);
-  const isSebiStrict = selectedCollection?.policy_type === 'sebi_cscrf_strict';
 
   return (
     <div className="w-full bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden text-xs text-slate-300">
@@ -43,18 +42,14 @@ export const TechnicalInfoDrawer = ({ selectedCollection, initialOpen = false }:
             <ul className="list-disc list-inside space-y-1 text-slate-400 pl-1">
               <li>
                 <strong>Verbatim Precision:</strong>{' '}
-                {isSebiStrict
-                  ? '100% mechanical character substring match against the indexed SEBI CSCRF corpus chunks.'
-                  : '100% mechanical character substring match against registered collection document chunks.'}
+                100% mechanical character substring match against registered collection document chunks.
               </li>
               <li>
                 <strong>Retrieval-Bound Safety:</strong> Excerpts originate strictly from authorized server-side hybrid retrieval candidates.
               </li>
               <li>
-                <strong>{isSebiStrict ? 'Deterministic Graph Annotation:' : 'Deterministic Provenance Tracking:'}</strong>{' '}
-                {isSebiStrict
-                  ? 'Cross-references verified supersession, partial amendment, and timeline extension edges.'
-                  : 'Enforces exact document snapshot binding and page citation validation (graph supersession checks do not apply to static general documents).'}
+                <strong>Deterministic Provenance Tracking:</strong>{' '}
+                Enforces exact document snapshot binding and page citation validation.
               </li>
             </ul>
           </div>
@@ -65,19 +60,15 @@ export const TechnicalInfoDrawer = ({ selectedCollection, initialOpen = false }:
             </h5>
             <ul className="list-disc list-inside space-y-1 text-slate-400 pl-1">
               <li>
-                <strong>{isSebiStrict ? 'Legal Currency:' : 'Advisory Status:'}</strong>{' '}
-                {isSebiStrict
-                  ? 'Does not constitute binding legal counsel or universal currency beyond the indexed SEBI CSCRF collection scope.'
-                  : 'Document excerpts provide technical and operational information only; they do not establish regulatory compliance or legal advice.'}
+                <strong>Advisory Status:</strong>{' '}
+                Document excerpts provide technical and operational grounding only; they do not constitute formal legal counsel.
               </li>
               <li>
-                <strong>{isSebiStrict ? 'Exhaustive Compliance:' : 'Collection Boundary:'}</strong>{' '}
-                {isSebiStrict
-                  ? 'Subsequent gazette notifications, master circulars, or bilateral SEBI directions outside the indexed collection are not included.'
-                  : 'External standards, unindexed manuals, and organization policies outside the active collection snapshot are not covered.'}
+                <strong>Collection Boundary:</strong>{' '}
+                External manuals, unindexed documents, and corporate policies outside the active collection snapshot are not covered.
               </li>
               <li>
-                <strong>Subjective Interpretation:</strong> The system does not synthesize generative legal opinions or waive statutory obligations.
+                <strong>Subjective Interpretation:</strong> The system does not synthesize ungrounded opinions or hallucinated assertions.
               </li>
             </ul>
           </div>

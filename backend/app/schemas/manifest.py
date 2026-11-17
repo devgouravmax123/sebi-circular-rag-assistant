@@ -115,6 +115,7 @@ class CollectionManifest(BaseModel):
     regulator: Optional[str] = Field(None, description="Optional regulator code (e.g. SEBI)")
     domain: Optional[str] = Field(None, description="Optional domain code (e.g. CSCRF)")
     enabled: bool = Field(True, description="Whether collection is enabled for query and retrieval")
+    is_legacy: bool = Field(False, description="Whether this is a legacy demonstration collection")
     policy: GroundingPolicyDeclaration = Field(
         ...,
         description="Explicit grounding policy declaration",

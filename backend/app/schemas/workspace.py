@@ -128,8 +128,8 @@ class CollectionCreateRequest(BaseModel):
     id: str = Field(..., min_length=2, max_length=100, description="Collection identifier")
     name: str = Field(..., min_length=2, max_length=255, description="Human-readable collection name")
     description: Optional[str] = Field(None, max_length=2000, description="Optional description")
-    policy_name: str = Field("general_static", description="Grounding policy: 'general_static' or 'sebi_cscrf_strict'")
-    enforce_regulatory_graph: bool = Field(False, description="Whether regulatory graph supersession is enforced")
+    policy_name: str = Field("general_static", description="Grounding policy: 'general_static'")
+    enforce_regulatory_graph: bool = Field(False, description="Whether relationship graph supersession is enforced")
 
     @field_validator("id")
     @classmethod
@@ -137,7 +137,7 @@ class CollectionCreateRequest(BaseModel):
         s = v.strip().lower()
         if not re.match(r"^[a-z0-9_]+$", s):
             raise ValueError("Collection id must consist of lowercase alphanumeric characters and underscores.")
-        if s in ("sebi_cscrf", "cisa_playbooks", "demo_finops", "general_synthetic", "system_legacy_jobs"):
+        if s in ("cisa_playbooks", "demo_finops", "general_synthetic", "system_legacy_jobs"):
             raise ValueError("Collection id is reserved by system collections.")
         return s
 
@@ -153,8 +153,8 @@ class CollectionCreateRequest(BaseModel):
     @classmethod
     def validate_policy_name(cls, v: str) -> str:
         s = v.strip().lower()
-        if s not in ("general_static", "sebi_cscrf_strict"):
-            raise ValueError("policy_name must be 'general_static' or 'sebi_cscrf_strict'.")
+        if s not in ("general_static", "strict_grounding"):
+            return "general_static"
         return s
 
 

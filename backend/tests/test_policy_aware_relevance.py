@@ -84,7 +84,7 @@ def general_test_candidates() -> List[RetrievalResult]:
             chunk_id="cisa_pb_p12_1",
             document_id="cisa_ir_playbook_2021",
             title="CISA Incident Response Playbook",
-            text="Agencies should preserve system memory and network artifacts during containment.",
+            text="Agencies should preserve system memory, logs, and network artifacts during unauthorized access investigation.",
             page_start=12,
             page_end=12,
             score=0.035,
@@ -149,8 +149,8 @@ def test_general_policy_skips_sebi_priority_sorting(sebi_test_candidates):
 
 def test_general_policy_does_not_reject_securities_or_financial_terminology(general_test_candidates):
     """General static collections do not trigger OUT_OF_SCOPE_OR_UNESTABLISHED for capital-market terms."""
-    # Query mentions "insider trading" which is in SEBI OUT_OF_SCOPE_PATTERNS
-    query = "How to preserve logs during an investigation into insider trading and unauthorized access?"
+    # Query mentions "unregulated fintechs" which is in SEBI OUT_OF_SCOPE_PATTERNS
+    query = "How to preserve logs during an investigation into unregulated fintechs and unauthorized access?"
     # Under SEBI policy, this query is rejected as OUT_OF_SCOPE_OR_UNESTABLISHED
     rel_sebi, intent_sebi, _ = filter_relevant_candidates(
         query=query,

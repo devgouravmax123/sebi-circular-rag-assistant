@@ -179,20 +179,20 @@ def test_3_original_positive_cisa_question(client):
     assert len(data["claim_citations"]) > 0
 
 
-def test_4_cross_collection_sebi_question_preserved(client):
+def test_4_general_synthetic_question_answered(client):
     """
-    Test 4 — Cross-collection SEBI question:
-    Selected collection: sebi_cscrf
-    Query: 'What are the ISO 27001 requirements for Qualified REs under CSCRF?'
+    Test 4 — General synthetic collection query:
+    Selected collection: general_synthetic
+    Query: 'What is the required password length under the Acme security policy?'
     Expected:
-    - Existing SEBI strict-policy retrieval and validation behavior is preserved.
-    - No false scope mismatch.
+    - Normal retrieval and validation succeed.
+    - Excerpts returned from general_synthetic.
     """
     response = client.post(
         "/api/v1/query",
         json={
-            "collection_id": "sebi_cscrf",
-            "query": "What are the ISO 27001 requirements for Qualified REs under CSCRF?",
+            "collection_id": "general_synthetic",
+            "query": "What is the required password length under the Acme security policy?",
         },
     )
     assert response.status_code == 200
@@ -203,7 +203,7 @@ def test_4_cross_collection_sebi_question_preserved(client):
         AnswerDisposition.VERIFIED_HISTORICAL_EXCERPTS,
     )
     assert len(data["verified_excerpts"]) > 0
-    assert all(e["collection_id"] == "sebi_cscrf" for e in data["verified_excerpts"])
+    assert all(e["collection_id"] == "general_synthetic" for e in data["verified_excerpts"])
 
 
 def test_5_general_factual_question_with_external_org_mention(client):
@@ -290,10 +290,10 @@ def test_7_provider_failure_distinction(client):
         app.dependency_overrides.pop(get_synthesis_service, None)
 
 
-def test_8_cisa_playbooks_explicitly_requested_against_sebi_collection_abstains(client):
+def test_8_cisa_playbooks_explicitly_requested_against_general_collection_abstains(client):
     """
-    Phase 6.3E Test: CISA Playbooks explicitly requested against SEBI collection -> controlled abstention.
-    Selected collection: sebi_cscrf
+    CISA Playbooks explicitly requested against general synthetic collection -> controlled abstention.
+    Selected collection: general_synthetic
     Query: 'What operational playbooks are established by CISA under Executive Order 14028?'
     Expected:
     - Controlled abstention before synthesis.
@@ -308,7 +308,7 @@ def test_8_cisa_playbooks_explicitly_requested_against_sebi_collection_abstains(
         response = client.post(
             "/api/v1/query",
             json={
-                "collection_id": "sebi_cscrf",
+                "collection_id": "general_synthetic",
                 "query": "What operational playbooks are established by CISA under Executive Order 14028?",
             },
         )
@@ -327,10 +327,9 @@ def test_8_cisa_playbooks_explicitly_requested_against_sebi_collection_abstains(
 
 def test_9_incidental_mention_in_excerpt_does_not_bypass_genuine_mismatch(client):
     """
-    Phase 6.3E Test: An excerpt containing an incidental acronym mention (e.g. CISA certification
-    in SEBI audit norms chunk p150_118) must not automatically bypass a genuine framework mismatch.
+    An excerpt containing an incidental mention must not automatically bypass a genuine framework mismatch.
     Query: 'What are the CISA playbook requirements for incident handling?'
-    Target collection: sebi_cscrf
+    Target collection: general_synthetic
     Expected:
     - Controlled abstention.
     - No incidental bypass.
@@ -338,7 +337,7 @@ def test_9_incidental_mention_in_excerpt_does_not_bypass_genuine_mismatch(client
     response = client.post(
         "/api/v1/query",
         json={
-            "collection_id": "sebi_cscrf",
+            "collection_id": "general_synthetic",
             "query": "What are the CISA playbook requirements for incident handling?",
         },
     )
