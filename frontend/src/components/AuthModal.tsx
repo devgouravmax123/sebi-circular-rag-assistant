@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 export type AuthModalMode = 'login' | 'signup' | 'verify-email' | 'forgot-password' | 'link-legacy';
@@ -52,6 +52,37 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
     const timer = setTimeout(() => setResendCooldown((prev) => prev - 1), 1000);
     return () => clearTimeout(timer);
   }, [resendCooldown]);
+
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // Lock background scroll when modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
+
+  // Close on Escape key press
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  // Focus modal container on open for keyboard accessibility
+  useEffect(() => {
+    if (isOpen) {
+      modalRef.current?.focus();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -178,15 +209,22 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm animate-fadeIn p-3 sm:p-4 flex min-h-full items-start sm:items-center justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div
-        className="w-full max-w-md my-auto bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 sm:p-6 flex flex-col gap-4 sm:gap-5 text-slate-100 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] overflow-y-auto"
+        ref={modalRef}
+        tabIndex={-1}
+        className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 sm:p-6 flex flex-col gap-3.5 sm:gap-4 text-slate-100 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] overflow-hidden outline-none"
         role="dialog"
         aria-modal="true"
         aria-labelledby="auth-modal-title"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3 sm:pb-4 shrink-0">
           <h2 id="auth-modal-title" className="text-lg font-semibold tracking-tight text-white">
             {mode === 'login' && 'Sign In to Workspace'}
             {mode === 'signup' && 'Create an Account'}
@@ -203,7 +241,9 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
           </button>
         </div>
 
-        {/* Alerts */}
+        {/* Content Body - Single Scroll Region */}
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1 flex flex-col gap-4 text-sm">
+          {/* Alerts */}
         {errorMessage && (
           <div className="p-3 bg-rose-950/70 border border-rose-800/80 rounded-xl text-rose-300 text-xs">
             {errorMessage}
@@ -482,6 +522,7 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
             )}
           </div>
         )}
+        </div>
       </div>
     </div>
   );

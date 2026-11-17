@@ -189,6 +189,37 @@ export function WorkspaceManageModal({
     return () => clearInterval(timer);
   }, [isOpen, activeTab, selectedDocColId, jobs, loadCollectionData]);
 
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // Lock background scroll when modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
+
+  // Close on Escape key press
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  // Focus modal container on open for keyboard accessibility
+  useEffect(() => {
+    if (isOpen) {
+      modalRef.current?.focus();
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   // Handle Add Member
@@ -412,9 +443,16 @@ export function WorkspaceManageModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm animate-fadeIn p-3 sm:p-4 md:p-6 flex min-h-full items-start sm:items-center justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-sm animate-fadeIn"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
       <div
-        className="w-full max-w-3xl my-auto bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 sm:p-6 flex flex-col gap-3.5 sm:gap-4 text-slate-100 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-hidden"
+        ref={modalRef}
+        tabIndex={-1}
+        className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 sm:p-6 flex flex-col gap-3.5 sm:gap-4 text-slate-100 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-hidden outline-none"
         role="dialog"
         aria-modal="true"
         aria-labelledby="workspace-modal-title"
@@ -493,7 +531,7 @@ export function WorkspaceManageModal({
         </div>
 
         {/* Tab Content Body */}
-        <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 text-sm min-h-0">
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1 flex flex-col gap-4 text-sm">
           {/* TAB 1: COLLECTIONS */}
           {activeTab === 'collections' && (
             <div className="flex flex-col gap-4">

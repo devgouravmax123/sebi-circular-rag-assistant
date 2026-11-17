@@ -45,6 +45,28 @@ export function SessionSettingsView({
     return () => clearInterval(interval);
   }, [isGuest]);
 
+  // Lock background scroll when confirm modal is open
+  useEffect(() => {
+    if (!showConfirmModal) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [showConfirmModal]);
+
+  // Escape key handler for confirm modal
+  useEffect(() => {
+    if (!showConfirmModal) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isEnding) {
+        setShowConfirmModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showConfirmModal, isEnding]);
+
   const formatCountdown = (totalSeconds: number) => {
     if (totalSeconds <= 0) return 'Expired';
     const hours = Math.floor(totalSeconds / 3600);
@@ -338,11 +360,21 @@ export function SessionSettingsView({
 
       {/* Confirmation Modal */}
       {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isEnding) setShowConfirmModal(false);
+          }}
+        >
+          <div
+            className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-4 sm:p-6 shadow-2xl space-y-4 max-h-[calc(100dvh-2rem)] overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="confirm-delete-title"
+          >
             <div className="flex items-center gap-3 text-rose-400">
               <span className="text-2xl">⚠️</span>
-              <h3 className="text-lg font-bold text-white">Permanently Delete Session Data?</h3>
+              <h3 id="confirm-delete-title" className="text-lg font-bold text-white">Permanently Delete Session Data?</h3>
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">

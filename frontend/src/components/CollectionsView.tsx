@@ -252,6 +252,11 @@ export function CollectionsView({
       return;
     }
 
+    if (!isGuest && isAuthenticated && !activeWorkspace) {
+      setCreateColError('No active workspace selected. Please select or create a workspace before creating collections.');
+      return;
+    }
+
     // Check guest quota
     if (isGuest && guestSession) {
       if (guestSession.collections_count >= guestSession.quotas.max_collections) {
@@ -631,6 +636,10 @@ export function CollectionsView({
               <div className="p-4 text-center text-xs text-slate-400 animate-pulse">
                 Loading collections...
               </div>
+            ) : !isGuest && isAuthenticated && !activeWorkspace ? (
+              <div className="p-4 text-center rounded-lg border border-dashed border-amber-800/80 bg-amber-950/20 text-xs text-amber-300">
+                No active workspace selected. Please select or create a workspace from the header dropdown to view collections.
+              </div>
             ) : currentCollections.length === 0 ? (
               <div className="p-4 text-center rounded-lg border border-dashed border-slate-800 text-xs text-slate-400">
                 {isGuest
@@ -819,13 +828,16 @@ export function CollectionsView({
               <button
                 type={isAuthenticated || isGuest ? 'submit' : 'button'}
                 onClick={isAuthenticated || isGuest ? undefined : () => onOpenAuthModal?.('login')}
-                disabled={(isAuthenticated || isGuest) && isCreatingCol}
-                className="w-full py-2 bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white font-semibold text-xs rounded-lg transition shadow cursor-pointer"
+                disabled={(isAuthenticated || isGuest) && (isCreatingCol || (!isGuest && !activeWorkspace))}
+                title={!isGuest && isAuthenticated && !activeWorkspace ? 'Please select or create an active workspace first' : undefined}
+                className="w-full py-2 bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white font-semibold text-xs rounded-lg transition shadow cursor-pointer disabled:cursor-not-allowed"
               >
                 {isCreatingCol
                   ? 'Creating Collection...'
                   : isGuest
                   ? 'Create Temporary Collection'
+                  : isAuthenticated && !activeWorkspace
+                  ? 'Select Workspace to Create Collection'
                   : isAuthenticated
                   ? 'Create Collection'
                   : 'Sign In to Create Collection'}

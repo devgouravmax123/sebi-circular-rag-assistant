@@ -959,21 +959,24 @@ test('23. WorkspaceManageModal & AuthModal: responsive viewport bounds and no ov
     })
   );
 
-  // 1. Overlay container must allow viewport scrolling and prevent flexbox centering clipping
-  assert.match(wsModalHtml, /overflow-y-auto/, 'Overlay includes overflow-y-auto to allow scrolling');
-  assert.match(wsModalHtml, /min-h-full/, 'Overlay includes min-h-full');
-  assert.match(wsModalHtml, /items-start sm:items-center/, 'Overlay uses responsive alignment to prevent top clipping');
+  // 1. Overlay container must be a fixed full-screen centered overlay with safe padding and NO nested scrollbar
+  assert.match(wsModalHtml, /fixed inset-0 z-50 flex items-center justify-center/, 'Overlay uses fixed full-screen centered layout');
+  assert.match(wsModalHtml, /p-3 sm:p-4 md:p-6/, 'Overlay provides safe viewport padding on all sides');
 
-  // 2. Modal shell must use auto-margins and dynamic dvh capping
-  assert.match(wsModalHtml, /my-auto/, 'Modal shell uses my-auto for fail-safe vertical centering');
-  assert.match(wsModalHtml, /max-h-\[calc\(100dvh-1\.5rem\)\]/, 'Modal shell bounds height to dynamic viewport');
+  // 2. Modal shell must clamp to dynamic dvh and use overflow-hidden frame
+  assert.match(wsModalHtml, /max-h-\[calc\(100dvh-1\.5rem\)\] sm:max-h-\[calc\(100dvh-3rem\)\]/, 'Modal shell bounds height to dynamic viewport');
+  assert.match(wsModalHtml, /overflow-hidden/, 'Modal shell uses overflow-hidden to prevent duplicate scrollbars');
 
-  // 3. Accessibility attributes
+  // 3. Pinned non-shrinking header and single scrollable content region
+  assert.match(wsModalHtml, /shrink-0/, 'Modal header is pinned and cannot shrink');
+  assert.match(wsModalHtml, /flex-1 min-h-0 overflow-y-auto/, 'Form body is the single designated scrollable region');
+
+  // 4. Accessibility attributes
   assert.match(wsModalHtml, /role="dialog"/, 'Has role="dialog"');
   assert.match(wsModalHtml, /aria-modal="true"/, 'Has aria-modal="true"');
   assert.match(wsModalHtml, /aria-labelledby="workspace-modal-title"/, 'Has aria-labelledby');
 
-  // 4. Create Workspace form elements
+  // 5. Create Workspace form elements
   assert.match(wsModalHtml, /Create New Workspace/, 'Renders Create New Workspace tab heading');
   assert.match(wsModalHtml, /Workspace Name \*/, 'Renders Workspace Name label');
   assert.match(wsModalHtml, /Slug \(URL identifier, optional\)/, 'Renders Slug label');
@@ -981,7 +984,7 @@ test('23. WorkspaceManageModal & AuthModal: responsive viewport bounds and no ov
   assert.match(wsModalHtml, /Create Workspace/, 'Renders Create Workspace submit button');
   assert.match(wsModalHtml, /w-full sm:w-auto sm:self-end/, 'Submit button has responsive width classes');
 
-  // 5. AuthModal responsive viewport structure
+  // 6. AuthModal responsive viewport structure
   const authModalHtml = renderToStaticMarkup(
     React.createElement(AuthModal, {
       isOpen: true,
@@ -989,8 +992,74 @@ test('23. WorkspaceManageModal & AuthModal: responsive viewport bounds and no ov
       defaultMode: 'login',
     })
   );
-  assert.match(authModalHtml, /overflow-y-auto/, 'AuthModal overlay includes overflow-y-auto');
-  assert.match(authModalHtml, /min-h-full/, 'AuthModal overlay includes min-h-full');
-  assert.match(authModalHtml, /my-auto/, 'AuthModal shell uses my-auto');
-  assert.match(authModalHtml, /max-h-\[calc\(100dvh-1\.5rem\)\]/, 'AuthModal shell uses 100dvh bounding');
+  assert.match(authModalHtml, /fixed inset-0 z-50 flex items-center justify-center/, 'AuthModal overlay uses fixed full-screen centered layout');
+  assert.match(authModalHtml, /max-h-\[calc\(100dvh-1\.5rem\)\] sm:max-h-\[calc\(100dvh-2rem\)\]/, 'AuthModal shell uses 100dvh bounding');
+  assert.match(authModalHtml, /overflow-hidden/, 'AuthModal shell uses overflow-hidden');
+  assert.match(authModalHtml, /flex-1 min-h-0 overflow-y-auto/, 'AuthModal content is single scrollable region');
+});
+
+// ----------------------------------------------------------------------------
+// Test 24: Array & Envelope API Response Resiliency
+// ----------------------------------------------------------------------------
+test('24. Workspace & Collection API: safely unpacks raw array responses and envelope objects', async () => {
+  const originalFetch = globalThis.fetch;
+
+  // Case A: Backend returns raw Array
+  globalThis.fetch = createMockFetch((url) => {
+    if (url.includes('/api/v1/workspaces')) {
+      return {
+        status: 200,
+        data: [
+          {
+            id: 'ws-raw-1',
+            name: 'Direct Array Workspace',
+            slug: 'direct-array-ws',
+            is_system: false,
+            created_at: '2026-11-01T00:00:00Z',
+            updated_at: '2026-11-01T00:00:00Z',
+          },
+        ],
+      };
+    }
+    return { status: 404, data: {} };
+  });
+
+  try {
+    const list = await fetchWorkspaces('mock-token');
+    assert.equal(list.length, 1, 'Unpacks raw array of workspaces');
+    assert.equal(list[0].id, 'ws-raw-1');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  // Case B: Backend or proxy returns envelope object { workspaces: [...] }
+  globalThis.fetch = createMockFetch((url) => {
+    if (url.includes('/api/v1/workspaces')) {
+      return {
+        status: 200,
+        data: {
+          workspaces: [
+            {
+              id: 'ws-envelope-1',
+              name: 'Enveloped Workspace',
+              slug: 'enveloped-ws',
+              is_system: false,
+              created_at: '2026-11-01T00:00:00Z',
+              updated_at: '2026-11-01T00:00:00Z',
+            },
+          ],
+          total: 1,
+        },
+      };
+    }
+    return { status: 404, data: {} };
+  });
+
+  try {
+    const list = await fetchWorkspaces('mock-token');
+    assert.equal(list.length, 1, 'Unpacks enveloped workspaces object');
+    assert.equal(list[0].id, 'ws-envelope-1');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

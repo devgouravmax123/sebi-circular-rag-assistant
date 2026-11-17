@@ -234,14 +234,18 @@ export function WorkspaceSettingsView({ onOpenAuthModal }: WorkspaceSettingsView
                 <select
                   value={activeWorkspace?.id || ''}
                   onChange={(e) => selectWorkspace(e.target.value)}
-                  disabled={isWorkspacesLoading}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:border-cyan-500 focus:outline-none"
+                  disabled={isWorkspacesLoading || workspaces.length === 0}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg text-xs text-white focus:border-cyan-500 focus:outline-none disabled:opacity-50"
                 >
-                  {workspaces.map((ws) => (
-                    <option key={ws.id} value={ws.id}>
-                      {ws.name} ({ws.current_user_role})
-                    </option>
-                  ))}
+                  {workspaces.length === 0 ? (
+                    <option value="">No workspaces available</option>
+                  ) : (
+                    workspaces.map((ws) => (
+                      <option key={ws.id} value={ws.id}>
+                        {ws.name} ({ws.current_user_role})
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
             </div>

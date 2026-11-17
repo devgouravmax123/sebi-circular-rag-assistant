@@ -193,7 +193,7 @@ export function QueryHistoryView({
         {/* Left Column: Filterable History List (7 cols) */}
         <div className="lg:col-span-7 space-y-4">
           {/* Search Filter Bar */}
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
             <div className="relative flex-1">
               <input
                 type="text"

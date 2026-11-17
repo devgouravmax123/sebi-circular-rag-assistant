@@ -17,7 +17,7 @@ export function DashboardView({
   onOpenAuthModal,
 }: DashboardViewProps) {
   const { isAuthenticated, isGuest, guestSession } = useAuth();
-  const { activeWorkspace, workspaceCollections } = useWorkspace();
+  const { activeWorkspace, workspaces, isWorkspacesLoading, workspaceCollections } = useWorkspace();
 
   const publicCollections = collections.filter((c) => !c.is_private);
 
@@ -112,14 +112,24 @@ export function DashboardView({
               {isGuest
                 ? 'Ephemeral Guest Sandbox'
                 : isAuthenticated
-                ? activeWorkspace?.name || 'Default Workspace'
+                ? isWorkspacesLoading
+                  ? 'Loading Workspace...'
+                  : activeWorkspace
+                  ? activeWorkspace.name
+                  : 'No Workspace Selected'
                 : 'Demo Mode'}
             </div>
             <p className="text-xs text-slate-400 truncate mt-0.5">
               {isGuest
                 ? `${hoursLeft}h ${minutesLeft}m remaining`
                 : isAuthenticated
-                ? activeWorkspace?.slug ? `@${activeWorkspace.slug}` : 'Private Workspace'
+                ? isWorkspacesLoading
+                  ? 'Fetching workspaces...'
+                  : activeWorkspace?.slug
+                  ? `@${activeWorkspace.slug}`
+                  : workspaces.length === 0
+                  ? 'Create a workspace to start'
+                  : 'Select a workspace'
                 : 'Public Access'}
             </p>
           </div>
@@ -129,10 +139,18 @@ export function DashboardView({
               className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${
                 isGuest
                   ? 'bg-amber-950/80 text-amber-300 border border-amber-800/60'
-                  : 'bg-cyan-950/80 text-cyan-400 border border-cyan-800/60'
+                  : isAuthenticated && activeWorkspace
+                  ? 'bg-cyan-950/80 text-cyan-400 border border-cyan-800/60'
+                  : 'bg-slate-800 text-slate-400 border border-slate-700'
               }`}
             >
-              {isGuest ? 'Temporary' : isAuthenticated ? 'Persistent' : 'Public'}
+              {isGuest
+                ? 'Temporary'
+                : isAuthenticated
+                ? activeWorkspace
+                  ? 'Persistent'
+                  : 'Unselected'
+                : 'Public'}
             </span>
           </div>
         </div>

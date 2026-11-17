@@ -64,7 +64,7 @@ export function WorkspaceSelector() {
         </button>
 
         {isOpen && (
-          <div className="absolute right-0 mt-2 w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-xl z-30 py-2 divide-y divide-slate-800 text-xs animate-fadeIn">
+          <div className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-2rem)] bg-slate-900 border border-slate-800 rounded-xl shadow-xl z-30 py-2 divide-y divide-slate-800 text-xs animate-fadeIn">
             {/* Workspaces list */}
             <div className="max-h-52 overflow-y-auto py-1">
               <div className="px-3 py-1 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">

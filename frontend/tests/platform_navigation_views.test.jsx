@@ -142,3 +142,36 @@ test('5. WorkspaceSettingsView: renders RBAC guide and multi-tenant admin struct
   assert.match(html, /Viewer/);
 });
 
+// ----------------------------------------------------------------------------
+// Test 6: DashboardView authentic workspace state display
+// ----------------------------------------------------------------------------
+test('6. DashboardView: authentic workspace state and no fictional default workspace', () => {
+  const html = renderWithProviders(
+    React.createElement(DashboardView, {
+      collections: sampleCollections,
+      onNavigate: () => {},
+      onSelectCollectionAndResearch: () => {},
+    })
+  );
+
+  // In unauthenticated context, must display Demo Mode and Public Access, NOT fictional "Default Workspace"
+  assert.match(html, /Demo Mode/, 'Displays Demo Mode when unauthenticated');
+  assert.match(html, /Public Access/, 'Displays Public Access');
+  assert.doesNotMatch(html, /Default Workspace/, 'Never displays fake Default Workspace placeholder');
+});
+
+// ----------------------------------------------------------------------------
+// Test 7: CollectionsView authentic collection creation guard
+// ----------------------------------------------------------------------------
+test('7. CollectionsView: shows unauthenticated notice and guards collection creation', () => {
+  const html = renderWithProviders(
+    React.createElement(CollectionsView, {
+      onNavigateToResearch: () => {},
+    })
+  );
+
+  // When unauthenticated, shows Sign In or Continue as Guest banner
+  assert.match(html, /Sign In or Continue as Guest/, 'Renders authentication required advisory');
+  assert.match(html, /Sign In to Create Collection/, 'Creation button prompts sign in when unauthenticated');
+});
+

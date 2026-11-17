@@ -13,18 +13,13 @@ import type { QueryRequest, QueryResponse, QueryError, CollectionSummary } from 
 import type { User, AuthResponse, LoginCredentials, SignupCredentials } from '../types/auth';
 import type {
   Workspace,
-  WorkspaceListResponse,
   WorkspaceCreateInput,
   WorkspaceMember,
-  MemberListResponse,
   MemberAddInput,
   WorkspaceCollection,
-  WorkspaceCollectionListResponse,
   WorkspaceCollectionCreateInput,
   CollectionIngestionJob,
-  CollectionIngestionJobListResponse,
   CollectionDocument,
-  CollectionDocumentListResponse,
   DocumentUploadResponse,
 } from '../types/workspace';
 import type { QueryHistoryDetail, QueryHistoryListResponse } from '../types/history';
@@ -196,8 +191,11 @@ export async function fetchWorkspaces(token: string): Promise<Workspace[]> {
     throw await parseErrorResponse(response, 'Failed to fetch workspaces.');
   }
 
-  const data: WorkspaceListResponse = await response.json();
-  return data.workspaces || [];
+  const data = await response.json();
+  if (Array.isArray(data)) {
+    return data;
+  }
+  return data?.workspaces || [];
 }
 
 export async function createWorkspace(input: WorkspaceCreateInput, token: string): Promise<Workspace> {
@@ -224,8 +222,11 @@ export async function fetchWorkspaceMembers(workspaceId: string, token: string):
     throw await parseErrorResponse(response, 'Failed to fetch workspace members.');
   }
 
-  const data: MemberListResponse = await response.json();
-  return data.members || [];
+  const data = await response.json();
+  if (Array.isArray(data)) {
+    return data;
+  }
+  return data?.members || [];
 }
 
 export async function addWorkspaceMember(
@@ -311,8 +312,11 @@ export async function fetchWorkspaceCollections(
     throw await parseErrorResponse(response, 'Failed to fetch workspace collections.');
   }
 
-  const data: WorkspaceCollectionListResponse = await response.json();
-  return data.collections || [];
+  const data = await response.json();
+  if (Array.isArray(data)) {
+    return data;
+  }
+  return data?.collections || [];
 }
 
 /**
@@ -396,8 +400,11 @@ export async function fetchCollectionIngestionJobs(
     throw await parseErrorResponse(response, 'Failed to fetch ingestion jobs.');
   }
 
-  const data: CollectionIngestionJobListResponse = await response.json();
-  return data.jobs || [];
+  const data = await response.json();
+  if (Array.isArray(data)) {
+    return data;
+  }
+  return data?.jobs || [];
 }
 
 /**
@@ -444,8 +451,11 @@ export async function fetchCollectionDocuments(
     throw await parseErrorResponse(response, 'Failed to fetch collection documents.');
   }
 
-  const data: CollectionDocumentListResponse = await response.json();
-  return data.documents || [];
+  const data = await response.json();
+  if (Array.isArray(data)) {
+    return data;
+  }
+  return data?.documents || [];
 }
 
 /**
