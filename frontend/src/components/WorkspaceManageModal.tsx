@@ -412,15 +412,15 @@ export function WorkspaceManageModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm animate-fadeIn p-3 sm:p-4 md:p-6 flex min-h-full items-start sm:items-center justify-center">
       <div
-        className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 flex flex-col gap-5 text-slate-100 max-h-[90vh] overflow-hidden"
+        className="w-full max-w-3xl my-auto bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 sm:p-6 flex flex-col gap-3.5 sm:gap-4 text-slate-100 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-hidden"
         role="dialog"
         aria-modal="true"
         aria-labelledby="workspace-modal-title"
       >
         {/* Header */}
-        <div className="flex items-start justify-between border-b border-slate-800 pb-4">
+        <div className="flex items-start justify-between border-b border-slate-800 pb-3 sm:pb-4 shrink-0">
           <div>
             <div className="flex items-center gap-2.5">
               <h2 id="workspace-modal-title" className="text-lg font-semibold tracking-tight text-white">
@@ -449,7 +449,7 @@ export function WorkspaceManageModal({
         </div>
 
         {/* Tab Buttons */}
-        <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 border-b border-slate-800 pb-2 overflow-x-auto no-scrollbar shrink-0">
           <button
             onClick={() => setActiveTab('collections')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
@@ -493,7 +493,7 @@ export function WorkspaceManageModal({
         </div>
 
         {/* Tab Content Body */}
-        <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 text-sm">
+        <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-4 text-sm min-h-0">
           {/* TAB 1: COLLECTIONS */}
           {activeTab === 'collections' && (
             <div className="flex flex-col gap-4">
@@ -1048,7 +1048,7 @@ export function WorkspaceManageModal({
                 <button
                   type="submit"
                   disabled={isCreatingWs}
-                  className="self-end px-5 py-2.5 bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-400 hover:to-cyan-500 text-slate-950 font-semibold rounded-xl text-xs transition cursor-pointer disabled:opacity-50"
+                  className="w-full sm:w-auto sm:self-end px-5 py-2.5 bg-gradient-to-r from-teal-500 to-cyan-600 hover:from-teal-400 hover:to-cyan-500 text-slate-950 font-semibold rounded-xl text-xs transition cursor-pointer disabled:opacity-50"
                 >
                   {isCreatingWs ? 'Creating Workspace...' : 'Create Workspace'}
                 </button>

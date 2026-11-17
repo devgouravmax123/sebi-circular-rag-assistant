@@ -933,3 +933,64 @@ test('22. QueryForm: displays private collection snapshot readiness guidance', a
     'Renders private collection snapshot readiness advisory'
   );
 });
+
+// ----------------------------------------------------------------------------
+// Test 23: WorkspaceManageModal & AuthModal Responsive Viewport & Overflow Safety
+// ----------------------------------------------------------------------------
+test('23. WorkspaceManageModal & AuthModal: responsive viewport bounds and no overflow clipping', () => {
+  const sampleWorkspace = {
+    id: 'ws-test-1',
+    name: 'Research Workspace',
+    slug: 'research-ws',
+    description: 'Workspace for document intelligence',
+    current_user_role: 'owner',
+    is_personal: false,
+    owner_user_id: 'u-1',
+  };
+
+  // Render WorkspaceManageModal opened directly to create_workspace
+  const wsModalHtml = renderToStaticMarkup(
+    React.createElement(WorkspaceManageModal, {
+      isOpen: true,
+      onClose: () => {},
+      activeWorkspace: sampleWorkspace,
+      token: 'mock-token',
+      defaultTab: 'create_workspace',
+    })
+  );
+
+  // 1. Overlay container must allow viewport scrolling and prevent flexbox centering clipping
+  assert.match(wsModalHtml, /overflow-y-auto/, 'Overlay includes overflow-y-auto to allow scrolling');
+  assert.match(wsModalHtml, /min-h-full/, 'Overlay includes min-h-full');
+  assert.match(wsModalHtml, /items-start sm:items-center/, 'Overlay uses responsive alignment to prevent top clipping');
+
+  // 2. Modal shell must use auto-margins and dynamic dvh capping
+  assert.match(wsModalHtml, /my-auto/, 'Modal shell uses my-auto for fail-safe vertical centering');
+  assert.match(wsModalHtml, /max-h-\[calc\(100dvh-1\.5rem\)\]/, 'Modal shell bounds height to dynamic viewport');
+
+  // 3. Accessibility attributes
+  assert.match(wsModalHtml, /role="dialog"/, 'Has role="dialog"');
+  assert.match(wsModalHtml, /aria-modal="true"/, 'Has aria-modal="true"');
+  assert.match(wsModalHtml, /aria-labelledby="workspace-modal-title"/, 'Has aria-labelledby');
+
+  // 4. Create Workspace form elements
+  assert.match(wsModalHtml, /Create New Workspace/, 'Renders Create New Workspace tab heading');
+  assert.match(wsModalHtml, /Workspace Name \*/, 'Renders Workspace Name label');
+  assert.match(wsModalHtml, /Slug \(URL identifier, optional\)/, 'Renders Slug label');
+  assert.match(wsModalHtml, /Description \(Optional\)/, 'Renders Description label');
+  assert.match(wsModalHtml, /Create Workspace/, 'Renders Create Workspace submit button');
+  assert.match(wsModalHtml, /w-full sm:w-auto sm:self-end/, 'Submit button has responsive width classes');
+
+  // 5. AuthModal responsive viewport structure
+  const authModalHtml = renderToStaticMarkup(
+    React.createElement(AuthModal, {
+      isOpen: true,
+      onClose: () => {},
+      defaultMode: 'login',
+    })
+  );
+  assert.match(authModalHtml, /overflow-y-auto/, 'AuthModal overlay includes overflow-y-auto');
+  assert.match(authModalHtml, /min-h-full/, 'AuthModal overlay includes min-h-full');
+  assert.match(authModalHtml, /my-auto/, 'AuthModal shell uses my-auto');
+  assert.match(authModalHtml, /max-h-\[calc\(100dvh-1\.5rem\)\]/, 'AuthModal shell uses 100dvh bounding');
+});
