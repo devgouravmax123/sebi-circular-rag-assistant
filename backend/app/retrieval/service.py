@@ -66,6 +66,10 @@ class SnapshotGeneration:
         filters: Optional[RetrievalFilter] = None,
     ) -> RetrievalResponse:
         if self.dense_index is None:
+            logger.warning(
+                "DenseIndex is not loaded or unavailable for collection '%s'. Dense search skipped (falling back to lexical).",
+                self.collection_id,
+            )
             return RetrievalResponse(query=query, total_results=0, results=[])
         return self.dense_index.search(query=query, top_k=top_k, filters=filters)
 
@@ -1068,6 +1072,13 @@ class RetrievalService:
             top_k=candidate_k,
             filters=filters,
         )
+
+        if not dense_resp.results and not self.is_lexical_only:
+            logger.warning(
+                "Hybrid search for collection '%s' yielded 0 dense candidates (dense_index=%s).",
+                cid,
+                generation.dense_index is not None,
+            )
 
         # Fuse candidate lists using RRF
         return reciprocal_rank_fusion(

@@ -70,6 +70,10 @@ def reciprocal_rank_fusion(
             # Record component diagnostics
             component_diagnostics[cid][f"{retriever_tag}_rank"] = one_based_rank
             component_diagnostics[cid][f"{retriever_tag}_score"] = res.score
+            if retriever_tag == "retriever_1" or "dense_score" in (res.metadata or {}):
+                dense_val = (res.metadata or {}).get("dense_score", res.score)
+                component_diagnostics[cid]["dense_score"] = dense_val
+                component_diagnostics[cid]["dense_rank"] = one_based_rank
 
             one_based_rank += 1
 

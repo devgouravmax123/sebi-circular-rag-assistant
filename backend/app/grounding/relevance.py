@@ -112,6 +112,71 @@ META_INSTRUCTION_TERMS = {
     "explicitly",
 }
 
+QUESTION_FRAMING_TERMS = {
+    "summarize", "summary", "explain", "explanation", "describe", "description",
+    "detail", "details", "discuss", "discussion", "outline", "overview",
+    "compare", "comparison", "difference", "differences", "primary", "main",
+    "steps", "actions", "role", "roles", "procedure", "procedures",
+    "concept", "perspective", "approach", "methods", "findings", "implications",
+    "give", "tell", "show", "provide", "list", "identify", "find",
+}
+
+
+def get_token_variants(token: str) -> Set[str]:
+    """Generates standard English morphological variants (plurals, verb tenses, derivations)."""
+    t = token.lower()
+    variants: Set[str] = set()
+
+    # Plural <-> Singular
+    if t.endswith("ies") and len(t) > 4:
+        variants.add(t[:-3] + "y")
+    elif t.endswith("es") and len(t) > 4:
+        variants.add(t[:-2])
+        variants.add(t[:-1])
+    elif t.endswith("s") and len(t) > 3 and not t.endswith("ss"):
+        variants.add(t[:-1])
+    else:
+        variants.add(t + "s")
+        variants.add(t + "es")
+
+    # Past tense / participle / gerund
+    if t.endswith("ed") and len(t) > 4:
+        variants.add(t[:-2])
+        variants.add(t[:-1])
+    elif t.endswith("ing") and len(t) > 5:
+        variants.add(t[:-3])
+        variants.add(t[:-3] + "e")
+
+    # Common adjective/noun derivations
+    if t.endswith("al") and len(t) > 5:
+        variants.add(t[:-2])
+        variants.add(t[:-2] + "e")
+    elif t.endswith("ure") and len(t) > 5:
+        variants.add(t[:-3] + "ural")
+    elif t.endswith("tion") and len(t) > 5:
+        variants.add(t[:-4] + "te")
+        variants.add(t[:-4])
+
+    return {v for v in variants if len(v) >= 3 and v != t}
+
+
+def _get_candidate_dense_score(candidate: RetrievalResult) -> Optional[float]:
+    """Extracts dense similarity score from candidate metadata or score."""
+    meta = getattr(candidate, "metadata", None) or {}
+    if "dense_score" in meta and meta["dense_score"] is not None:
+        try:
+            return float(meta["dense_score"])
+        except (ValueError, TypeError):
+            pass
+    if "retriever_1_score" in meta and meta["retriever_1_score"] is not None:
+        try:
+            return float(meta["retriever_1_score"])
+        except (ValueError, TypeError):
+            pass
+    if getattr(candidate, "score", None) is not None and meta.get("retriever_type") == "dense":
+        return float(candidate.score)
+    return None
+
 
 def normalize_query_acronyms(query: str) -> str:
     """
@@ -172,6 +237,10 @@ def check_token_match(token: str, text_lower: str) -> bool:
         for form in EXPIRE_INFLECTION_FORMS:
             if re.search(r"\b" + re.escape(form) + r"\b", text_lower) is not None:
                 return True
+    # Common morphological variants (plurals, tenses, derivations)
+    for v in get_token_variants(token):
+        if re.search(r"\b" + re.escape(v) + r"\b", text_lower) is not None:
+            return True
     return False
 
 
@@ -370,46 +439,87 @@ def _filter_general_candidates(
     candidates: List[RetrievalResult],
 ) -> Tuple[List[RetrievalResult], QueryIntent, List[CandidateRelevanceAssessment]]:
     """
-    Topical relevance filtering for GENERAL_STATIC document collections.
+    Topical and semantic relevance filtering for GENERAL_STATIC document collections.
 
     Does not execute SEBI-specific circular regexes, deadline anchors, provision patterns,
-    or circular priority ordering. Uses substantive query term matching to filter out
-    unrelated passages, preserving hybrid retrieval ranking order.
+    or circular priority ordering.
+    Supports dual relevance evaluation:
+    1. Semantic similarity from dense vector representations (dense_score >= 0.65 for high confidence,
+       or dense_score >= 0.58 supported by at least one substantive token match).
+    2. Substantive lexical query term matching with morphological variant support.
+    Preserves hybrid retrieval ranking order rather than forcing keyword-only reordering.
     """
     intent = QueryIntent.GENERAL_REQUIREMENT
     assessments: List[CandidateRelevanceAssessment] = []
     relevant_candidates: List[RetrievalResult] = []
 
-    # Extract domain-neutral substantive tokens (length >= 3, excluding generic stop/meta words)
-    query_tokens = [
+    # Extract domain-neutral substantive tokens (length >= 3, excluding generic stop/meta/framing words)
+    all_query_tokens = [
         w.lower()
         for w in re.findall(r"[a-zA-Z0-9]+", query)
         if len(w) >= 3 and w.lower() not in STOP_WORDS and w.lower() not in META_INSTRUCTION_TERMS
     ]
-    unique_query_tokens = list(dict.fromkeys(query_tokens))
+    # Filter out conversational question framing words when substantive domain terms exist
+    domain_query_tokens = [w for w in all_query_tokens if w not in QUESTION_FRAMING_TERMS]
+    effective_query_tokens = domain_query_tokens if domain_query_tokens else all_query_tokens
+    unique_query_tokens = list(dict.fromkeys(effective_query_tokens))
+
+    SEMANTIC_EXCEPTIONAL_CONFIDENCE_THRESHOLD = 0.78
+    SEMANTIC_HIGH_CONFIDENCE_THRESHOLD = 0.72
+    SEMANTIC_MODERATE_CONFIDENCE_THRESHOLD = 0.65
 
     for c in candidates:
         text_lower = c.text.lower()
-        if unique_query_tokens:
-            matched = [t for t in unique_query_tokens if check_token_match(t, text_lower)]
-            min_matched = 3 if len(unique_query_tokens) >= 6 else (2 if len(unique_query_tokens) >= 3 else 1)
-            min_coverage = 0.30 if len(unique_query_tokens) >= 5 else 0.20
-            coverage = len(matched) / len(unique_query_tokens) if unique_query_tokens else 0.0
+        dense_score = _get_candidate_dense_score(c)
 
-            if len(matched) >= min_matched and coverage >= min_coverage:
-                is_relevant = True
-                decision_code = RelevanceDecisionCode.RELEVANT_EVIDENCE
-                reason = f"Passage matches {len(matched)} of {len(unique_query_tokens)} query term(s) (coverage {coverage:.1%}): {matched[:4]}."
-            else:
-                is_relevant = False
-                decision_code = RelevanceDecisionCode.INSUFFICIENT_RELEVANCE
-                reason = f"Passage does not contain sufficient substantive query terms (matched {len(matched)}/{len(unique_query_tokens)}, required {min_matched})."
-        else:
-            # Query has no substantive filter terms (e.g. very short query or only stop words)
-            # Allow retrieval results to proceed to safety gate
+        matched = [t for t in unique_query_tokens if check_token_match(t, text_lower)] if unique_query_tokens else []
+        matched_count = len(matched)
+        total_tokens = len(unique_query_tokens)
+        coverage = matched_count / total_tokens if total_tokens > 0 else 1.0
+
+        min_matched = 3 if total_tokens >= 6 else (2 if total_tokens >= 3 else 1)
+        min_coverage = 0.30 if total_tokens >= 5 else 0.20
+
+        # Criterion A: Substantive lexical keyword match
+        lexical_passed = (matched_count >= min_matched and coverage >= min_coverage)
+
+        # Criterion B: Exceptional semantic similarity (pure conceptual paraphrase without exact lexical overlap)
+        semantic_exceptional_passed = (
+            dense_score is not None and dense_score >= SEMANTIC_EXCEPTIONAL_CONFIDENCE_THRESHOLD
+        )
+
+        # Criterion C: High semantic similarity supported by at least one topical anchor
+        semantic_high_passed = (
+            dense_score is not None
+            and dense_score >= SEMANTIC_HIGH_CONFIDENCE_THRESHOLD
+            and (matched_count >= 1 or total_tokens == 0)
+        )
+
+        # Criterion D: Moderate semantic similarity supported by multiple query terms
+        semantic_moderate_passed = (
+            dense_score is not None
+            and dense_score >= SEMANTIC_MODERATE_CONFIDENCE_THRESHOLD
+            and (matched_count >= 2 and coverage >= 0.25)
+        )
+
+        if lexical_passed or semantic_exceptional_passed or semantic_high_passed or semantic_moderate_passed:
             is_relevant = True
             decision_code = RelevanceDecisionCode.RELEVANT_EVIDENCE
-            reason = "Query contains no substantive filter terms; candidate passes to safety gate."
+            if semantic_exceptional_passed:
+                reason = f"Passage exhibits exceptional semantic similarity (score {dense_score:.3f} >= {SEMANTIC_EXCEPTIONAL_CONFIDENCE_THRESHOLD}) with query."
+            elif semantic_high_passed:
+                reason = f"Passage exhibits strong semantic similarity (score {dense_score:.3f} >= {SEMANTIC_HIGH_CONFIDENCE_THRESHOLD}) and matches query anchor(s) {matched[:3]}."
+            elif semantic_moderate_passed:
+                reason = f"Passage exhibits moderate semantic similarity (score {dense_score:.3f}) and matches query term(s) {matched[:3]}."
+            else:
+                reason = f"Passage matches {matched_count} of {total_tokens} query term(s) (coverage {coverage:.1%}): {matched[:4]}."
+        else:
+            is_relevant = False
+            decision_code = RelevanceDecisionCode.INSUFFICIENT_RELEVANCE
+            if dense_score is not None:
+                reason = f"Passage does not meet relevance criteria: insufficient lexical terms (matched {matched_count}/{total_tokens}) and low semantic similarity ({dense_score:.3f} < {SEMANTIC_MODERATE_CONFIDENCE_THRESHOLD})."
+            else:
+                reason = f"Passage does not contain sufficient substantive query terms (matched {matched_count}/{total_tokens}, required {min_matched})."
 
         assessment = CandidateRelevanceAssessment(
             chunk_id=c.chunk_id,
@@ -422,15 +532,24 @@ def _filter_general_candidates(
             relevant_candidates.append(c)
 
     # Deterministic candidate ordering:
-    # Rank by coverage (fraction of matched unique tokens), then candidate RRF score
+    # Blend lexical coverage with candidate RRF / dense score to ensure passages
+    # covering all aspects of multi-faceted questions are prioritized, while
+    # preserving high semantic rankings for conceptual queries.
     if unique_query_tokens and relevant_candidates:
-        def general_coverage_key(item: RetrievalResult) -> Tuple[float, float]:
+        def general_sort_key(item: RetrievalResult) -> Tuple[float, float, str]:
             txt = item.text.lower()
             m_count = sum(1 for t in unique_query_tokens if check_token_match(t, txt))
             cov = m_count / len(unique_query_tokens)
-            return (-cov, -item.score)
+            dense_sc = _get_candidate_dense_score(item) or 0.0
+            effective_priority = max(cov, dense_sc * 0.75)
+            return (-effective_priority, -item.score, item.chunk_id)
 
-        relevant_candidates.sort(key=general_coverage_key)
+        relevant_candidates.sort(key=general_sort_key)
+    elif relevant_candidates:
+        def fallback_sort_key(item: RetrievalResult) -> Tuple[float, str]:
+            return (-item.score, item.chunk_id)
+
+        relevant_candidates.sort(key=fallback_sort_key)
 
     return relevant_candidates, intent, assessments
 

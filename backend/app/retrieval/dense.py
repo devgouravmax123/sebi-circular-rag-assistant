@@ -194,6 +194,10 @@ class DenseIndex:
             chunk = self.chunks[idx]
             doc_meta = self.doc_metadata.get(chunk.document_id)
 
+            meta = dict(chunk.metadata or {})
+            meta["dense_score"] = round(score, 6)
+            meta["retriever_type"] = "dense"
+
             result_item = RetrievalResult(
                 chunk_id=chunk.chunk_id,
                 document_id=chunk.document_id,
@@ -210,7 +214,7 @@ class DenseIndex:
                 score=round(score, 6),
                 rank=rank,
                 is_ocr=chunk.is_ocr,
-                metadata=chunk.metadata,
+                metadata=meta,
             )
             results.append(result_item)
 
@@ -314,6 +318,10 @@ class PostgresDenseIndex:
             if not _matches_filter(chunk, doc_meta, filters):
                 continue
 
+            meta = dict(chunk.metadata or {})
+            meta["dense_score"] = round(float(sim_score), 6)
+            meta["retriever_type"] = "dense"
+
             results.append(
                 RetrievalResult(
                     chunk_id=chunk.chunk_id,
@@ -331,7 +339,7 @@ class PostgresDenseIndex:
                     score=round(float(sim_score), 6),
                     rank=rank,
                     is_ocr=chunk.is_ocr,
-                    metadata=chunk.metadata,
+                    metadata=meta,
                 )
             )
             rank += 1
