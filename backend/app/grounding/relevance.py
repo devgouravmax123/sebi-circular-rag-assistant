@@ -79,6 +79,30 @@ SYNONYM_EXPANSIONS = {
     "deadlines": ["deadline", "deadlines", "timeline", "timelines"],
     "timeline": ["deadline", "deadlines", "timeline", "timelines"],
     "timelines": ["deadline", "deadlines", "timeline", "timelines"],
+    # Professional, academic, and document intelligence vocabulary expansions
+    "internship": ["internship", "internships", "intern", "interns", "training", "trainee", "trainees", "traineeship", "apprenticeship", "apprentice", "practicum", "industrial training", "placement"],
+    "internships": ["internship", "internships", "intern", "interns", "training", "trainee", "trainees", "traineeship", "apprenticeship", "apprentice", "practicum", "industrial training", "placement"],
+    "intern": ["intern", "interns", "internship", "internships", "trainee", "trainees", "training", "apprentice"],
+    "interns": ["intern", "interns", "internship", "internships", "trainee", "trainees", "training", "apprentice"],
+    "training": ["training", "trainee", "trainees", "internship", "internships", "intern", "interns", "traineeship", "apprenticeship", "apprentice", "practicum", "course", "programme", "program"],
+    "trainee": ["training", "trainee", "trainees", "internship", "internships", "intern", "interns", "traineeship", "apprenticeship", "apprentice"],
+    "trainees": ["training", "trainee", "trainees", "internship", "internships", "intern", "interns", "traineeship", "apprenticeship", "apprentice"],
+    "apply": ["apply", "applying", "application", "applications", "applicant", "applicants", "eligibility", "eligible", "enrol", "enrollment", "registration"],
+    "applying": ["apply", "applying", "application", "applications", "applicant", "applicants", "eligibility", "eligible", "enrol", "enrollment", "registration"],
+    "application": ["apply", "applying", "application", "applications", "applicant", "applicants", "eligibility", "eligible", "enrol", "enrollment", "registration"],
+    "applications": ["apply", "applying", "application", "applications", "applicant", "applicants", "eligibility", "eligible", "enrol", "enrollment", "registration"],
+    "applicant": ["apply", "applying", "application", "applications", "applicant", "applicants", "eligibility", "eligible", "candidate"],
+    "applicants": ["apply", "applying", "application", "applications", "applicant", "applicants", "eligibility", "eligible", "candidates"],
+    "eligibility": ["eligibility", "eligible", "criteria", "requirements", "requirement", "prerequisites", "qualifications", "apply", "applicant"],
+    "eligible": ["eligibility", "eligible", "criteria", "requirements", "requirement", "prerequisites", "qualifications", "apply"],
+    "requirements": ["requirements", "requirement", "criteria", "prerequisites", "qualifications", "rules", "eligibility", "mandatory"],
+    "requirement": ["requirements", "requirement", "criteria", "prerequisites", "qualifications", "rules", "eligibility", "mandatory"],
+    "stipend": ["stipend", "stipends", "allowance", "salary", "pay", "remuneration", "compensation"],
+    "stipends": ["stipend", "stipends", "allowance", "salary", "pay", "remuneration", "compensation"],
+    "guidelines": ["guidelines", "guideline", "guide", "policy", "rules", "procedures", "manual", "handbook", "instructions"],
+    "guideline": ["guidelines", "guideline", "guide", "policy", "rules", "procedures", "manual", "handbook", "instructions"],
+    "objective": ["objective", "objectives", "purpose", "scope", "overview", "goals", "aim"],
+    "objectives": ["objective", "objectives", "purpose", "scope", "overview", "goals", "aim"],
 }
 
 # Generic cybersecurity vocabulary common across all frameworks (both CSCRF and external standards)
@@ -156,6 +180,16 @@ def get_token_variants(token: str) -> Set[str]:
     elif t.endswith("tion") and len(t) > 5:
         variants.add(t[:-4] + "te")
         variants.add(t[:-4])
+    elif t.endswith("ship") and len(t) > 6:
+        variants.add(t[:-4])
+    elif t.endswith("ment") and len(t) > 6:
+        variants.add(t[:-4])
+    elif t.endswith("ant") and len(t) > 5:
+        variants.add(t[:-3])
+        variants.add(t[:-3] + "y")
+    elif t.endswith("ee") and len(t) > 4:
+        variants.add(t[:-2])
+        variants.add(t[:-1])
 
     return {v for v in variants if len(v) >= 3 and v != t}
 
@@ -434,6 +468,22 @@ def assess_candidate_relevance(
     )
 
 
+def is_administrative_form_chunk(text: str) -> bool:
+    """
+    Detects chunks that are predominantly administrative forms, hall tickets, admit cards,
+    or tabular candidate examination records lacking explanatory prose.
+    """
+    txt = text.lower()
+    admin_markers = [
+        "admit card", "hall ticket", "roll number", "roll no", "enrolment no",
+        "registration no", "candidate name", "father's name", "examination centre",
+        "exam centre", "centre code", "signature of candidate", "invigilator signature",
+        "reporting time", "gate closure", "seat number", "test date",
+    ]
+    matches = sum(1 for m in admin_markers if m in txt)
+    return matches >= 2
+
+
 def _filter_general_candidates(
     query: str,
     candidates: List[RetrievalResult],
@@ -444,9 +494,9 @@ def _filter_general_candidates(
     Does not execute SEBI-specific circular regexes, deadline anchors, provision patterns,
     or circular priority ordering.
     Supports dual relevance evaluation:
-    1. Semantic similarity from dense vector representations (dense_score >= 0.65 for high confidence,
-       or dense_score >= 0.58 supported by at least one substantive token match).
-    2. Substantive lexical query term matching with morphological variant support.
+    1. Semantic similarity from dense vector representations (dense_score >= 0.68 for high confidence,
+       or dense_score >= 0.50 supported by at least one substantive token match).
+    2. Substantive lexical query term matching with morphological variant and synonym support.
     Preserves hybrid retrieval ranking order rather than forcing keyword-only reordering.
     """
     intent = QueryIntent.GENERAL_REQUIREMENT
@@ -496,10 +546,11 @@ def _filter_general_candidates(
         )
 
         # Criterion D: Moderate semantic similarity supported by multiple query terms
+        min_moderate_matched = 2 if total_tokens >= 3 else 1
         semantic_moderate_passed = (
             dense_score is not None
             and dense_score >= SEMANTIC_MODERATE_CONFIDENCE_THRESHOLD
-            and (matched_count >= 2 and coverage >= 0.25)
+            and (matched_count >= min_moderate_matched and coverage >= 0.25)
         )
 
         if lexical_passed or semantic_exceptional_passed or semantic_high_passed or semantic_moderate_passed:
@@ -531,23 +582,34 @@ def _filter_general_candidates(
         if is_relevant:
             relevant_candidates.append(c)
 
+    # Check whether query is explanatory/descriptive
+    is_explanatory_query = bool(
+        re.search(
+            r"\b(?:what\s+is|what\s+are|explain|describe|overview|purpose|about|details?|eligibility|requirements?|how\s+to|who\s+can)\b",
+            query.lower(),
+        )
+    )
+
     # Deterministic candidate ordering:
     # Blend lexical coverage with candidate RRF / dense score to ensure passages
     # covering all aspects of multi-faceted questions are prioritized, while
     # preserving high semantic rankings for conceptual queries.
     if unique_query_tokens and relevant_candidates:
-        def general_sort_key(item: RetrievalResult) -> Tuple[float, float, str]:
+        def general_sort_key(item: RetrievalResult) -> Tuple[int, float, float, str]:
             txt = item.text.lower()
+            # In explanatory queries, deprioritize administrative form chunks behind descriptive passages
+            is_admin = 1 if (is_explanatory_query and is_administrative_form_chunk(item.text)) else 0
             m_count = sum(1 for t in unique_query_tokens if check_token_match(t, txt))
             cov = m_count / len(unique_query_tokens)
             dense_sc = _get_candidate_dense_score(item) or 0.0
             effective_priority = max(cov, dense_sc * 0.75)
-            return (-effective_priority, -item.score, item.chunk_id)
+            return (is_admin, -effective_priority, -item.score, item.chunk_id)
 
         relevant_candidates.sort(key=general_sort_key)
     elif relevant_candidates:
-        def fallback_sort_key(item: RetrievalResult) -> Tuple[float, str]:
-            return (-item.score, item.chunk_id)
+        def fallback_sort_key(item: RetrievalResult) -> Tuple[int, float, str]:
+            is_admin = 1 if (is_explanatory_query and is_administrative_form_chunk(item.text)) else 0
+            return (is_admin, -item.score, item.chunk_id)
 
         relevant_candidates.sort(key=fallback_sort_key)
 

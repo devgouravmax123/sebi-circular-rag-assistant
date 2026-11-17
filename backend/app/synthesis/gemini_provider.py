@@ -381,35 +381,87 @@ class GeminiSynthesisProvider(SynthesisProvider):
             raise SynthesisMalformedOutputError("Gemini structured output is not a JSON object.")
 
         # 8. Validate schema fields into typed SynthesisOutput
-        raw_status = structured_data.get("status", "FULLY_ANSWERED")
+        raw_status = str(structured_data.get("status", "FULLY_ANSWERED")).strip()
         try:
             status = SynthesisStatus(raw_status)
-        except ValueError:
-            status = SynthesisStatus.FULLY_ANSWERED
+        except (ValueError, TypeError):
+            upper_status = raw_status.upper()
+            if upper_status in ("ABSTAINED", "ABSTAIN", "CANNOT_ANSWER", "UNANSWERED"):
+                status = SynthesisStatus.ABSTAINED
+            elif upper_status in ("FULLY_ANSWERED", "ANSWERED", "COMPLETE"):
+                status = SynthesisStatus.FULLY_ANSWERED
+            else:
+                status = SynthesisStatus.PARTIALLY_ANSWERED
 
-        answer = str(structured_data.get("answer", "")).strip()
-        if not answer:
-            raise SynthesisMalformedOutputError("Gemini structured output 'answer' field is empty.")
-
-        claims_raw = structured_data.get("claims", [])
+        claims_raw = (
+            structured_data.get("claims")
+            or structured_data.get("claim_citations")
+            or structured_data.get("claim_list")
+            or []
+        )
         claims: List[ClaimCitation] = []
         if isinstance(claims_raw, list):
             for c in claims_raw:
-                if isinstance(c, dict) and "claim_text" in c and "supporting_chunk_ids" in c:
-                    ctext = str(c["claim_text"]).strip()
-                    cchunks = [str(cid).strip() for cid in c["supporting_chunk_ids"] if str(cid).strip()]
-                    if ctext and cchunks:
-                        claims.append(ClaimCitation(claim_text=ctext, supporting_chunk_ids=cchunks))
+                if isinstance(c, dict):
+                    ctext = str(c.get("claim_text") or c.get("text") or c.get("claim") or "").strip()
+                    cchunks = (
+                        c.get("supporting_chunk_ids")
+                        or c.get("chunk_ids")
+                        or c.get("chunks")
+                        or []
+                    )
+                    cleaned_chunks = [str(cid).strip() for cid in cchunks if str(cid).strip()] if isinstance(cchunks, list) else []
+                    if ctext and cleaned_chunks:
+                        claims.append(ClaimCitation(claim_text=ctext, supporting_chunk_ids=cleaned_chunks))
 
-        unresolved_raw = structured_data.get("unresolved_subquestions", [])
+        unresolved_raw = (
+            structured_data.get("unresolved_subquestions")
+            or structured_data.get("unresolved")
+            or structured_data.get("subquestions")
+            or []
+        )
         unresolved: List[UnresolvedSubquestion] = []
         if isinstance(unresolved_raw, list):
             for u in unresolved_raw:
-                if isinstance(u, dict) and "subquestion" in u and "reason" in u:
-                    sq = str(u["subquestion"]).strip()
-                    rs = str(u["reason"]).strip()
+                if isinstance(u, dict):
+                    sq = str(u.get("subquestion") or u.get("question") or u.get("sub_question") or "").strip()
+                    rs = str(u.get("reason") or u.get("explanation") or u.get("details") or "").strip()
                     if sq and rs:
                         unresolved.append(UnresolvedSubquestion(subquestion=sq, reason=rs))
+
+        answer_candidates = [
+            structured_data.get("answer"),
+            structured_data.get("direct_answer"),
+            structured_data.get("response"),
+            structured_data.get("summary"),
+            structured_data.get("text"),
+            structured_data.get("synthesized_answer"),
+            structured_data.get("abstention_note"),
+            structured_data.get("abstention_reason"),
+            structured_data.get("message"),
+        ]
+        answer = ""
+        for cand in answer_candidates:
+            if isinstance(cand, str) and cand.strip():
+                answer = cand.strip()
+                break
+
+        # Fallback handling for missing or blank answer field
+        if not answer:
+            if status == SynthesisStatus.ABSTAINED:
+                if unresolved:
+                    reasons = "; ".join(u.reason for u in unresolved if u.reason)
+                    answer = f"Controlled Abstention: The provided document excerpts do not contain sufficient evidence to answer this question. {reasons}".strip()
+                else:
+                    answer = "Controlled Abstention: The provided document excerpts do not contain sufficient evidence to answer this question."
+            elif claims:
+                answer = " ".join(c.claim_text for c in claims if c.claim_text).strip()
+            elif unresolved:
+                answer = f"Controlled Abstention: {'; '.join(u.reason for u in unresolved if u.reason)}".strip()
+                status = SynthesisStatus.ABSTAINED
+
+        if not answer:
+            raise SynthesisMalformedOutputError("Gemini structured output 'answer' field is empty.")
 
         return SynthesisOutput(
             status=status,

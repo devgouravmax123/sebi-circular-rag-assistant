@@ -252,11 +252,12 @@ export const ResultsPanel = ({
             desc: 'Direct grounded synthesis generated from retrieved evidence.',
           };
 
+        const isAbstained = response.synthesis_status === 'ABSTAINED';
         const showFailureReason =
           Boolean(response.synthesis_failure_reason) &&
           (response.synthesis_status === 'PROVIDER_FAILED' ||
             response.synthesis_status === 'UNSUPPORTED_CLAIMS_REJECTED' ||
-            response.synthesis_status === 'ABSTAINED');
+            isAbstained);
 
         const isMockMode =
           Boolean(response.answer_text?.includes('[MOCK SYNTHESIS')) ||
@@ -348,13 +349,19 @@ export const ResultsPanel = ({
               </div>
             )}
 
-            {/* Safe Failure Reason if useful */}
+            {/* Safe Failure / Abstention Note if useful */}
             {showFailureReason && (
               <div
                 data-testid="synthesis-failure-reason"
-                className="mt-2 bg-rose-950/40 border border-rose-900/50 rounded-lg p-2.5 text-xs text-rose-300"
+                className={`mt-2 rounded-lg p-2.5 text-xs ${
+                  isAbstained
+                    ? 'bg-slate-950/50 border border-slate-800 text-slate-300'
+                    : 'bg-rose-950/40 border border-rose-900/50 text-rose-300'
+                }`}
               >
-                <span className="font-semibold text-rose-400">Synthesis Note: </span>
+                <span className={`font-semibold ${isAbstained ? 'text-amber-400' : 'text-rose-400'}`}>
+                  {isAbstained ? 'Abstention Detail: ' : 'Synthesis Note: '}
+                </span>
                 {response.synthesis_failure_reason}
               </div>
             )}
