@@ -168,7 +168,7 @@ export function DashboardView({
           </div>
           <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between">
             <span className="text-[11px] text-slate-400">Accuracy Gate</span>
-            <span className="text-[11px] font-medium text-teal-400">Zero Hallucinations</span>
+            <span className="text-[11px] font-medium text-teal-400">Deterministic Citation Validation</span>
           </div>
         </div>
 
