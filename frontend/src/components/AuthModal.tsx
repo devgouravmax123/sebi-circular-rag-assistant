@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 
 export type AuthModalMode = 'login' | 'signup' | 'verify-email' | 'forgot-password' | 'link-legacy';
@@ -208,9 +209,9 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
     }
   };
 
-  return (
+  const modalContent = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn"
+      className="fixed inset-0 z-50 grid place-items-center overflow-hidden p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -218,7 +219,7 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
       <div
         ref={modalRef}
         tabIndex={-1}
-        className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 sm:p-6 flex flex-col gap-3.5 sm:gap-4 text-slate-100 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] overflow-hidden outline-none"
+        className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 sm:p-6 flex flex-col gap-3.5 sm:gap-4 text-slate-100 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2rem)] min-h-0 overflow-hidden outline-none"
         role="dialog"
         aria-modal="true"
         aria-labelledby="auth-modal-title"
@@ -526,4 +527,9 @@ export function AuthModal({ isOpen, onClose, defaultMode = 'login' }: AuthModalP
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(modalContent, document.body);
+  }
+  return modalContent;
 }

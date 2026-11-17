@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../context/AuthContext';
 import { useWorkspace } from '../context/WorkspaceContext';
 import type { WorkspaceRole, WorkspaceMember, CollectionIngestionJob, CollectionDocument } from '../types/workspace';
@@ -442,9 +443,9 @@ export function WorkspaceManageModal({
     }
   };
 
-  return (
+  const modalContent = (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-sm animate-fadeIn"
+      className="fixed inset-0 z-50 grid place-items-center overflow-hidden p-3 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-sm animate-fadeIn"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -452,13 +453,13 @@ export function WorkspaceManageModal({
       <div
         ref={modalRef}
         tabIndex={-1}
-        className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 sm:p-6 flex flex-col gap-3.5 sm:gap-4 text-slate-100 max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] overflow-hidden outline-none"
+        className="w-full max-w-3xl flex flex-col max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-3rem)] min-h-0 overflow-hidden bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-4 sm:p-6 text-slate-100 outline-none"
         role="dialog"
         aria-modal="true"
         aria-labelledby="workspace-modal-title"
       >
         {/* Header */}
-        <div className="flex items-start justify-between border-b border-slate-800 pb-3 sm:pb-4 shrink-0">
+        <div className="shrink-0 flex items-start justify-between border-b border-slate-800 pb-3 sm:pb-4">
           <div>
             <div className="flex items-center gap-2.5">
               <h2 id="workspace-modal-title" className="text-lg font-semibold tracking-tight text-white">
@@ -487,7 +488,7 @@ export function WorkspaceManageModal({
         </div>
 
         {/* Tab Buttons */}
-        <div className="flex items-center gap-1.5 sm:gap-2 border-b border-slate-800 pb-2 overflow-x-auto no-scrollbar shrink-0">
+        <div className="shrink-0 flex items-center gap-1.5 sm:gap-2 border-b border-slate-800 py-2 overflow-x-auto no-scrollbar">
           <button
             onClick={() => setActiveTab('collections')}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition cursor-pointer ${
@@ -1097,4 +1098,9 @@ export function WorkspaceManageModal({
       </div>
     </div>
   );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(modalContent, document.body);
+  }
+  return modalContent;
 }

@@ -960,7 +960,7 @@ test('23. WorkspaceManageModal & AuthModal: responsive viewport bounds and no ov
   );
 
   // 1. Overlay container must be a fixed full-screen centered overlay with safe padding and NO nested scrollbar
-  assert.match(wsModalHtml, /fixed inset-0 z-50 flex items-center justify-center/, 'Overlay uses fixed full-screen centered layout');
+  assert.match(wsModalHtml, /fixed inset-0 z-50 (grid place-items-center|flex items-center justify-center)/, 'Overlay uses fixed full-screen centered layout');
   assert.match(wsModalHtml, /p-3 sm:p-4 md:p-6/, 'Overlay provides safe viewport padding on all sides');
 
   // 2. Modal shell must clamp to dynamic dvh and use overflow-hidden frame
@@ -992,7 +992,7 @@ test('23. WorkspaceManageModal & AuthModal: responsive viewport bounds and no ov
       defaultMode: 'login',
     })
   );
-  assert.match(authModalHtml, /fixed inset-0 z-50 flex items-center justify-center/, 'AuthModal overlay uses fixed full-screen centered layout');
+  assert.match(authModalHtml, /fixed inset-0 z-50 (grid place-items-center|flex items-center justify-center)/, 'AuthModal overlay uses fixed full-screen centered layout');
   assert.match(authModalHtml, /max-h-\[calc\(100dvh-1\.5rem\)\] sm:max-h-\[calc\(100dvh-2rem\)\]/, 'AuthModal shell uses 100dvh bounding');
   assert.match(authModalHtml, /overflow-hidden/, 'AuthModal shell uses overflow-hidden');
   assert.match(authModalHtml, /flex-1 min-h-0 overflow-y-auto/, 'AuthModal content is single scrollable region');
