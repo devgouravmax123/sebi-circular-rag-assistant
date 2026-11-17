@@ -20,6 +20,7 @@ from app.models.auth import UserModel, WorkspaceModel, WorkspaceMembershipModel
 from app.models.guest import GuestSessionModel
 from app.services.guest_service import _memory_guest_sessions, get_guest_workspace_id
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,116 @@ def get_db_session(settings: Settings = Depends(get_settings)) -> Generator[Sess
         session.close()
 
 
+def ensure_user_personal_workspace(user: UserModel, db: Session) -> WorkspaceModel:
+    """
+    Ensures that a user has access to at least one workspace.
+    Idempotent and concurrency-safe:
+    - If user already has any workspace membership, reuses it without altering role or workspace.
+    - Preserves existing membership roles (never overwrites editor/viewer with owner).
+    - In PostgreSQL, inserting a non-system workspace with owner_id fires trigger
+      trg_maintain_workspace_owner_membership, which automatically inserts an 'owner' membership.
+    - In non-Postgres environments (e.g. SQLite tests without triggers), membership is created safely.
+    - Protects against concurrent workspace creation and membership insertion races using savepoints.
+    """
+    # 1. Check if user already has ANY workspace membership
+    existing_membership = (
+        db.query(WorkspaceMembershipModel)
+        .filter(WorkspaceMembershipModel.user_id == user.id)
+        .first()
+    )
+    if existing_membership:
+        ws = db.query(WorkspaceModel).filter(WorkspaceModel.id == existing_membership.workspace_id).first()
+        if ws:
+            return ws
+
+    # 2. Check if user owns an existing non-system workspace
+    owned_ws = (
+        db.query(WorkspaceModel)
+        .filter(WorkspaceModel.owner_id == user.id, WorkspaceModel.is_system == False)
+        .first()
+    )
+    if owned_ws:
+        # Check if membership exists for (owned_ws.id, user.id)
+        mem = (
+            db.query(WorkspaceMembershipModel)
+            .filter(
+                WorkspaceMembershipModel.workspace_id == owned_ws.id,
+                WorkspaceMembershipModel.user_id == user.id,
+            )
+            .first()
+        )
+        if not mem:
+            try:
+                with db.begin_nested():
+                    new_mem = WorkspaceMembershipModel(
+                        workspace_id=owned_ws.id,
+                        user_id=user.id,
+                        role="owner",
+                    )
+                    db.add(new_mem)
+                    db.flush()
+            except IntegrityError:
+                # Concurrent insert or trigger handled
+                pass
+        return owned_ws
+
+    # 3. Create a new personal workspace for the user
+    display_name = user.full_name or (user.email.split("@")[0] if user.email else "User")
+    base_slug = f"ws-{user.id.hex[:12]}"
+    slug = base_slug
+    suffix = 1
+    while db.query(WorkspaceModel.id).filter(func.lower(WorkspaceModel.slug) == slug.lower()).first():
+        slug = f"{base_slug}-{suffix}"
+        suffix += 1
+
+    ws = WorkspaceModel(
+        name=f"{display_name}'s Workspace",
+        slug=slug,
+        is_system=False,
+        owner_id=user.id,
+    )
+    try:
+        with db.begin_nested():
+            db.add(ws)
+            db.flush()
+    except IntegrityError:
+        # Workspace slug race or concurrent creation: query existing
+        existing_ws = (
+            db.query(WorkspaceModel)
+            .filter(WorkspaceModel.owner_id == user.id, WorkspaceModel.is_system == False)
+            .first()
+        )
+        if existing_ws:
+            return existing_ws
+        raise
+
+    # 4. In PostgreSQL, trg_maintain_workspace_owner_membership creates the membership row automatically.
+    # Check if membership was created by trigger; if not (e.g. SQLite), insert it safely.
+    mem = (
+        db.query(WorkspaceMembershipModel)
+        .filter(
+            WorkspaceMembershipModel.workspace_id == ws.id,
+            WorkspaceMembershipModel.user_id == user.id,
+        )
+        .first()
+    )
+    if not mem:
+        try:
+            with db.begin_nested():
+                new_mem = WorkspaceMembershipModel(
+                    workspace_id=ws.id,
+                    user_id=user.id,
+                    role="owner",
+                )
+                db.add(new_mem)
+                db.flush()
+        except IntegrityError:
+            # Trigger or concurrent insert won the race
+            pass
+
+    return ws
+
+
 def resolve_firebase_user(
     token: str,
     db: Session,
@@ -73,6 +184,7 @@ def resolve_firebase_user(
     Attempts to verify a Firebase ID token and resolve or create the associated application user.
     Enforces that email_verified is True.
     Safely handles legacy accounts by refusing automatic email-based merging.
+    Idempotent and concurrency-safe across repeated and parallel requests.
     """
     try:
         decoded = verify_firebase_id_token(token)
@@ -108,10 +220,21 @@ def resolve_firebase_user(
                 detail="User account is deactivated.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        needs_commit = False
         if not user.email_verified:
             user.email_verified = True
-            db.commit()
-            db.refresh(user)
+            needs_commit = True
+
+        ensure_user_personal_workspace(user, db)
+        needs_commit = True
+
+        if needs_commit:
+            try:
+                db.commit()
+                db.refresh(user)
+            except IntegrityError:
+                db.rollback()
+                user = db.query(UserModel).filter(UserModel.firebase_uid == firebase_uid).first()
         return user
 
     # 2. Check if an unlinked legacy user exists with the exact same email
@@ -133,27 +256,49 @@ def resolve_firebase_user(
         is_active=True,
         hashed_password=None,
     )
-    db.add(new_user)
-    db.flush()
+    try:
+        with db.begin_nested():
+            db.add(new_user)
+            db.flush()
+    except IntegrityError:
+        # Race condition: User was created concurrently by another request
+        db.rollback()
+        user = db.query(UserModel).filter(UserModel.firebase_uid == firebase_uid).first()
+        if user:
+            ensure_user_personal_workspace(user, db)
+            try:
+                db.commit()
+                db.refresh(user)
+            except IntegrityError:
+                db.rollback()
+                user = db.query(UserModel).filter(UserModel.firebase_uid == firebase_uid).first()
+            return user
+        legacy_user = db.query(UserModel).filter(func.lower(UserModel.email) == normalized_email).first()
+        if legacy_user:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An existing account is registered with this email address. Please link your existing account by confirming your previous password.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        raise
 
-    display_name = new_user.full_name or normalized_email.split("@")[0]
-    ws = WorkspaceModel(
-        name=f"{display_name}'s Workspace",
-        slug=f"ws-{new_user.id.hex[:12]}",
-        is_system=False,
-        owner_id=new_user.id,
-    )
-    db.add(ws)
-    db.flush()
+    ensure_user_personal_workspace(new_user, db)
+    try:
+        db.commit()
+        db.refresh(new_user)
+    except IntegrityError:
+        db.rollback()
+        user = db.query(UserModel).filter(UserModel.firebase_uid == firebase_uid).first()
+        if user:
+            ensure_user_personal_workspace(user, db)
+            try:
+                db.commit()
+                db.refresh(user)
+            except IntegrityError:
+                db.rollback()
+            return user
+        raise
 
-    membership = WorkspaceMembershipModel(
-        workspace_id=ws.id,
-        user_id=new_user.id,
-        role="owner",
-    )
-    db.add(membership)
-    db.commit()
-    db.refresh(new_user)
     logger.info(f"Created new user from verified Firebase identity: {new_user.id} (UID: {firebase_uid})")
     return new_user
 

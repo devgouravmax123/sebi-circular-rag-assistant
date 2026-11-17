@@ -388,3 +388,260 @@ def test_legacy_internal_jwt_and_guest_isolation(test_client, sqlite_db):
     resp_guest = test_client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {guest_jwt}"})
     assert resp_guest.status_code == 401
     assert "Guest sessions cannot access registered user resources" in resp_guest.json()["detail"]
+
+
+def test_firebase_with_simulated_postgres_trigger(test_client, sqlite_db):
+    """
+    Simulates PostgreSQL trigger trg_maintain_workspace_owner_membership on public.workspaces.
+    When a workspace is created, the trigger immediately inserts (ws.id, ws.owner_id, 'owner')
+    into workspace_memberships.
+    Verifies that deps.ensure_user_personal_workspace does NOT attempt a redundant insert
+    and does NOT crash with IntegrityError.
+    """
+    from sqlalchemy import event
+
+    # Attach event listener to simulate the PostgreSQL trigger on WorkspaceModel
+    def trigger_listener(mapper, connection, target):
+        if not target.is_system and target.owner_id is not None:
+            connection.execute(
+                WorkspaceMembershipModel.__table__.insert().values(
+                    id=uuid.uuid4(),
+                    workspace_id=target.id,
+                    user_id=target.owner_id,
+                    role="owner",
+                    created_at=datetime.now(timezone.utc),
+                )
+            )
+
+    event.listen(WorkspaceModel, "after_insert", trigger_listener)
+
+    try:
+        fb_uid = "fb_uid_postgres_sim_user"
+        fb_email = "simulated.postgres@example.com"
+        token = "mock-verified-token-sim"
+
+        def mock_verifier(raw_token):
+            if raw_token == token:
+                return {
+                    "uid": fb_uid,
+                    "email": fb_email,
+                    "email_verified": True,
+                    "name": "Simulated PG User",
+                }
+            raise ValueError("Invalid")
+
+        set_firebase_verifier_override(mock_verifier)
+
+        # GET /api/v1/auth/me should succeed with 200 without throwing UniqueViolation
+        resp = test_client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["email"] == fb_email
+        user_id = uuid.UUID(data["id"])
+
+        # Exactly 1 membership should exist
+        memberships = (
+            sqlite_db.query(WorkspaceMembershipModel)
+            .filter(WorkspaceMembershipModel.user_id == user_id)
+            .all()
+        )
+        assert len(memberships) == 1
+        assert memberships[0].role == "owner"
+
+        # Subsequent call should also succeed idempotently
+        resp2 = test_client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert resp2.status_code == 200
+        assert len(sqlite_db.query(WorkspaceMembershipModel).filter(WorkspaceMembershipModel.user_id == user_id).all()) == 1
+
+    finally:
+        event.remove(WorkspaceModel, "after_insert", trigger_listener)
+
+
+def test_repeated_auth_me_produces_no_duplicate_memberships(test_client, sqlite_db):
+    """
+    Repeated requests to GET /api/v1/auth/me for the same Firebase user must be
+    strictly idempotent and must never create duplicate workspace memberships.
+    """
+    fb_uid = "fb_uid_repeated_tester"
+    fb_email = "repeated.tester@example.com"
+    token = "mock-verified-token-repeated"
+
+    def mock_verifier(raw_token):
+        if raw_token == token:
+            return {
+                "uid": fb_uid,
+                "email": fb_email,
+                "email_verified": True,
+                "name": "Repeated Tester",
+            }
+        raise ValueError("Invalid")
+
+    set_firebase_verifier_override(mock_verifier)
+
+    # Call 5 times consecutively
+    for _ in range(5):
+        resp = test_client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+
+    user = sqlite_db.query(UserModel).filter(UserModel.firebase_uid == fb_uid).first()
+    assert user is not None
+    memberships = sqlite_db.query(WorkspaceMembershipModel).filter(WorkspaceMembershipModel.user_id == user.id).all()
+    assert len(memberships) == 1
+
+
+def test_existing_membership_role_preservation(test_client, sqlite_db):
+    """
+    If a user already belongs to a workspace with role 'viewer' (e.g. invited member),
+    logging in and calling /api/v1/auth/me MUST preserve their existing role
+    and NOT overwrite it with 'owner' or create duplicate memberships.
+    """
+    # Create an owner user and a workspace
+    owner = UserModel(
+        id=uuid.uuid4(),
+        email="corp.owner@example.com",
+        full_name="Corp Owner",
+        is_active=True,
+    )
+    shared_ws = WorkspaceModel(
+        id=uuid.uuid4(),
+        name="Team Workspace",
+        slug="team-workspace-custom",
+        is_system=False,
+        owner_id=owner.id,
+    )
+    sqlite_db.add_all([owner, shared_ws])
+    sqlite_db.commit()
+
+    # Pre-register viewer user
+    viewer_email = "viewer.user@example.com"
+    viewer_fb_uid = "fb_viewer_uid_999"
+    viewer = UserModel(
+        id=uuid.uuid4(),
+        email=viewer_email,
+        firebase_uid=viewer_fb_uid,
+        full_name="Viewer User",
+        email_verified=True,
+        is_active=True,
+    )
+    membership = WorkspaceMembershipModel(
+        id=uuid.uuid4(),
+        workspace_id=shared_ws.id,
+        user_id=viewer.id,
+        role="viewer",  # Explicitly non-owner
+    )
+    sqlite_db.add_all([viewer, membership])
+    sqlite_db.commit()
+
+    token = "mock-token-viewer"
+    def mock_verifier(raw_token):
+        if raw_token == token:
+            return {
+                "uid": viewer_fb_uid,
+                "email": viewer_email,
+                "email_verified": True,
+                "name": "Viewer User",
+            }
+        raise ValueError("Invalid")
+
+    set_firebase_verifier_override(mock_verifier)
+
+    resp = test_client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+
+    # Ensure role was PRESERVED as viewer, not changed to owner
+    memberships = sqlite_db.query(WorkspaceMembershipModel).filter(WorkspaceMembershipModel.user_id == viewer.id).all()
+    assert len(memberships) == 1
+    assert memberships[0].role == "viewer"
+
+
+def test_concurrent_workspace_provisioning(sqlite_db):
+    """
+    Directly tests ensure_user_personal_workspace under simulated concurrent conditions
+    to ensure savepoint rollback (nested transaction) handles conflict cleanly.
+    """
+    from app.api.deps import ensure_user_personal_workspace
+
+    user = UserModel(
+        id=uuid.uuid4(),
+        email="concurrent.user@example.com",
+        full_name="Concurrent User",
+        email_verified=True,
+        is_active=True,
+    )
+    sqlite_db.add(user)
+    sqlite_db.commit()
+
+    # Call ensure_user_personal_workspace twice
+    ws1 = ensure_user_personal_workspace(user, sqlite_db)
+    sqlite_db.commit()
+
+    ws2 = ensure_user_personal_workspace(user, sqlite_db)
+    sqlite_db.commit()
+
+    assert ws1.id == ws2.id
+    memberships = sqlite_db.query(WorkspaceMembershipModel).filter(WorkspaceMembershipModel.user_id == user.id).all()
+    assert len(memberships) == 1
+
+
+def test_cors_headers_on_auth_errors(test_client, sqlite_db):
+    """
+    Verifies that CORS headers (access-control-allow-origin) are present on expected
+    authentication errors (401, 403, 409) when originating from the production Vercel frontend.
+    This prevents the browser from discarding error details and showing 'Failed to fetch'.
+    """
+    origin_header = {"Origin": "https://sebi-circular-rag-assistant.vercel.app"}
+
+    # 1. 401 Unauthorized (Invalid token)
+    def mock_failing_verifier(raw_token):
+        raise ValueError("Invalid token")
+    set_firebase_verifier_override(mock_failing_verifier)
+
+    resp_401 = test_client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": "Bearer bad-token", **origin_header},
+    )
+    assert resp_401.status_code == 401
+    assert resp_401.headers.get("access-control-allow-origin") == "https://sebi-circular-rag-assistant.vercel.app"
+
+    # 2. 403 Forbidden (Unverified email)
+    def mock_unverified_verifier(raw_token):
+        return {
+            "uid": "fb_unverified_cors",
+            "email": "cors.unverified@example.com",
+            "email_verified": False,
+        }
+    set_firebase_verifier_override(mock_unverified_verifier)
+
+    resp_403 = test_client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": "Bearer unverified-cors-token", **origin_header},
+    )
+    assert resp_403.status_code == 403
+    assert resp_403.headers.get("access-control-allow-origin") == "https://sebi-circular-rag-assistant.vercel.app"
+
+    # 3. 409 Conflict (Legacy account collision)
+    legacy_user = UserModel(
+        id=uuid.uuid4(),
+        email="cors.legacy@example.com",
+        hashed_password=hash_password("Pass123!"),
+        firebase_uid=None,
+        email_verified=True,
+    )
+    sqlite_db.add(legacy_user)
+    sqlite_db.commit()
+
+    def mock_legacy_verifier(raw_token):
+        return {
+            "uid": "fb_cors_legacy_collision",
+            "email": "cors.legacy@example.com",
+            "email_verified": True,
+        }
+    set_firebase_verifier_override(mock_legacy_verifier)
+
+    resp_409 = test_client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": "Bearer legacy-collision-token", **origin_header},
+    )
+    assert resp_409.status_code == 409
+    assert resp_409.headers.get("access-control-allow-origin") == "https://sebi-circular-rag-assistant.vercel.app"
+

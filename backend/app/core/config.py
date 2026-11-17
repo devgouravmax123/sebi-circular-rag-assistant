@@ -36,7 +36,12 @@ class Settings(BaseModel):
         default_factory=lambda: os.getenv("WORKER_DATABASE_URL"),
         validate_default=True,
     )
-    frontend_origin: str = Field(default_factory=lambda: os.getenv("FRONTEND_ORIGIN", "http://localhost:5173"))
+    frontend_origin: str = Field(
+        default_factory=lambda: os.getenv(
+            "FRONTEND_ORIGIN",
+            "http://localhost:5173,http://127.0.0.1:5173,https://sebi-circular-rag-assistant.vercel.app",
+        )
+    )
     processed_dir: str = Field(default_factory=lambda: os.getenv("PROCESSED_DIR", "data/processed"))
     indexes_dir: str = Field(default_factory=lambda: os.getenv("INDEXES_DIR", "data/indexes"))
     raw_dir: str = Field(default_factory=lambda: os.getenv("RAW_DIR", "data/raw"))
@@ -131,14 +136,22 @@ class Settings(BaseModel):
     def allowed_cors_origins(self) -> list[str]:
         """
         Parses allowed frontend origins safely.
-        In development: defaults to localhost:5173.
+        In development: defaults to localhost:5173 and Vercel production.
         In production: rejects wildcard origins ('*') when allow_credentials is True.
         """
         raw = self.frontend_origin.strip()
-        if not raw:
-            return ["http://localhost:5173"]
+        origins = [o.strip() for o in raw.split(",") if o.strip()] if raw else []
 
-        origins = [o.strip() for o in raw.split(",") if o.strip()]
+        # Ensure standard local and production frontend origins are always permitted
+        default_origins = [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "https://sebi-circular-rag-assistant.vercel.app",
+        ]
+        for origin in default_origins:
+            if origin not in origins:
+                origins.append(origin)
+
         if self.is_production:
             if "*" in origins:
                 raise ValueError(

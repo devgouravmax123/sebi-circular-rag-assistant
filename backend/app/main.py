@@ -46,6 +46,21 @@ app.add_middleware(
 )
 
 
+from fastapi.responses import JSONResponse
+from fastapi import Request
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    if isinstance(exc, HTTPException):
+        # Let FastAPI default http_exception_handler process status codes and details
+        raise exc
+    logger.exception(f"Unhandled error during request {request.method} {request.url.path}: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "An internal server error occurred. Please try again."},
+    )
+
+
 from app.api.v1.query import router as query_router
 from app.api.v1.admin import router as admin_router
 from app.api.v1.auth import router as auth_router
